@@ -7389,10 +7389,11 @@
                     div.innerHTML = _icons.map(function (id) {
                         return '<img class="dmg-icon" src="assets/cards/' + id + '.jpg" alt="" ' +
                             'onerror="this.style.display=\'none\'">';
-                    }).join('') + fullText.replace(/&/g, '&amp;').replace(/</g, '&lt;');
+                    }).join('') + '<span class="dn-txt">' + fullText.replace(/&/g, '&amp;').replace(/</g, '&lt;') + '</span>';
                 } else {
-                    div.textContent = fullText;
+                    div.innerHTML = '<span class="dn-txt">' + fullText.replace(/&/g, '&amp;').replace(/</g, '&lt;') + '</span>';
                 }
+                const _txtEl = div.querySelector('.dn-txt');
                 // 视野缩放时飘字同步换算 (世界坐标 → 缩放后的屏幕坐标)
                 const _z = camera.zoom || 1;
                 const _sx = (x - camera.x - canvas.width / 2) * _z + canvas.width / 2;
@@ -7420,6 +7421,8 @@
                     num: (/^-[0-9]+$/.test(text) ? parseInt(String(text).slice(1), 10) : 0),
                     pre: opt.prefix || '', kind: opt._kind || '',
                     val: opt._val || 0, icons: _icons.slice(), sum: !!opt.sum,
+                    txtEl: _txtEl, baseText: fullText,
+                    spanFrom: (opt.sum ? (opt.spanFrom || Date.now()) : 0),
                     wx: x, wy: y   // 世界坐标: 合并「总」按它定位, 避免屏幕坐标二次换算
                 });
                 document.getElementById('ui').appendChild(div);
@@ -7456,7 +7459,7 @@
         // 把某一类的全部条目 (含已有的「总」) 合并成一条新「总」: 数值相加, 图标去重
         // 被合并的条目连同其 DOM 一起删除, 未参与的条目保持不动
         function _floatMergeKind(kind) {
-            const acc = { sum: 0, icons: [], wx: 0, wy: 0, n: 0 };
+            const acc = { sum: 0, icons: [], wx: 0, wy: 0, n: 0, spanFrom: Infinity };
             for (let i = _floatRects.length - 1; i >= 0; i--) {
                 const r = _floatRects[i];
                 if (!r || (r.kind || 'phys') !== kind) continue;
@@ -7464,6 +7467,8 @@
                 acc.wx += (r.wx != null ? r.wx : 0);
                 acc.wy += (r.wy != null ? r.wy : 0);
                 acc.n++;
+                const _ob = (r.sum && r.spanFrom) ? r.spanFrom : r.born;   // 已是「总」则继续取其集合内最早时间
+                if (_ob && _ob < acc.spanFrom) acc.spanFrom = _ob;
                 if (r.icons && r.icons.length) {
                     r.icons.forEach(function (ic) { if (ic && acc.icons.indexOf(ic) < 0 && acc.icons.length < 8) acc.icons.push(ic); });
                 }
@@ -7475,7 +7480,8 @@
                 '总' + sign + Math.round(acc.sum), _FLOAT_KCOLOR[kind] || DMG_COLORS.phys,
                 {
                     icons: acc.icons, prefix: kind === 'heal' ? '💚' : (kind === 'shield' ? '🛡' : ''),
-                    _kind: kind, _val: Math.round(acc.sum), sum: true, big: true
+                    _kind: kind, _val: Math.round(acc.sum), sum: true, big: true,
+                    spanFrom: (isFinite(acc.spanFrom) ? acc.spanFrom : Date.now())
                 });
         }
         // 实时容量控制: 屏幕上 > cap 条时才合并 (类型条目最多的优先合并), 直到 ≤ cap
@@ -7510,6 +7516,20 @@
                 _floatMergeKind(bestKind);
             }
         }
+
+        // 「总」右侧显示时间跨度: (当前时间 - 集合内最早显示条目时间)/1000, 精确到 0.1s
+        function _floatTickSpan() {
+            const now = Date.now();
+            for (let i = 0; i < _floatRects.length; i++) {
+                const r = _floatRects[i];
+                if (!r || !r.sum || !r.txtEl || !r.spanFrom) continue;
+                if (now - r.born > FLOAT_LIFE) continue;
+                const sec = Math.max(0, (now - r.spanFrom) / 1000);
+                const label = r.baseText + ' (' + sec.toFixed(1) + 's)';
+                if (r.txtEl.textContent !== label) r.txtEl.textContent = label;
+            }
+        }
+        setInterval(_floatTickSpan, 80);
         // Task 飘字规范: showFloatingNumber(x, y, text, color, opts)
         // opts: { prefix, iconId, icons(横排多图), type('heal'|'fx') }
         function showFloatingNumber(x, y, text, color, opts) {
