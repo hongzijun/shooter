@@ -7540,6 +7540,7 @@
                     num: (/^-[0-9]+$/.test(text) ? parseInt(String(text).slice(1), 10) : 0),
                     pre: opt.prefix || '', kind: opt._kind || '',
                     val: opt._val || 0, icons: _icons.slice(), sum: !!opt.sum,
+                    msize: (opt.msize || 0),   // 显示大小 = 该条目已发生的合并次数 (普通 = 0)
                     txtEl: _txtEl, baseText: fullText,
                     spanFrom: (opt.sum ? (opt.spanFrom || Date.now()) : 0),
                     wx: x, wy: y   // 世界坐标: 合并「总」按它定位, 避免屏幕坐标二次换算
@@ -7575,17 +7576,29 @@
             heal: DMG_COLORS.fx, shield: '#4f8eff', fx: DMG_COLORS.fx,
             phys: DMG_COLORS.phys, magic: DMG_COLORS.magic, true: DMG_COLORS.true
         };
-        // 把某一类的全部条目 (含已有的「总」) 合并成一条新「总」: 数值相加, 图标去重
-        // 被合并的条目连同其 DOM 一起删除, 未参与的条目保持不动
-        function _floatMergeKind(kind) {
-            const acc = { sum: 0, icons: [], wx: 0, wy: 0, n: 0, spanFrom: Infinity };
-            for (let i = _floatRects.length - 1; i >= 0; i--) {
+        // 把一组同类条目合并成一条新「总」: 数值相加, 图标去重
+        //   · idxs 为待合并条目下标; 传 null = 合并该 kind 的全部条目
+        //   · 新「总」的显示大小 = 组内最大合并次数 + 1
+        function _floatMergeGroup(kind, idxs) {
+            const acc = { sum: 0, icons: [], wx: 0, wy: 0, n: 0, spanFrom: Infinity, msize: 0 };
+            let list = idxs;
+            if (!list) {
+                list = [];
+                for (let i = 0; i < _floatRects.length; i++) {
+                    const r = _floatRects[i];
+                    if (r && (r.kind || 'phys') === kind) list.push(i);
+                }
+            }
+            list.sort(function (a, b) { return b - a; });   // 从后往前删, 剩余下标才有效
+            for (let j = 0; j < list.length; j++) {
+                const i = list[j];
                 const r = _floatRects[i];
                 if (!r || (r.kind || 'phys') !== kind) continue;
                 acc.sum += (r.val || 0);
                 acc.wx += (r.wx != null ? r.wx : 0);
                 acc.wy += (r.wy != null ? r.wy : 0);
                 acc.n++;
+                acc.msize = Math.max(acc.msize, r.msize || 0);
                 const _ob = (r.sum && r.spanFrom) ? r.spanFrom : r.born;   // 已是「总」则继续取其集合内最早时间
                 if (_ob && _ob < acc.spanFrom) acc.spanFrom = _ob;
                 if (r.icons && r.icons.length) {
@@ -7600,10 +7613,13 @@
                 {
                     icons: acc.icons, prefix: kind === 'heal' ? '💚' : (kind === 'shield' ? '🛡' : ''),
                     _kind: kind, _val: Math.round(acc.sum), sum: true, big: true,
+                    msize: acc.msize + 1,
                     spanFrom: (isFinite(acc.spanFrom) ? acc.spanFrom : Date.now())
                 });
         }
-        // 实时容量控制: 屏幕上 > cap 条时才合并 (类型条目最多的优先合并), 直到 ≤ cap
+        // 实时容量控制: 超过 cap 时, 只把「显示大小最小」的一批 (最多 10 条同类) 合成一条「总」
+        //   · 不再整类全合并 —— 已合并过的大块会被保护, 优先消化新鲜的小条目
+        //   · 每轮最多合并 10 条, 循环到 ≤ cap 为止 (每轮至少减少 1 条)
         function _floatCompact(maxCount) {
             const cap = maxCount || 10;
             const now = Date.now();
@@ -7617,22 +7633,33 @@
             }
             let guard = 0;
             while (_floatRects.length > cap && guard++ < 12) {
-                const groups = {};
+                // 按类型分组: 只合并同类, 保证「总」的颜色与图标语义正确
+                const byKind = {};
                 for (let i = 0; i < _floatRects.length; i++) {
                     const r = _floatRects[i];
                     if (!r) continue;
                     const k = r.kind || 'phys';
-                    const g = groups[k] || (groups[k] = { n: 0, first: i });
-                    g.n++;
+                    (byKind[k] || (byKind[k] = [])).push(i);
                 }
-                let bestKind = null, bestN = 1, bestFirst = Infinity;
-                Object.keys(groups).forEach(function (k) {
-                    const g = groups[k];
-                    if (g.n < 2) return;
-                    if (g.n > bestN || (g.n === bestN && g.first < bestFirst)) { bestKind = k; bestN = g.n; bestFirst = g.first; }
+                // 每组取「显示大小最小」的前 10 条作为候选, 再选最划算的一组
+                let pick = null;
+                Object.keys(byKind).forEach(function (k) {
+                    const list = byKind[k];
+                    if (list.length < 2) return;
+                    const cand = list.slice().sort(function (a, b) {
+                        const ma = _floatRects[a].msize || 0, mb = _floatRects[b].msize || 0;
+                        return (ma - mb) || (a - b);
+                    }).slice(0, 10);
+                    const minMs = _floatRects[cand[0]].msize || 0;
+                    const maxMs = _floatRects[cand[cand.length - 1]].msize || 0;
+                    if (!pick || minMs < pick.minMs
+                        || (minMs === pick.minMs && maxMs < pick.maxMs)
+                        || (minMs === pick.minMs && maxMs === pick.maxMs && cand.length > pick.idxs.length)) {
+                        pick = { kind: k, idxs: cand, minMs: minMs, maxMs: maxMs };
+                    }
                 });
-                if (!bestKind) break;   // 每种类型都只剩 1 条: 没法再合
-                _floatMergeKind(bestKind);
+                if (!pick) break;   // 每种类型都不足 2 条: 没法再合
+                _floatMergeGroup(pick.kind, pick.idxs);
             }
         }
 
