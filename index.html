@@ -1532,33 +1532,43 @@
 
         // === 训练场数值设置: 默认值表 (人物 / AI 各一份, 结构一致便于保存) ===
         const TRAIN_WEAPON_KEYS = ['pistol', 'rifle', 'shotgun', 'smg', 'sniper', 'sword'];
-        function _trainDefaultTune(zeroGrowth) {
+        // 训练场数值默认 (与 TRAIN_TUNE 面板默认一致; 仅此处维护)
+        const TRAIN_WEAPON_DEF = {
+            pistol: { sps: 6, dmgBase: 20, atkCoef: 0.4 },
+            rifle: { sps: 8, dmgBase: 20, atkCoef: 0.25 },
+            shotgun: { sps: 1.4, dmgBase: 12, atkCoef: 0.15 },
+            smg: { sps: 12, dmgBase: 10, atkCoef: 0.07 },
+            sniper: { sps: 1.1, dmgBase: 80, atkCoef: 1 },
+            sword: { sps: 1.8, dmgBase: 80, atkCoef: 0.5 }
+        };
+        function _trainDefaultTune(side) {
+            const isEnemy = (side === 'enemy');
             const weapons = {};
             TRAIN_WEAPON_KEYS.forEach(function (k) {
-                const w = WEAPONS[k];
+                const w = TRAIN_WEAPON_DEF[k];
                 // atkSpeed 字段 = 本武器攻速倍率 y (基准 1; 射速 = sps × (1 + 攻速 × y))
-                weapons[k] = { sps: w.sps, dmgBase: w.dmgBase, atkCoef: w.atkCoef, atkSpeed: 1 };
+                weapons[k] = { sps: w.sps, dmgBase: w.dmgBase, atkCoef: (k === 'sword' && isEnemy) ? 0.3 : w.atkCoef, atkSpeed: 0.1 };
             });
             return {
-                baseHp: CONFIG.MAX_HEALTH,
-                moveSpeed: CONFIG.MOVE_SPEED,
-                atk: 100,
+                baseHp: 500,
+                moveSpeed: 3,
+                atk: isEnemy ? 40 : 50,
                 atkSpeed: 0,
-                atkPerSecBase: 0,      // x: 每秒物理攻击力基数 (基础属性面板)
+                atkPerSecBase: 1,      // x: 每秒物理攻击力基数 (基础属性面板)
                 damageMult: 1,
                 healMult: 1,
                 shieldMult: 1,
                 healResist: 0,
                 weapons: weapons,
-                aiRound: 1,
+                aiRound: isEnemy ? 1 : 2,
                 growthVer: 1,
-                growth: zeroGrowth
-                    ? { hpPerRound: 0, atkPerRound: 0, dmgMultPerRound: 0, defPerRound: 0, penPerRound: 0, redDefPerRound: 0, atkPerSecPerRound: 0 }
-                    : { hpPerRound: 200, atkPerRound: 10, dmgMultPerRound: 0.2, defPerRound: 8, penPerRound: 4, redDefPerRound: 0, atkPerSecPerRound: 0 }
+                growth: isEnemy
+                    ? { hpPerRound: 100, atkPerRound: 10, dmgMultPerRound: 0, defPerRound: 10, penPerRound: 2, redDefPerRound: 20, atkPerSecPerRound: 1 }
+                    : { hpPerRound: 100, atkPerRound: 5, dmgMultPerRound: 0, defPerRound: 5, penPerRound: 0, redDefPerRound: 20, atkPerSecPerRound: 1 }
             };
         }
-        // 玩家成长默认全 0 (训练场「我方」页签可调), AI 保持原成长曲线
-        let TRAIN_TUNE = { mine: _trainDefaultTune(true), enemy: _trainDefaultTune(false) };
+        // 双方默认数值统一在 _trainDefaultTune 维护 (面板可调, 保存写入本地存档)
+        let TRAIN_TUNE = { mine: _trainDefaultTune('mine'), enemy: _trainDefaultTune('enemy') };
 
         const ENHANCED_WEAPONS = [
             { name: '⚔️ 烈焰手枪', baseWeapon: 'pistol', damageMult: 2.2, fireRateMult: 0.85, color: '#ff3838', icon: '🔥' },
@@ -8830,7 +8840,7 @@
                 const raw = localStorage.getItem('shooter_train_tune_v1');
                 if (raw) data = JSON.parse(raw);
             } catch (err) { data = null; }
-            const def = { mine: _trainDefaultTune(true), enemy: _trainDefaultTune(false) };
+            const def = { mine: _trainDefaultTune('mine'), enemy: _trainDefaultTune('enemy') };
             const num = function (v, d) { return (typeof v === 'number' && isFinite(v)) ? v : d; };
             ['mine', 'enemy'].forEach(function (side) {
                 const so = (data && typeof data === 'object' && data[side] && typeof data[side] === 'object') ? data[side] : {};
