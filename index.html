@@ -522,6 +522,14 @@
         #trainShop .ts-item.sel { border-color: #00cec9; background: rgba(0,206,201,0.26); }
         #trainShop .ts-item img { width: 22px; height: 22px; border-radius: 4px; object-fit: cover; }
         #trainShop .ts-item .em { font-size: 15px; line-height: 1; }
+        #trainShop .ts-search {
+            width: 100%; box-sizing: border-box; margin-bottom: 6px; padding: 6px 9px;
+            border-radius: 8px; border: 1px solid rgba(0,206,201,0.45);
+            background: rgba(255,255,255,0.07); color: #dfe6f5; font-size: 12px; outline: none;
+        }
+        #trainShop .ts-search:focus { border-color: #00cec9; background: rgba(0,206,201,0.12); }
+        #trainShop .ts-search::placeholder { color: #6b7793; }
+        #trainShop .ts-empty { color: #6b7793; font-size: 12px; padding: 10px 4px; grid-column: 1 / -1; }
         #trainShop .ts-slots {
             flex: 1; overflow-y: auto; align-content: start;
             display: grid; gap: 5px; grid-template-columns: 1fr 1fr;
@@ -1178,6 +1186,11 @@
                 <div class="ts-detail" id="tsDetail"></div>
                 <div class="ts-mid">
                     <div class="ts-title" id="tsTitle">装备 / 属性商店</div>
+                    <input class="ts-search" id="tsSearch" type="text" maxlength="40"
+                        placeholder="搜索: 名称 / 描述 (包含即显示)"
+                        oninput="onTrainSearch(this.value)"
+                        oncompositionstart="onTrainSearchStart()"
+                        oncompositionend="onTrainSearchEnd(this.value)">
                     <div class="ts-list" id="tsList"></div>
                 </div>
                 <div class="ts-mid">
@@ -8409,6 +8422,8 @@
         let trainSlotSide = 'mine';      // 当前卡槽归属: mine=我方 / enemy=敌方
         let trainSel = null;             // 当前选中的卡牌 id
         let trainSelSlot = -1;           // 当前选中的卡槽下标 (-1 = 未选槽)
+        let trainSearchQuery = '';       // 商店列表搜索关键词 (空 = 不筛选)
+        let _trainSearchComposing = false;   // 中文输入法组字中: 暂不刷新列表
         const trainSlots = { mine: new Array(20).fill(null), enemy: new Array(20).fill(null) };
 
         function trainEnt(side) { return side === 'enemy' ? ai : player; }
@@ -8481,6 +8496,9 @@
             trainShopMode = mode || 'shop';
             if (side) trainSlotSide = side;
             trainSel = null; trainSelSlot = -1;
+            trainSearchQuery = ''; _trainSearchComposing = false;
+            const _tsInput = document.getElementById('tsSearch');
+            if (_tsInput) _tsInput.value = '';
             const el = document.getElementById('trainShop');
             if (el) el.classList.add('show');
             renderTrainShop();
@@ -8499,6 +8517,78 @@
             return CARDS.slice();
         }
 
+        // === 训练场商店搜索: 包含即显示; 排序 = 命中字数(关键词长度×出现次数)降序 ===
+        //   同分: 名称命中优先 → 原始顺序兜底 (保证稳定, 输入时不会乱跳)
+        function _trainEscHtml(v) {
+            return String(v == null ? '' : v).replace(/&/g, '&amp;').replace(/</g, '&lt;')
+                .replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+        }
+        // 关键词归一化: 全角空格→半角, 去首尾空白, 转小写 (空串 = 不筛选)
+        function _trainSearchNorm(v) {
+            return String(v == null ? '' : v).replace(/\u3000/g, ' ').trim().toLowerCase();
+        }
+        // 子串出现次数 (不重叠计数; 纯 indexOf, 不构造正则, 特殊字符安全)
+        function _trainCountSub(hay, needle) {
+            if (!hay || !needle) return 0;
+            const step = Math.max(1, needle.length);
+            let n = 0, i = 0;
+            while ((i = hay.indexOf(needle, i)) >= 0) { n++; i += step; }
+            return n;
+        }
+        // 命中统计: 名称/描述/类型/稀有度/id 分别计数; 名称单独记一份用于同分排序
+        function _trainMatchScore(c, q) {
+            const ri = DRAFT_RARITY_INFO[c.rarity] || {};
+            const typeName = (c.type === 'equip' ? '装备卡'
+                : (c.type === 'effect' ? '效果卡' : (c.type === 'stat' ? '属性卡' : '功能卡'))).toLowerCase();
+            const nameHit = _trainCountSub(String(c.name || '').toLowerCase(), q);
+            let hit = nameHit;
+            hit += _trainCountSub(String(c.desc || '').toLowerCase(), q);
+            hit += _trainCountSub(typeName, q);
+            hit += _trainCountSub(String(ri.name || '').toLowerCase(), q);
+            hit += _trainCountSub(String(c.id || '').toLowerCase(), q);
+            return { chars: hit * q.length, nameChars: nameHit * q.length };
+        }
+        function _trainItemHTML(c) {
+            const ri = DRAFT_RARITY_INFO[c.rarity] || {};
+            return '<div class="ts-item' + (trainSel === c.id ? ' sel' : '') + '" data-train-card="' + c.id + '">' +
+                '<img src="assets/cards/' + c.id + '.jpg" alt="" onerror="this.style.display=\'none\';this.nextElementSibling.style.display=\'inline\';">' +
+                '<span class="em" style="display:none">' + (c.icon || '🎴') + '</span>' +
+                '<span style="flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">' + _trainEscHtml(c.name) + '</span>' +
+                '<span style="font-size:10px;color:' + (ri.color || '#ccc') + ';">' + (ri.name || '') + '</span></div>';
+        }
+        function renderTrainList() {
+            const listEl = document.getElementById('tsList');
+            if (!listEl) return;
+            const pool = trainPool();
+            const q = _trainSearchNorm(trainSearchQuery);
+            if (!q) { listEl.innerHTML = pool.map(_trainItemHTML).join(''); return; }
+            const rows = [];
+            for (let i = 0; i < pool.length; i++) {
+                const sc = _trainMatchScore(pool[i], q);
+                if (sc.chars <= 0) continue;
+                rows.push({ c: pool[i], chars: sc.chars, nameChars: sc.nameChars, idx: i });
+            }
+            rows.sort(function (a, b) {
+                return (b.chars - a.chars) || (b.nameChars - a.nameChars) || (a.idx - b.idx);
+            });
+            if (!rows.length) {
+                listEl.innerHTML = '<div class="ts-empty">没有名称或描述包含「' + _trainEscHtml(q) + '」的卡牌</div>';
+                return;
+            }
+            listEl.innerHTML = rows.map(function (r) { return _trainItemHTML(r.c); }).join('');
+        }
+        function onTrainSearch(v) {
+            trainSearchQuery = String(v == null ? '' : v);
+            if (_trainSearchComposing) return;   // 组字中不刷新, 等上屏后 compositionend 再刷
+            renderTrainList();
+        }
+        function onTrainSearchStart() { _trainSearchComposing = true; }
+        function onTrainSearchEnd(v) {
+            _trainSearchComposing = false;
+            trainSearchQuery = String(v == null ? '' : v);
+            renderTrainList();
+        }
+
         function renderTrainShop() {
             const listEl = document.getElementById('tsList');
             const slotsEl = document.getElementById('tsSlots');
@@ -8511,15 +8601,8 @@
                     ' · ' + (trainSlotSide === 'mine' ? '我方' : '敌方');
             }
 
-            // 中间: 可装配卡牌列表
-            listEl.innerHTML = trainPool().map(function (c) {
-                const ri = DRAFT_RARITY_INFO[c.rarity] || {};
-                return '<div class="ts-item' + (trainSel === c.id ? ' sel' : '') + '" data-train-card="' + c.id + '">' +
-                    '<img src="assets/cards/' + c.id + '.jpg" alt="" onerror="this.style.display=\'none\';this.nextElementSibling.style.display=\'inline\';">' +
-                    '<span class="em" style="display:none">' + (c.icon || '🎴') + '</span>' +
-                    '<span style="flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">' + c.name + '</span>' +
-                    '<span style="font-size:10px;color:' + (ri.color || '#ccc') + ';">' + (ri.name || '') + '</span></div>';
-            }).join('');
+            // 中间: 可装配卡牌列表 (支持搜索: 包含即显示, 按命中字数排序)
+            renderTrainList();
 
             // 右侧: 20 个卡槽
             const slots = trainSlots[trainSlotSide];
