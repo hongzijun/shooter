@@ -1593,6 +1593,112 @@
 
         let gameState = 'menu';
         let isPaused = false;
+
+        // ============================================================
+        // === 透明暂停 (CapsLock): 虚拟时钟 + 定时器冻结 ===
+        //   · 暂停期间 Date.now() 返回冻结值; 恢复后时间轴永久扣除暂停时长,
+        //     所以所有 CD / 无敌 / 冷却 / 成长节流等时间戳与暂停前完全连续
+        //   · setTimeout / setInterval 全部虚拟化: 暂停期间的到点回调挂起,
+        //     恢复时按「暂停前剩余时间」重新排期, 不漏也不重复
+        //   · 主循环直接跳过 update/draw, 画面静止, 不显示任何暂停提示
+        // ============================================================
+        const _tpRealNow = Date.now.bind(Date);
+        let _tpPaused = false;
+        let _tpAccum = 0;            // 累计暂停毫秒 (从虚拟时间轴上扣除)
+        let _tpStartReal = 0;        // 本次暂停开始时的真实时间
+        Date.now = function () {
+            if (_tpPaused) return _tpStartReal - _tpAccum;
+            return _tpRealNow() - _tpAccum;
+        };
+        const _tpTimeouts = new Map();
+        const _tpIntervals = new Map();
+        let _tpSeq = 1;
+        const _tpRawSetTimeout = window.setTimeout.bind(window);
+        const _tpRawClearTimeout = window.clearTimeout.bind(window);
+        const _tpRawSetInterval = window.setInterval.bind(window);
+        const _tpRawClearInterval = window.clearInterval.bind(window);
+        function _tpRunTimeout(id, rec) {
+            rec.startedReal = _tpRealNow();
+            rec.realId = _tpRawSetTimeout(function () {
+                rec.realId = 0;
+                if (rec.done) return;
+                if (_tpPaused) { rec.remain = 0; return; }   // 到点但仍在暂停: 挂起到恢复时执行
+                rec.done = true;
+                _tpTimeouts.delete(id);
+                try { rec.fn.apply(null, rec.args); } catch (err) { console.warn('定时器回调异常:', err); }
+            }, rec.remain);
+        }
+        function _tpRunInterval(id, rec) {
+            rec.realId = _tpRawSetInterval(function () {
+                if (rec.done || _tpPaused) return;            // 暂停期间一律不执行
+                try { rec.fn.apply(null, rec.args); } catch (err) { console.warn('循环回调异常:', err); }
+            }, rec.delay);
+        }
+        window.setTimeout = function (fn, ms) {
+            if (typeof fn !== 'function') return _tpRawSetTimeout.apply(null, arguments);
+            const args = Array.prototype.slice.call(arguments, 2);
+            const id = _tpSeq++;
+            const rec = { fn: fn, args: args, delay: Math.max(0, Number(ms) || 0),
+                remain: Math.max(0, Number(ms) || 0), realId: 0, startedReal: 0, done: false };
+            _tpTimeouts.set(id, rec);
+            if (!_tpPaused) _tpRunTimeout(id, rec);
+            return id;
+        };
+        window.clearTimeout = function (id) {
+            if (typeof id === 'number' && _tpTimeouts.has(id)) {
+                const rec = _tpTimeouts.get(id);
+                rec.done = true;
+                if (rec.realId) _tpRawClearTimeout(rec.realId);
+                _tpTimeouts.delete(id);
+                return;
+            }
+            return _tpRawClearTimeout(id);
+        };
+        window.setInterval = function (fn, ms) {
+            if (typeof fn !== 'function') return _tpRawSetInterval.apply(null, arguments);
+            const args = Array.prototype.slice.call(arguments, 2);
+            const id = _tpSeq++;
+            const rec = { fn: fn, args: args, delay: Math.max(1, Number(ms) || 0), realId: 0, done: false };
+            _tpIntervals.set(id, rec);
+            if (!_tpPaused) _tpRunInterval(id, rec);
+            return id;
+        };
+        window.clearInterval = function (id) {
+            if (typeof id === 'number' && _tpIntervals.has(id)) {
+                const rec = _tpIntervals.get(id);
+                rec.done = true;
+                if (rec.realId) _tpRawClearInterval(rec.realId);
+                _tpIntervals.delete(id);
+                return;
+            }
+            return _tpRawClearInterval(id);
+        };
+        function _tpTogglePause() {
+            if (!_tpPaused) {
+                _tpStartReal = _tpRealNow();
+                _tpPaused = true;
+                showFloatingText('暂停游戏', '#ffeaa7');
+                return;
+            }
+            // 恢复: 扣除暂停时长, 保证虚拟时间轴连续 (CD/无敌/时间戳无缝衔接)
+            _tpAccum += _tpRealNow() - _tpStartReal;
+            _tpPaused = false;
+            _camLastTs = 0;   // 相机帧步长重置, 恢复首帧不跳变
+            _tpTimeouts.forEach(function (rec, id) {
+                if (rec.done) return;
+                if (rec.realId) {
+                    _tpRawClearTimeout(rec.realId); rec.realId = 0;
+                    const elapsed = Math.max(0, _tpRealNow() - rec.startedReal);
+                    rec.remain = Math.max(0, rec.delay - elapsed);   // 已流逝的时间仍然算数
+                }
+                _tpRunTimeout(id, rec);
+            });
+            _tpIntervals.forEach(function (rec, id) {
+                if (rec.done) return;
+                if (rec.realId) { _tpRawClearInterval(rec.realId); rec.realId = 0; }
+                _tpRunInterval(id, rec);
+            });
+        }
         let player, ai;
         let playerA = null, playerB = null;
         let bullets = [];
@@ -10954,6 +11060,8 @@
         }
 
         function gameLoop() {
+            // 透明暂停: 完全冻结 —— 不推进任何状态, 也不重绘, 画面保持暂停前最后一帧
+            if (_tpPaused) { requestAnimationFrame(gameLoop); return; }
             const frameStart = performance.now();
             frameCount++; time++;
             _tickCameraDt(); // 相机平滑用的帧步长 (帧率无关)
@@ -11234,6 +11342,14 @@
                 const _ae = document.activeElement;
                 if (_ae && (_ae.tagName === 'INPUT' || _ae.tagName === 'TEXTAREA' || _ae.tagName === 'SELECT')) return;
             }
+            // === 透明暂停: CapsLock 切换 (无任何暂停提示, 仅飘一行「暂停游戏」) ===
+            if (e.key === 'CapsLock') {
+                if (gameState === 'playing' || gameState === 'pvp' || gameState === 'training') {
+                    _tpTogglePause();
+                }
+                return;
+            }
+            if (_tpPaused) return;   // 暂停中屏蔽其它按键, 再按 CapsLock 恢复
             // 选卡期间的按键: 1/2/3 选中卡槽, 空格确认 (屏蔽游戏内其他按键响应)
             if (isDrafting) {
                 if (e.key === '1' || e.key === '2' || e.key === '3') { selectCard(parseInt(e.key) - 1); e.preventDefault(); return; }
