@@ -1873,11 +1873,11 @@
             }
         ];
 
-        // === 卡牌图标渲染: 优先真实图 assets/cards/<id>.png (官方截图裁剪), 无图自动回退 emoji ===
+        // === 卡牌图标渲染: 优先真实图 assets/cards/<id>.jpg (已压缩), 无图自动回退 emoji ===
         function cardIconHTML(card, imgCls) {
             if (!card) return '';
             const cls = imgCls || 'draft-card-img';
-            return `<img class="${cls}" src="assets/cards/${card.id}.png" alt="" ` +
+            return `<img class="${cls}" src="assets/cards/${card.id}.jpg" alt="" decoding="async" ` +
                 `onerror="this.style.display='none';var s=this.nextElementSibling;if(s)s.style.display='block'">` +
                 `<div class="draft-card-icon" style="display:none">${card.icon}</div>`;
         }
@@ -1937,7 +1937,7 @@
             return order.map(function (id) {
                 const c = meta[id];
                 return '<div class="stat-card-chip" data-card-id="' + id + '" title="点击查看「' + (c.name || id) + '」">' +
-                    '<img src="assets/cards/' + id + '.png" alt="" ' +
+                    '<img src="assets/cards/' + id + '.jpg" alt="" decoding="async" ' +
                     'onerror="this.style.display=\'none\';this.nextElementSibling.style.display=\'inline\'">' +
                     '<span class="chip-emoji" style="display:none">' + (c.icon || '🎴') + '</span>' +
                     '<span>' + (c.name || id) + '</span>' +
@@ -6342,7 +6342,7 @@
             if (img === undefined) {
                 img = new Image();
                 img.onerror = function () { _cardImgCache[id] = null; };
-                img.src = 'assets/cards/' + id + '.png';
+                img.src = 'assets/cards/' + id + '.jpg';
                 _cardImgCache[id] = img;
             }
             return (img && img.complete && img.naturalWidth > 0) ? img : null;
@@ -7383,11 +7383,11 @@
             try {
                 const div = document.createElement('div');
                 div.className = 'damage-number';
-                // 特效飘字: 优先用真实卡牌图标 (iconId / icons → assets/cards/<id>.png), 无图回退 emoji 前缀
+                // 特效飘字: 优先用真实卡牌图标 (iconId / icons → assets/cards/<id>.jpg), 无图回退 emoji 前缀
                 const _icons = (Array.isArray(opt.icons) ? opt.icons.filter(Boolean) : (opt.iconId ? [opt.iconId] : [])).slice(0, 10);
                 if (_icons.length) {
                     div.innerHTML = _icons.map(function (id) {
-                        return '<img class="dmg-icon" src="assets/cards/' + id + '.png" alt="" ' +
+                        return '<img class="dmg-icon" src="assets/cards/' + id + '.jpg" alt="" ' +
                             'onerror="this.style.display=\'none\'">';
                     }).join('') + fullText.replace(/&/g, '&amp;').replace(/</g, '&lt;');
                 } else {
@@ -8495,7 +8495,7 @@
             listEl.innerHTML = trainPool().map(function (c) {
                 const ri = DRAFT_RARITY_INFO[c.rarity] || {};
                 return '<div class="ts-item' + (trainSel === c.id ? ' sel' : '') + '" data-train-card="' + c.id + '">' +
-                    '<img src="assets/cards/' + c.id + '.png" alt="" onerror="this.style.display=\'none\';this.nextElementSibling.style.display=\'inline\';">' +
+                    '<img src="assets/cards/' + c.id + '.jpg" alt="" onerror="this.style.display=\'none\';this.nextElementSibling.style.display=\'inline\';">' +
                     '<span class="em" style="display:none">' + (c.icon || '🎴') + '</span>' +
                     '<span style="flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">' + c.name + '</span>' +
                     '<span style="font-size:10px;color:' + (ri.color || '#ccc') + ';">' + (ri.name || '') + '</span></div>';
@@ -8507,7 +8507,7 @@
                 if (!id) return '<div class="ts-slot" data-train-slot="' + i + '">空</div>';
                 const c = CARDS.find(function (cc) { return cc.id === id; }) || {};
                 return '<div class="ts-slot filled' + (trainSelSlot === i ? ' sel' : '') + '" data-train-slot="' + i + '">' +
-                    '<img src="assets/cards/' + id + '.png" alt="" onerror="this.style.display=\'none\';">' +
+                    '<img src="assets/cards/' + id + '.jpg" alt="" onerror="this.style.display=\'none\';">' +
                     '<span style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">' + (c.name || id) + '</span></div>';
             }).join('');
 
