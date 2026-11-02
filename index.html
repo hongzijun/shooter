@@ -1574,6 +1574,7 @@
                 healResist: 0,
                 weapons: weapons,
                 aiRound: isEnemy ? 1 : 2,
+                aiDrawCount: 1,
                 growthVer: 1,
                 growth: isEnemy
                     ? { hpPerRound: 100, atkPerRound: 10, dmgMultPerRound: 0, defPerRound: 10, penPerRound: 2, redDefPerRound: 20, atkPerSecPerRound: 1 }
@@ -1746,7 +1747,9 @@
                 aiPen: _g.penPerRound * i,
                 aiAtkM: _baseAtk + _g.atkPerRound * i,
                 aiDefM: 35 + _g.defPerRound * i,
-                aiPenM: _g.penPerRound * i
+                aiPenM: _g.penPerRound * i,
+                // 训练场成长减伤: 与波次同步 (第 i 波 = redDefPerRound × i), 对任何伤害生效 (含真伤)
+                redDef: (_g.redDefPerRound || 0) * i
             };
         }
 
@@ -1947,8 +1950,8 @@
             },
             {
                 id: 'chargearm', name: '充能臂甲', icon: '🔋', type: 'equip', rarity: 'purple',
-                desc: '物攻+30，CDR+10%；每8秒获得60%物攻的护盾',
-                apply(p) { const eq = ensureEquipObj(p); const fx = ensureFx(p); eq.atk += 30; eq.cdr += 0.10; fx.shieldEvery8sAtkPct += 0.60; fx.shield8Src.push({ id: 'chargearm', name: '充能臂甲', atkPct: 0.60, lastAt: srcPhase(8000) }); }
+                desc: '物攻+30，CDR+10%；每8秒获得相当于当前生命值8%的护盾',
+                apply(p) { const eq = ensureEquipObj(p); const fx = ensureFx(p); eq.atk += 30; eq.cdr += 0.10; fx.shieldEvery8sHpPct += 0.08; fx.shield8Src.push({ id: 'chargearm', name: '充能臂甲', hpPct: 0.08, lastAt: srcPhase(8000) }); }
             },
             {
                 id: 'vampconverter', name: '噬能转化器', icon: '🧲', type: 'equip', rarity: 'purple',
@@ -2229,7 +2232,7 @@
                     heal5Src: [], healPct8Src: [],   // 回血来源列表: { id, name, amt, lastAt } / { id, name, pct, lastAt }
                     shield8Src: [], shield10Src: [], hurtShieldSrc: [],   // 护盾来源列表: 每件装备独立计时/独立显示
                     turnShieldPct: 0, shieldTurnMaxHpPct: 0, hpCostTurnPct: 0,
-                    shieldEvery8sAtkPct: 0, shieldEvery10sPct: 0, hurtShield: 0,
+                    shieldEvery8sAtkPct: 0, shieldEvery8sHpPct: 0, shieldEvery10sPct: 0, hurtShield: 0,
                     panicShield: 0, energy: 0, revive: 0, insurance: 0, legend: 0,
                     adaptDef: 0, adaptStacks: 0, surge: 0, surgeStacks: 0,
                     titanCombat: 0, titanBonus: 0, nearEnemyDefPct: 0, crusher: 0,
@@ -2326,17 +2329,20 @@
             return Math.round(p.health - before);
         }
 
-        // 统一护盾入口: 吃护盾效果加成, 护盾无上限
+        // 统一护盾入口: 吃护盾效果加成, 上限 4 条最大生命值 (双方/AI 一致)
         function fxShield(p, amt, iconId) {
             if (!p || p.health <= 0 || amt <= 0) return 0;
             const fx = p.fx;
             let v = amt * (1 + ((fx && fx.shieldPower) || 0)) * fxMult(p, 'shield');
             v = Math.round(v);
-            // 护盾无上限: 直接累加 (显示时按最大生命分条叠加)
-            p.shield = (p.shield || 0) + v;
-            // 护盾获得飘字: 来源卡牌图案 + 🛡 + 蓝色护盾值
-            if (v > 0) showFloatingNumber(p.x, p.y - 70, '+' + v, '#4f8eff', { icons: iconId ? [iconId] : [], prefix: '🛡', type: 'shield' });
-            return v;
+            const _cap = Math.max(0, (p.maxHealth || 0) * 4);
+            const _room = Math.max(0, _cap - (p.shield || 0));
+            const gain = Math.min(v, _room);
+            // 护盾上限: 最多 4 条最大生命值, 超出部分不叠加
+            p.shield = (p.shield || 0) + gain;
+            // 护盾获得飘字: 来源卡牌图案 + 🛡 + 蓝色护盾值 (显示实际增加量)
+            if (gain > 0) showFloatingNumber(p.x, p.y - 70, '+' + gain, '#4f8eff', { icons: iconId ? [iconId] : [], prefix: '🛡', type: 'shield' });
+            return gain;
         }
 
         // 出伤系数 (攻击者视角): 条件增伤 / 首击 / 浮动 / 攻防差
@@ -2516,16 +2522,21 @@
                     const v = fxHeal(p, p.maxHealth * s8.pct, s8.id, si * 20);
                 }
             }
-            // 每8秒物攻护盾: 逐件装备独立计时 (两件充能臂甲 = 两次护盾)
-            if (fx.shieldEvery8sAtkPct > 0) {
-                const sh8 = (fx.shield8Src && fx.shield8Src.length) ? fx.shield8Src : [{ id: 'chargearm', name: '充能臂甲', atkPct: fx.shieldEvery8sAtkPct }];
+            // 每8秒护盾: 逐件装备独立计时 (两件充能臂甲 = 两次护盾)
+            if (fx.shieldEvery8sAtkPct > 0 || fx.shieldEvery8sHpPct > 0 || (fx.shield8Src && fx.shield8Src.length)) {
+                const sh8 = (fx.shield8Src && fx.shield8Src.length) ? fx.shield8Src
+                    : [{ id: 'chargearm', name: '充能臂甲', hpPct: fx.shieldEvery8sHpPct, atkPct: fx.shieldEvery8sAtkPct }];
                 for (let si = 0; si < sh8.length; si++) {
                     const s8 = sh8[si];
                     if (now - (s8.lastAt || fx.lastShield8 || 0) < (s8.cdMs || 8000)) continue;
                     s8.cdMs = cdrMs(8000, p);
                     s8.lastAt = now;
                     fx.lastShield8 = now;
-                    fxShield(p, (p.getAtkP ? p.getAtkP() : 0) * (s8.atkPct || 0), (s8.id || 'chargearm'));
+                    // 新版: 当前生命值 8%; 旧存档: 物攻百分比
+                    const _amt8 = (s8.hpPct != null)
+                        ? p.health * s8.hpPct
+                        : (p.getAtkP ? p.getAtkP() : 0) * (s8.atkPct || 0);
+                    fxShield(p, _amt8, (s8.id || 'chargearm'));
                 }
             }
             // 每10秒最大生命护盾: 逐件装备独立计时 (两件防护服 = 两条护盾计时)
@@ -2924,22 +2935,35 @@
             }, holdMs);
         }
 
-        // 发放 AI 装备: 数值/特效真实作用于 ai 实体 (与玩家同一套 card.apply), 并播放获取动画
+        // 发放 AI 装备: 数值/特效真实作用于 ai 实体 (与玩家同一套 card.apply), 并逐个播放获取动画
+        // 抽卡个数由训练场数值设置「AI每次抽卡个数」控制 (默认 1, 取值 1..10)
         function grantAiEquipForRound() {
             if (gameState !== 'playing' || !ai) return null;
-            const card = pickRandomEquipCard();
-            if (!card) return null;
-            try {
-                card.apply(ai);   // 与玩家完全相同的应用入口: ensureEquipObj + 数值累加
-            } catch (err) {
-                console.error('[AI装备] 应用异常:', err);
+            const _tt = (typeof TRAIN_TUNE !== 'undefined' && TRAIN_TUNE && TRAIN_TUNE.enemy) ? TRAIN_TUNE.enemy : null;
+            const count = Math.max(1, Math.min(10, Math.round((_tt && _tt.aiDrawCount) || 1)));
+            const got = [];
+            for (let i = 0; i < count; i++) {
+                const card = pickRandomEquipCard();
+                if (!card) break;
+                try {
+                    card.apply(ai);   // 与玩家完全相同的应用入口: ensureEquipObj + 数值累加
+                } catch (err) {
+                    console.error('[AI装备] 应用异常:', err);
+                }
+                ai.aiEquipLog = ai.aiEquipLog || [];
+                ai.aiEquipLog.push({ id: card.id, name: card.name, icon: card.icon });
+                console.log('[AI装备] 获得(' + (i + 1) + '/' + count + '): ' + card.name + ' (物攻=' + ai.getAtkP() + ' 物穿=' + ai.getPenP() + ' 攻速=' + Math.round(ai.getAtkSpeed() * 100) + '% 法防=' + ai.getDefM() + ')');
+                got.push(card);
             }
-            ai.aiEquipLog = ai.aiEquipLog || [];
-            ai.aiEquipLog.push({ id: card.id, name: card.name, icon: card.icon });
-            console.log('[AI装备] 获得: ' + card.name + ' (物攻=' + ai.getAtkP() + ' 物穿=' + ai.getPenP() + ' 攻速=' + Math.round(ai.getAtkSpeed() * 100) + '% 法防=' + ai.getDefM() + ')');
             updateUI();
-            showAIEquipAward(card);
-            return card;
+            // 显示与实际一致: 抽到几张就逐个显示「AI 已获取」
+            let _idx = 0;
+            const _nextAward = function () {
+                if (_idx >= got.length) return;
+                showAIEquipAward(got[_idx++], _nextAward);
+            };
+            if (got.length) _nextAward();
+            return got.length ? got[0] : null;
         }
 
         // === 应用卡牌效果 (带 NaN/undefined 兜底, 防属性缺失导致效果异常) ===
@@ -5570,8 +5594,9 @@
                 if (!isReflect && this.fx && attacker && attacker !== this && attacker.health > 0) {
                     // 通用反弹: 真伤 (无视物法减伤, 白色) —— 按来源逐条结算并显示来源图案
                     // 反弹 (受到伤害的15%回敬)
+                    // 反弹基数必须含被护盾吸收的部分: 否则护盾把本次伤害全挡时 actualDamage=0, 反弹为 0 且没有飘字
                     if (this.fx.thorns > 0) {
-                        const _b1 = Math.round(actualDamage * this.fx.thorns);
+                        const _b1 = Math.round((actualDamage + shieldAbsorbed) * this.fx.thorns);
                         if (_b1 > 0) {
                             const _t1 = attacker.takeDamage(_b1, this, false, 'true', true, true);
                             const _s1 = _t1 ? (_t1.dmg + (_t1.absorbed || 0)) : 0;   // 含被护盾吸收部分
@@ -5954,6 +5979,8 @@
                     this.aiAtkM = _es.aiAtkM;
                     this.aiDefM = _es.aiDefM;
                     this.aiPenM = _es.aiPenM;
+                    // 减伤防御: 与波次同步增长, 对任何伤害生效 (含真伤)
+                    this._trainDefRed = Math.max(0, _es.redDef || 0);
                     this.aiDeathStreak = 0;
                     this.aiEmotion = 'aggressive';
                     this.aiBaseAccuracy = 0.95;
@@ -5962,7 +5989,7 @@
                     this.aiReactionTime = 25 * (1 + 0.5 * (player && player.cardPerks ? player.cardPerks.timeWarp : 0));
                     // Boss波: 出生附带 15%最大生命×i 的护盾
                     this.maxShield = CONFIG.MAX_SHIELD + _es.bossShield;
-                    this.shield = _es.bossShield;
+                    this.shield = Math.min(_es.bossShield, this.maxHealth * 4);
                 }
 
                 Object.keys(this.weapons).forEach(k => {
@@ -6683,9 +6710,13 @@
                     s8.forEach(function (s, i) { const _t = (s.cdMs || 8000); addCd('heal8_' + i, (s.name || '百分比回复') + '·每8秒回血', s.id, (s.lastAt || fx.lastHeal8 || 0) + _t, _t); });
                 }
                 // 定时护盾: 逐件装备独立显示 (两件防护服 = 两条护盾计时)
-                if (fx.shieldEvery8sAtkPct > 0) {
-                    const sh8 = (fx.shield8Src && fx.shield8Src.length) ? fx.shield8Src : [{ id: 'chargearm', name: '充能臂甲' }];
-                    sh8.forEach(function (s, i) { const _t = (s.cdMs || 8000); addCd('shield8_' + i, (s.name || '充能臂甲') + '·物攻护盾', s.id || 'chargearm', (s.lastAt || fx.lastShield8 || 0) + _t, _t); });
+                if (fx.shieldEvery8sAtkPct > 0 || fx.shieldEvery8sHpPct > 0) {
+                    const sh8 = (fx.shield8Src && fx.shield8Src.length) ? fx.shield8Src
+                        : [{ id: 'chargearm', name: '充能臂甲', hpPct: fx.shieldEvery8sHpPct, atkPct: fx.shieldEvery8sAtkPct }];
+                    sh8.forEach(function (s, i) {
+                        const _t = (s.cdMs || 8000);
+                        addCd('shield8_' + i, (s.name || '充能臂甲') + (s.hpPct != null ? '·生命护盾' : '·物攻护盾'), s.id || 'chargearm', (s.lastAt || fx.lastShield8 || 0) + _t, _t);
+                    });
                 }
                 if (fx.shieldEvery10sPct > 0) {
                     const sh10 = (fx.shield10Src && fx.shield10Src.length) ? fx.shield10Src : [{ id: 'hazmat', name: '防护服' }];
@@ -7261,14 +7292,27 @@
                 });
                 const row = (k, v) => '<div class="stat-row"><span class="k">' + k + '</span><span class="v">' + v + '</span></div>';
                 // 护盾/治疗倍率行: 内联可编辑 (全局生效, 双方各一份)
+                // 装备/效果卡的常驻加成 (fx.healPower / fx.shieldPower) 也计入显示:
+                //   输入框 = 全局倍率; 括号 = 加上装备后的实际倍率 (与实际结算公式一致)
                 const multRow = (key, label, isPct) => {
                     const _t = TRAIN_TUNE[tuneSide] || {};
                     const _m = (typeof _t[key] === 'number' && isFinite(_t[key]) && _t[key] >= 0) ? _t[key] : 1;
                     const _r = (typeof _t.healResist === 'number' && isFinite(_t.healResist) && _t.healResist >= 0) ? _t.healResist : 0;
-                    // 治疗倍率括号: 治疗量 - 抗治疗 = 实际受治疗倍率
-                    const _note = (key === 'healMult' && _r > 0)
-                        ? ' <span style="color:#7f8ba8;font-size:12px">(' + _numStr(_m) + ' - ' + _numStr(_r) + ' = ' + _numStr(Math.max(0, _m - _r)) + ')</span>'
-                        : '';
+                    const _extra = (e.fx && key === 'healMult') ? (e.fx.healPower || 0)
+                        : ((e.fx && key === 'shieldMult') ? (e.fx.shieldPower || 0) : 0);
+                    let _note = '';
+                    if (key === 'healMult') {
+                        // 实际治疗倍率 = (全局治疗倍率 - 抗治疗) × (1 + 装备治疗加成)
+                        const _base = Math.max(0, _m - _r);
+                        const _eff = _base * (1 + _extra);
+                        const _parts = [];
+                        if (_extra > 0) _parts.push('装备 +' + fmtPct(_extra));
+                        if (_r > 0) _parts.push(_numStr(_m) + ' - ' + _numStr(_r) + ' = ' + _numStr(_base));
+                        if (_parts.length) _note = ' <span style="color:#7f8ba8;font-size:12px">(' + _parts.join(' · ') + ') 实际 ×' + _numStr(_eff) + '</span>';
+                    } else if (key === 'shieldMult' && _extra > 0) {
+                        // 实际护盾倍率 = 全局护盾倍率 × (1 + 装备护盾加成)
+                        _note = ' <span style="color:#7f8ba8;font-size:12px">(装备 +' + fmtPct(_extra) + ') 实际 ×' + _numStr(_m * (1 + _extra)) + '</span>';
+                    }
                     return '<div class="stat-row"><span class="k">' + label + '</span><span class="v">' +
                         '<input type="text" inputmode="decimal" class="stat-mult-input" data-mult-side="' + tuneSide +
                         '" data-mult-key="' + key + '"' + (isPct ? ' data-mult-pct="1"' : '') + ' value="' + _numStr(isPct ? _m * 100 : _m) + '"' +
@@ -7281,7 +7325,7 @@
                 return '<h3 style="color:' + color + '">' + title + '</h3>' +
                     row('生命', Math.ceil(e.health) + ' / ' + e.maxHealth + (eqHp > 0 ? eqNote(baseHp, eqHp) : '')) +
                     row('命数', e.lives) +
-                    row('护盾', Math.floor(e.shield || 0) + ' <span style="color:#7f8ba8">(无上限, 每满 ' + e.maxHealth + ' 叠一条)</span>') +
+                    row('护盾', Math.floor(e.shield || 0) + ' <span style="color:#7f8ba8">(上限 4 条, 每满 ' + e.maxHealth + ' 叠一条)</span>') +
                     row('物攻 / 法攻', atk + (eqAtk > 0 ? eqNote(baseAtk, eqAtk) : '') + ' / ' + atkM) +
                     row('生命转物攻', (e.fx && e.fx.hpToAtk > 0)
                         ? '<span style="color:#ff9f43">+' + Math.round(e.maxHealth * e.fx.hpToAtk) + '</span>' +
@@ -7298,6 +7342,9 @@
                     row('实际法术防御', effMagic.eff + ' <span style="color:#7f8ba8">(' + effMagic.def + ' - 对方法穿 ' + effMagic.pen + ')</span>') +
                     row('实际物理减伤', '<span style="color:#2ed573">' + defReduce + '</span>') +
                     row('实际法术减伤', '<span style="color:#2ed573">' + defMReduce + '</span>') +
+                    row('减伤防御', '<span style="color:#2ed573">' + Math.round(e._trainDefRed || 0) + '</span>') +
+                    row('减伤率', '<span style="color:#2ed573">' + fmtPct((e._trainDefRed || 0) / ((e._trainDefRed || 0) + 100)) + '</span>' +
+                        ((e._trainDefRed || 0) > 0 ? ' <span style="color:#7f8ba8">(含真伤)</span>' : '')) +
                     row('暴击率/暴伤', fmtPct(critRate) + (eqCrit > 0 ? eqNote(fmtPct(baseCrit), fmtPct(eqCrit)) : '') +
                         ' / ×' + critMult.toFixed(2) + (eqCritMult > 0 ? eqNote('×' + baseCritMult.toFixed(2), '×' + eqCritMult.toFixed(2)) : '')) +
                     row('吸血', fmtPct(lifesteal) + (eqLS > 0 ? eqNote(fmtPct(baseLS), fmtPct(eqLS)) : '')) +
@@ -7307,9 +7354,6 @@
                     multRow('healMult', '治疗倍率') +
                     multRow('healResist', '抗治疗', true) +
                     multRow('shieldMult', '护盾倍率') +
-                    row('减伤防御', '<span style="color:#2ed573">' + Math.round(e._trainDefRed || 0) + '</span>') +
-                    row('减伤率', '<span style="color:#2ed573">' + fmtPct((e._trainDefRed || 0) / ((e._trainDefRed || 0) + 100)) + '</span>' +
-                        ((e._trainDefRed || 0) > 0 ? ' <span style="color:#7f8ba8">(含真伤)</span>' : '')) +
                     row('每秒物理攻击力', '<span style="color:#ffd166">' + (Math.round(atkPerSecValue(e) * 10) / 10) + '</span>' +
                         ' <span style="color:#7f8ba8">(已累积 +' + Math.round(e._atkPerSecBonus || 0) + ')</span>') +
                     row('灼烧', hasRobe ? '<span style="color:#ff9f43">有 (' + e.equip.robeCount + '件)</span>' : '无') +
@@ -8833,7 +8877,8 @@
             { key: 'growth.defPerRound', label: '防御成长/回合' },
             { key: 'growth.penPerRound', label: '穿透成长/回合' },
             { key: 'growth.redDefPerRound', label: '减伤防御/回合' },
-            { key: 'growth.atkPerSecPerRound', label: '每秒物理攻击力/波' }
+            { key: 'growth.atkPerSecPerRound', label: '每秒物理攻击力/波' },
+            { key: 'aiDrawCount', label: 'AI每次抽卡个数', only: 'enemy' }
         ];
 
         function _numStr(v) {
@@ -8897,11 +8942,25 @@
             // 双方都显示成长项: 按「模拟回合」结算 (敌方=靶子, 我方=玩家角色)
             html += '<div class="tt-sec">' + (trainTuneSide === 'enemy' ? 'AI 成长 (仅训练场靶子生效)' : '成长 (训练场按模拟回合结算)') + '</div><div class="tt-grid">';
             TRAIN_TUNE_AI_FIELDS.forEach(function (f) {
+                if (f.only && f.only !== trainTuneSide) return;
                 html += '<div class="tt-field"><span>' + f.label + '</span>' +
                     '<input type="text" inputmode="decimal" data-tune-key="' + f.key +
                     '" value="' + _numStr(_tuneGet(t, f.key)) + '"></div>';
             });
             html += '</div>';
+
+            // === 当前减伤 (只读): D = 减伤防御/回合 × (模拟回合-1); 减伤率 = D/(D+100), 含真伤 ===
+            const _ttRoundNow = Math.max(1, Math.round(t.aiRound || 1));
+            const _ttCalcD = Math.max(0, ((t.growth && t.growth.redDefPerRound) || 0) * (_ttRoundNow - 1));
+            const _ttEntNow = (trainTuneSide === 'enemy') ? ai : player;
+            const _ttD = _ttEntNow ? Math.max(0, Math.round(_ttEntNow._trainDefRed || 0)) : Math.round(_ttCalcD);
+            const _ttRatePct = (_ttD / (_ttD + 100) * 100);
+            html += '<div class="tt-sec">当前减伤 (只读 · 含真伤)</div><div class="tt-grid">' +
+                '<div class="tt-field"><span>减伤防御</span><b style="color:#2ed573">' + _ttD + '</b></div>' +
+                '<div class="tt-field"><span>减伤率</span><b style="color:#2ed573">' + _ttRatePct.toFixed(0) + '%</b></div>' +
+                '</div>' +
+                '<div class="tt-hint" style="text-align:left">D = 减伤防御/回合 × (模拟回合 - 1) = ' + Math.round(_ttCalcD) +
+                (_ttCalcD <= 0 ? ' · 模拟回合=1 时尚未结算成长，把「模拟回合」调到 2 以上才会产生减伤' : '') + '</div>';
 
             const _ttEnt = (trainTuneSide === 'enemy') ? ai : player;
             const _ttSpdPct = (_ttEnt && _ttEnt.getAtkSpeed) ? _ttEnt.getAtkSpeed() : 0;
@@ -8990,6 +9049,7 @@
                     if (t.weapons && t.weapons[wKey]) t.weapons[wKey][wField] = val;
                 } else if (key) {
                     if (key === 'aiRound') t.aiRound = Math.max(1, Math.round(val));
+                    else if (key === 'aiDrawCount') t.aiDrawCount = Math.max(1, Math.min(10, Math.round(val)));
                     else if (input.getAttribute('data-tune-pct')) _tuneSet(t, key, val / 100);
                     else _tuneSet(t, key, val);
                 }
@@ -9110,6 +9170,7 @@
                     healResist: num(so.healResist, d.healResist),
                     weapons: {},
                     aiRound: Math.max(1, Math.round(num(so.aiRound, d.aiRound))),
+                    aiDrawCount: Math.max(1, Math.min(10, Math.round(num(so.aiDrawCount, d.aiDrawCount)))),
                     growthVer: 1,
                     growth: {
                         hpPerRound: num(so.growth && so.growth.hpPerRound, _gd.hpPerRound),
@@ -11441,6 +11502,19 @@
                 player.invincibleEnd = Date.now() + 2500;   // 复活 2.5 秒无敌, 避免立即再死
                 player._atkSecAt = Date.now();               // 每秒物攻从继续时刻重新计时
             }
+            // === 修复「继续游戏后 AI 消失」: AI 可能停在死亡/待选卡状态, 这里强制重生并校正位置 ===
+            if (ai) {
+                if (ai.health <= 0 || !isFinite(ai.x) || !isFinite(ai.y) || (ai.lives || 0) <= 0) {
+                    ai.respawnFull();
+                }
+                ai.invincible = true;
+                ai.invincibleEnd = Date.now() + 2500;
+                ai.frozen = false;
+            }
+            // 清理可能残留的 AI 装备奖励层/计时器, 避免继续游戏后被遮挡
+            const _awardEl = document.getElementById('aiEquipAward');
+            if (_awardEl) { _awardEl.style.display = 'none'; _awardEl.classList.remove('hide'); }
+            if (_aiAwardTimer) { clearTimeout(_aiAwardTimer); _aiAwardTimer = null; }
             bullets = []; particles = [];
             updateUI();
         }
