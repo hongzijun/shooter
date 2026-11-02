@@ -7617,11 +7617,13 @@
                     spanFrom: (isFinite(acc.spanFrom) ? acc.spanFrom : Date.now())
                 });
         }
-        // 实时容量控制: 超过 cap 时, 只把「显示大小最小」的一批 (最多 10 条同类) 合成一条「总」
-        //   · 不再整类全合并 —— 已合并过的大块会被保护, 优先消化新鲜的小条目
-        //   · 每轮最多合并 10 条, 循环到 ≤ cap 为止 (每轮至少减少 1 条)
+        // 容量控制(进位制): 只有「同类型 + 同显示大小」凑满 cap 条才合并成一条「总」
+        //   · 例: 10 个大小0 -> 1 个大小1; 9 个大小0 + 1 个大小1 仍是 10 条, 不越级合并
+        //   · 直到攒够 10 个大小1 才合并成大小2, 不做「超过上限就全并」
+        //   · 兜底: 总条数超过 HARD_CAP 时, 对条数最多的组强制进位(不足 cap 也合并), 防止爆屏
         function _floatCompact(maxCount) {
             const cap = maxCount || 10;
+            const HARD_CAP = 16;
             const now = Date.now();
             // 已过期(已不可见)的记录先清掉, 不参与合并
             for (let i = _floatRects.length - 1; i >= 0; i--) {
@@ -7632,33 +7634,45 @@
                 }
             }
             let guard = 0;
-            while (_floatRects.length > cap && guard++ < 12) {
-                // 按类型分组: 只合并同类, 保证「总」的颜色与图标语义正确
-                const byKind = {};
+            // 1) 正常进位: 同类型 + 同显示大小 满 cap 条
+            while (guard++ < 12) {
+                const groups = {};
                 for (let i = 0; i < _floatRects.length; i++) {
                     const r = _floatRects[i];
                     if (!r) continue;
-                    const k = r.kind || 'phys';
-                    (byKind[k] || (byKind[k] = [])).push(i);
+                    const key = (r.kind || 'phys') + '|' + (r.msize || 0);
+                    (groups[key] || (groups[key] = [])).push(i);
                 }
-                // 每组取「显示大小最小」的前 10 条作为候选, 再选最划算的一组
-                let pick = null;
-                Object.keys(byKind).forEach(function (k) {
-                    const list = byKind[k];
-                    if (list.length < 2) return;
-                    const cand = list.slice().sort(function (a, b) {
-                        const ma = _floatRects[a].msize || 0, mb = _floatRects[b].msize || 0;
-                        return (ma - mb) || (a - b);
-                    }).slice(0, 10);
-                    const minMs = _floatRects[cand[0]].msize || 0;
-                    const maxMs = _floatRects[cand[cand.length - 1]].msize || 0;
-                    if (!pick || minMs < pick.minMs
-                        || (minMs === pick.minMs && maxMs < pick.maxMs)
-                        || (minMs === pick.minMs && maxMs === pick.maxMs && cand.length > pick.idxs.length)) {
-                        pick = { kind: k, idxs: cand, minMs: minMs, maxMs: maxMs };
+                let hit = null;
+                Object.keys(groups).forEach(function (key) {
+                    if (hit) return;
+                    const list = groups[key];
+                    if (list.length >= cap) {
+                        hit = { kind: key.slice(0, key.lastIndexOf('|')), idxs: list.slice(0, cap) };
                     }
                 });
-                if (!pick) break;   // 每种类型都不足 2 条: 没法再合
+                if (!hit) break;
+                _floatMergeGroup(hit.kind, hit.idxs);
+            }
+            // 2) 兜底: 数量过多时强制合并条数最多的组 (宁可越级, 也不让飘字铺满屏幕)
+            let hg = 0;
+            while (_floatRects.length > HARD_CAP && hg++ < 12) {
+                const groups = {};
+                for (let i = 0; i < _floatRects.length; i++) {
+                    const r = _floatRects[i];
+                    if (!r) continue;
+                    const key = (r.kind || 'phys') + '|' + (r.msize || 0);
+                    (groups[key] || (groups[key] = [])).push(i);
+                }
+                let pick = null;
+                Object.keys(groups).forEach(function (key) {
+                    const list = groups[key];
+                    if (list.length < 2) return;
+                    if (!pick || list.length > pick.idxs.length) {
+                        pick = { kind: key.slice(0, key.lastIndexOf('|')), idxs: list };
+                    }
+                });
+                if (!pick) break;   // 每组都只剩 1 条: 没法再合
                 _floatMergeGroup(pick.kind, pick.idxs);
             }
         }
@@ -7690,7 +7704,7 @@
             _floatSpawn(x, y, text, color, opt);
             // 本窗口新增 > 10 → 合并本窗口条目; 否则仅按容量淘汰更早的普通条目
             // 实时保持屏幕上 ≤10 条: 只有超过 10 条才合并 (同类型 → 「总」, 多个总继续合并)
-            if (_floatRects.length > 10) _floatCompact(10);
+            _floatCompact(10);   // 每次都检查: 同类同大小攒够 10 条即进位
             // 未超过 10 条: 不做任何合并
         }
 
