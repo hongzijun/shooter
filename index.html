@@ -1,7 +1,7 @@
 <!DOCTYPE html>
 <html lang="zh-CN"><head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1, user-scalable=no, viewport-fit=cover">
     <title>2D 枪战游戏 - 迭代第1次</title>
     <style>
         * {
@@ -1101,6 +1101,348 @@
             animation: statusBlink 0.5s infinite;
         }
     </style>
+
+    <style id="mobileTouchStyles">
+        /* ==================================================================
+           移动端触控样式 (Task 3/6/7/8)
+           玻璃拟态 · 安全区 · 低性能降级 · 比例化 HUD · 移动端覆盖层
+           ================================================================== */
+        :root {
+            --ui-scale: 1;
+            --touch-opacity: 1;
+            --touch-scale: 1;
+            --touch-size: clamp(56px, 18vmin, 120px);
+            --wheel-r: calc(var(--touch-size) * 0.92);
+            --sec-size: calc(var(--touch-size) * 0.34);
+            --move-x: 17%; --move-y: 80%;
+            --fire-x: 84%; --fire-y: 30%;
+            --jump-x: 84%; --jump-y: 80%;
+            --safe-top: env(safe-area-inset-top, 0px);
+            --safe-right: env(safe-area-inset-right, 0px);
+            --safe-bottom: env(safe-area-inset-bottom, 0px);
+            --safe-left: env(safe-area-inset-left, 0px);
+        }
+
+        /* 禁止页面滚动/回弹与双击高亮 (移动端) */
+        html, body { overscroll-behavior: none; }
+        body { -webkit-tap-highlight-color: transparent; }
+
+        /* 仅触控 / 仅电脑 显隐规则 */
+        .touch-only { display: none !important; }
+        body[data-device="touch"] .touch-only { display: block !important; }
+        body[data-device="pc"] #touchLayer,
+        body[data-device="pc"] #touchSettings { display: none !important; }
+        body[data-device="touch"] #btnPvP { display: none !important; }
+        body[data-device="touch"] #controls,
+        body[data-device="touch"] #trainingDebug,
+        body[data-device="touch"] #statusPanel,
+        body[data-device="touch"] #killFeedPanel { display: none !important; }
+
+        /* 触控端训练调试入口: 位于左上 HUD 下方, 避免与 HUD 重叠 */
+        body[data-device="touch"] #trainToggle {
+            left: 10px;
+            top: calc(12px + 150px * var(--ui-scale));
+        }
+
+        /* ===== 触控层根节点: 默认不拦截点击, 按钮各自 auto ===== */
+        #touchLayer {
+            position: fixed;
+            inset: 0;
+            z-index: 700;                 /* 高于 HUD(500), 低于全部覆盖层(>=9000), 且菜单打开时通过 display:none 不抢点击 */
+            pointer-events: none;
+            display: none;
+            opacity: var(--touch-opacity);
+            touch-action: none;
+            user-select: none;
+            -webkit-user-select: none;
+            -webkit-tap-highlight-color: transparent;
+            font-family: 'Segoe UI', Arial, sans-serif;
+        }
+        #touchLayer > * { pointer-events: auto; }
+
+        /* 三个主控件 + 暂停键的玻璃拟态公共样式 */
+        #touchMovePad, #touchFire, #touchJump, #touchPause {
+            position: absolute;
+            width: var(--touch-size);
+            height: var(--touch-size);
+            border-radius: 50%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            color: #eaf2ff;
+            font-weight: bold;
+            background: radial-gradient(circle at 32% 26%, rgba(120,170,255,0.34), rgba(12,20,40,0.42) 62%, rgba(8,12,26,0.55));
+            border: 1.5px solid rgba(120,170,255,0.55);
+            box-shadow: 0 0 18px rgba(79,142,255,0.35), 0 6px 18px rgba(0,0,0,0.45), inset 0 0 0 1px rgba(255,255,255,0.08);
+            backdrop-filter: blur(6px);
+            -webkit-backdrop-filter: blur(6px);
+            touch-action: none;
+            user-select: none;
+            -webkit-user-select: none;
+            -webkit-tap-highlight-color: transparent;
+            transition: transform 0.12s ease, background 0.12s ease, box-shadow 0.12s ease;
+        }
+
+        /* 默认位置: 移动盘 (17%,80%) / 开火 (84%,17%) / 跳跃 (84%,80%) */
+        #touchMovePad { left: var(--move-x); top: var(--move-y); transform: translate(-50%, -50%) scale(var(--touch-scale)); }
+        #touchFire { left: var(--fire-x); top: var(--fire-y); transform: translate(-50%, -50%) scale(var(--touch-scale)); font-size: calc(var(--touch-size) * 0.36); }
+        #touchJump { left: var(--jump-x); top: var(--jump-y); transform: translate(-50%, -50%) scale(var(--touch-scale)); font-size: calc(var(--touch-size) * 0.30); overflow: visible; }
+
+        /* 底部居中触控暂停: 小号按钮, 打开既有暂停菜单 */
+        #touchPause {
+            left: 50%;
+            top: auto;
+            bottom: calc(10px + var(--safe-bottom));
+            width: calc(var(--touch-size) * 0.56);
+            height: calc(var(--touch-size) * 0.56);
+            transform: translateX(-50%) scale(var(--touch-scale));
+            transform-origin: 50% 100%;
+            font-size: calc(var(--touch-size) * 0.22);
+            z-index: 2;
+        }
+
+        /* 按下反馈: 缩放 + 高亮发光 */
+        #touchMovePad.pressed, #touchFire.pressed, #touchJump.pressed {
+            background: radial-gradient(circle at 32% 26%, rgba(160,220,255,0.66), rgba(40,90,180,0.55) 62%, rgba(20,40,90,0.66));
+            box-shadow: 0 0 26px rgba(120,190,255,0.85), inset 0 0 0 2px rgba(190,225,255,0.35);
+        }
+        #touchMovePad.pressed, #touchFire.pressed, #touchJump.pressed {
+            transform: translate(-50%, -50%) scale(calc(var(--touch-scale) * 0.92));
+        }
+
+        /* 移动盘内部: 左右半区提示 + 中心菱形 */
+        #touchMovePad .tmp-half {
+            position: absolute;
+            top: 10%;
+            bottom: 10%;
+            width: 42%;
+            border-radius: 50%;
+            opacity: 0.16;
+            transition: opacity 0.12s ease;
+            pointer-events: none;
+        }
+        #touchMovePad .tmp-left { left: 6%; background: linear-gradient(90deg, rgba(79,142,255,0.75), rgba(79,142,255,0)); }
+        #touchMovePad .tmp-right { right: 6%; background: linear-gradient(270deg, rgba(79,142,255,0.75), rgba(79,142,255,0)); }
+        #touchMovePad.lean-left .tmp-left { opacity: 0.55; }
+        #touchMovePad.lean-right .tmp-right { opacity: 0.55; }
+        #touchMoveDiamond {
+            width: 34%;
+            height: 34%;
+            transform: rotate(45deg);
+            border: 1.5px solid rgba(170,210,255,0.8);
+            border-radius: 4px;
+            background: rgba(79,142,255,0.18);
+            box-shadow: 0 0 10px rgba(79,142,255,0.6);
+            pointer-events: none;
+        }
+        #touchMovePad .tmp-hint {
+            position: absolute;
+            bottom: -14px;
+            font-size: 10px;
+            color: rgba(190,215,255,0.6);
+            letter-spacing: 2px;
+            pointer-events: none;
+        }
+
+        /* ===== 右下 1-6 武器轮盘 (按住跳跃按钮左滑展开) ===== */
+        #touchJump .tj-label { transition: opacity 0.12s ease; }
+        #touchJump.wheel-open .tj-label { opacity: 0; }
+        #touchWheel {
+            position: absolute;
+            left: 50%;
+            top: 50%;
+            width: 0;
+            height: 0;
+            opacity: 0;
+            transition: opacity 0.16s ease;
+            pointer-events: none;
+        }
+        #touchJump.wheel-open #touchWheel { opacity: 1; }
+        #touchWheel .tw-ring {
+            position: absolute;
+            left: 50%;
+            top: 50%;
+            width: calc(var(--touch-size) * 1.9);
+            height: calc(var(--touch-size) * 1.9);
+            border-radius: 50%;
+            transform: translate(-50%, -50%);
+            border: 1px dashed rgba(140,180,255,0.35);
+            background: radial-gradient(circle, rgba(12,18,38,0.55) 0%, rgba(12,18,38,0.18) 55%, rgba(12,18,38,0) 72%);
+        }
+        #touchWheel .tw-sec {
+            position: absolute;
+            left: 50%;
+            top: 50%;
+            width: var(--sec-size);
+            height: var(--sec-size);
+            margin-left: calc(var(--sec-size) * -0.5);
+            margin-top: calc(var(--sec-size) * -0.5);
+            border-radius: 50%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: calc(var(--touch-size) * 0.16);
+            color: #cfe0ff;
+            background: rgba(20,32,60,0.78);
+            border: 1px solid rgba(120,170,255,0.5);
+            box-shadow: 0 0 8px rgba(79,142,255,0.25);
+            transform: rotate(calc(var(--a) * -1)) translateY(calc(var(--wheel-r) * -1)) rotate(var(--a));
+            transition: background 0.12s ease, color 0.12s ease, box-shadow 0.12s ease;
+        }
+        #touchWheel .tw-sec.on {
+            background: linear-gradient(135deg, #ffd700, #ff9f43);
+            color: #1a1200;
+            border-color: #ffe680;
+            box-shadow: 0 0 16px rgba(255,215,0,0.85);
+        }
+        #touchWheel .tw-center {
+            position: absolute;
+            left: 0;
+            top: 0;
+            transform: translate(-50%, -50%);
+            font-size: calc(var(--touch-size) * 0.18);
+            color: #ffd700;
+            text-shadow: 0 0 10px rgba(255,215,0,0.8);
+        }
+
+        /* ===== 按键设置覆盖层 (Task 6) ===== */
+        #touchSettings {
+            position: fixed;
+            inset: 0;
+            z-index: 10050;
+            display: none;
+            align-items: center;
+            justify-content: center;
+            padding: calc(8px + var(--safe-top)) calc(8px + var(--safe-right)) calc(8px + var(--safe-bottom)) calc(8px + var(--safe-left));
+            background: rgba(2,4,10,0.86);
+            backdrop-filter: blur(10px);
+            -webkit-backdrop-filter: blur(10px);
+            pointer-events: auto;
+            touch-action: none;
+            user-select: none;
+            -webkit-user-select: none;
+        }
+        #touchSettings .tsc-card {
+            width: min(560px, 94vw);
+            max-height: 92vh;
+            overflow: auto;
+            background: linear-gradient(160deg, rgba(18,24,48,0.96), rgba(8,10,24,0.97));
+            border: 1.5px solid rgba(120,170,255,0.55);
+            border-radius: 18px;
+            padding: 16px 18px;
+            color: #e6eeff;
+            box-shadow: 0 20px 60px rgba(0,0,0,0.6), 0 0 30px rgba(79,142,255,0.25);
+        }
+        #touchSettings .tsc-head { display: flex; align-items: center; justify-content: space-between; }
+        #touchSettings .tsc-head h3 { margin: 0; font-size: 18px; color: #ffd700; }
+        #touchSettingsClose { background: #e74c3c; border: none; color: #fff; width: 34px; height: 34px; border-radius: 8px; font-size: 18px; cursor: pointer; }
+        #touchSettings .tsc-tip { font-size: 12px; color: #9fb2d8; margin: 8px 0; }
+        #touchSettings .tsc-stage {
+            position: relative;
+            width: 100%;
+            height: clamp(150px, 34vh, 260px);
+            border-radius: 12px;
+            border: 1px dashed rgba(120,170,255,0.45);
+            background: radial-gradient(ellipse at 50% 100%, rgba(79,142,255,0.16), rgba(0,0,0,0.28));
+            margin: 6px 0 14px;
+            overflow: hidden;
+            touch-action: none;
+        }
+        #touchSettings .tsc-dot {
+            position: absolute;
+            width: clamp(42px, 12vmin, 64px);
+            height: clamp(42px, 12vmin, 64px);
+            border-radius: 50%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 15px;
+            color: #eaf2ff;
+            background: radial-gradient(circle at 32% 26%, rgba(120,170,255,0.4), rgba(12,20,40,0.5));
+            border: 1.5px solid rgba(120,170,255,0.6);
+            box-shadow: 0 0 14px rgba(79,142,255,0.35);
+            transform: translate(-50%, -50%);
+            cursor: grab;
+            touch-action: none;
+            user-select: none;
+            -webkit-user-select: none;
+        }
+        #touchSettings .tsc-dot.selected { border-color: #ffd700; box-shadow: 0 0 16px rgba(255,215,0,0.55); }
+        #touchSettings .tsc-row { display: flex; align-items: center; gap: 10px; margin: 8px 0; font-size: 13px; }
+        #touchSettings .tsc-row label { min-width: 64px; color: #9fb2d8; }
+        #touchSettings .tsc-row input[type="range"] { flex: 1; accent-color: #4f8eff; height: 26px; }
+        #touchSettings .tsc-row span { min-width: 46px; text-align: right; color: #cfe0ff; }
+        #touchSettings .tsc-actions { display: flex; gap: 10px; margin-top: 14px; flex-wrap: wrap; }
+        #touchSettings .tsc-actions button { flex: 1 1 100px; padding: 12px 14px; border-radius: 10px; border: none; font-size: 14px; font-weight: bold; color: #fff; cursor: pointer; }
+        #touchResetBtn { background: linear-gradient(45deg, #636e72, #2d3436); }
+        #touchSaveBtn { background: linear-gradient(45deg, #2ed573, #1e90ff); }
+        #touchSettingsClose2 { background: linear-gradient(45deg, #e17055, #c0392b); }
+        body[data-device="touch"] #btnTouchSettings { background: linear-gradient(45deg, #6c5ce7, #a29bfe); margin-top: 8px; }
+
+        /* ===== 移动端覆盖层: 可滚动 / 单列 / 关闭按钮可见 ===== */
+        body[data-device="touch"] #draftOverlay,
+        body[data-device="touch"] #statPanel,
+        body[data-device="touch"] #trainTune,
+        body[data-device="touch"] #trainShop,
+        body[data-device="touch"] #pauseMenu {
+            max-height: 92vh;
+        }
+        body[data-device="touch"] #draftOverlay { padding: 10px; overflow: auto; }
+        body[data-device="touch"] #draftTitle { font-size: clamp(20px, 5vmin, 30px); margin-bottom: 14px; }
+        body[data-device="touch"] #draftCards { flex-wrap: wrap; gap: 12px; max-height: 62vh; overflow: auto; padding: 4px; }
+        body[data-device="touch"] .draft-card { width: clamp(132px, 26vmin, 180px); height: auto; min-height: 210px; }
+        body[data-device="touch"] #statPanel {
+            min-width: 0;
+            width: calc(100vw - 16px);
+            max-height: 92vh;
+            padding: 16px 14px;
+        }
+        body[data-device="touch"] #statPanel .stat-panel-cols { grid-template-columns: 1fr; gap: 0; }
+        body[data-device="touch"] #trainShop { grid-template-columns: 1fr !important; overflow: auto; max-height: 92vh; }
+        body[data-device="touch"] #trainShop .ts-detail { max-height: 38vh; }
+        body[data-device="touch"] #trainShop .ts-list { max-height: 30vh; }
+        body[data-device="touch"] #pauseMenu { overflow: auto; }
+        body[data-device="touch"] #pauseMenu > div { max-height: 92vh; overflow: auto; width: min(420px, 92vw); min-width: 0 !important; padding: 24px 20px !important; }
+        body[data-device="touch"] #trainTune .tt-card { max-height: 92vh; overflow: auto; width: min(560px, 94vw); }
+        body[data-device="touch"] #trainTune .tt-field input,
+        body[data-device="touch"] #trainTune .tt-wtable input { font-size: 16px; }
+
+        /* 窄屏: 进一步减少遮挡 */
+        @media (max-width: 699px) {
+            body[data-device="touch"] #menu h1 { font-size: clamp(26px, 8vmin, 40px); }
+            body[data-device="touch"] #menu p { font-size: 12px; line-height: 1.6; }
+            body[data-device="touch"] #trainTune .tt-grid { grid-template-columns: 1fr; }
+            body[data-device="touch"] #trainTune .tt-card { padding: 14px 12px; }
+            body[data-device="touch"] #trainShop .ts-list { grid-template-columns: repeat(auto-fill, minmax(104px, 1fr)); }
+        }
+
+        /* ===== 低性能设备降级: 关闭毛玻璃与重阴影 ===== */
+        body.low-perf #hud,
+        body.low-perf #hudFullStatus,
+        body.low-perf #statusPanel,
+        body.low-perf #topStatusPanel,
+        body.low-perf #livesInfo,
+        body.low-perf #killFeedPanel,
+        body.low-perf #minimapContainer,
+        body.low-perf #controls,
+        body.low-perf #score,
+        body.low-perf #diagPanel,
+        body.low-perf #touchSettings,
+        body.low-perf #touchSettings .tsc-card,
+        body.low-perf #trainTune .tt-card,
+        body.low-perf #trainShop,
+        body.low-perf #pauseMenu > div,
+        body.low-perf #touchMovePad,
+        body.low-perf #touchFire,
+        body.low-perf #touchJump,
+        body.low-perf #touchPause {
+            backdrop-filter: none !important;
+            -webkit-backdrop-filter: none !important;
+            box-shadow: 0 2px 8px rgba(0,0,0,0.55) !important;
+            text-shadow: none !important;
+        }
+        body.low-perf #touchWheel .tw-sec { box-shadow: none !important; }
+    </style>
 </head>
 
 <body>
@@ -1327,6 +1669,60 @@
             </div>
         </div>
 
+        <!-- === 移动端触控层 (Task 3): 移动盘 / 开火 / 跳跃+武器轮盘 / 触控暂停 === -->
+        <div id="touchLayer">
+            <!-- 左下移动盘: 左右半区 + 中心菱形 -->
+            <div id="touchMovePad">
+                <div class="tmp-half tmp-left"></div>
+                <div class="tmp-half tmp-right"></div>
+                <div id="touchMoveDiamond"></div>
+                <div class="tmp-hint">移动</div>
+            </div>
+            <!-- 右上开火按钮: 按住持续射击 -->
+            <div id="touchFire"><span class="tc-icon">发射</span></div>
+            <!-- 右下跳跃按钮: 点击跳跃, 左滑展开 1-6 武器轮盘 -->
+            <div id="touchJump">
+                <span class="tj-label">跳</span>
+                <div id="touchWheel">
+                    <div class="tw-ring"></div>
+                    <div class="tw-center"></div>
+                    <div class="tw-sec" data-weapon="1" style="--a:15deg;">1</div>
+                    <div class="tw-sec" data-weapon="2" style="--a:45deg;">2</div>
+                    <div class="tw-sec" data-weapon="3" style="--a:75deg;">3</div>
+                    <div class="tw-sec" data-weapon="4" style="--a:105deg;">4</div>
+                    <div class="tw-sec" data-weapon="5" style="--a:135deg;">5</div>
+                    <div class="tw-sec" data-weapon="6" style="--a:165deg;">6</div>
+                </div>
+            </div>
+            <!-- 左上触控暂停: 打开既有暂停菜单 -->
+            <div id="touchPause">⏸</div>
+        </div>
+
+        <!-- === 按键设置覆盖层 (Task 6, 仅触控显示) === -->
+        <div id="touchSettings">
+            <div class="tsc-card">
+                <div class="tsc-head">
+                    <h3>🎮 按键设置</h3>
+                    <button id="touchSettingsClose" type="button">×</button>
+                </div>
+                <div class="tsc-tip">拖动下方圆点调整位置 · 当前编辑: <span id="touchSettingsTargetLabel">移动盘</span></div>
+                <div class="tsc-stage" id="touchSettingsStage">
+                    <div class="tsc-dot" data-key="move">✥</div>
+                    <div class="tsc-dot" data-key="fire">发射</div>
+                    <div class="tsc-dot" data-key="jump">跳</div>
+                </div>
+                <div class="tsc-row"><label>透明度</label><input id="touchOpacityRange" type="range" min="20" max="100" step="1" value="100"><span id="touchOpacityVal">100%</span></div>
+                <div class="tsc-row"><label>大小</label><input id="touchSizeRange" type="range" min="70" max="160" step="1" value="100"><span id="touchSizeVal">100%</span></div>
+                <div class="tsc-row"><label>X 位置</label><input id="touchXRange" type="range" min="0" max="100" step="1" value="17"><span id="touchXVal">17%</span></div>
+                <div class="tsc-row"><label>Y 位置</label><input id="touchYRange" type="range" min="0" max="100" step="1" value="80"><span id="touchYVal">80%</span></div>
+                <div class="tsc-actions">
+                    <button id="touchResetBtn" type="button">恢复默认</button>
+                    <button id="touchSaveBtn" type="button">保存</button>
+                    <button id="touchSettingsClose2" type="button">关闭</button>
+                </div>
+            </div>
+        </div>
+
         <div id="menu">
             <h1>2D 枪战游戏 - v2 版本</h1>
             <h2>独立开发分支 · 与 v1 代码互不影响</h2>
@@ -1339,9 +1735,10 @@
             <!-- v2 版本: 本文件是独立代码分支; "开始游戏" 跳回 v1(index.html), "开始游戏2" 在本文件开局 -->
             <button class="btn" id="btnStartGame" onclick="goToGameV1()">开始游戏</button>
             <button class="btn" id="btnStartGame2" onclick="askStartGame()" style="background:linear-gradient(45deg,#ff9f43,#ee5253);margin-left:10px;">开始游戏 2 (v2)</button>
-            <button onclick="startPvP()" style="background:linear-gradient(135deg,#6c5ce7,#a29bfe);border:none;color:white;padding:14px 40px;border-radius:10px;font-size:18px;cursor:pointer;margin:10px;font-weight:bold;">⚔️ 双人对战</button>
+            <button id="btnPvP" onclick="startPvP()" style="background:linear-gradient(135deg,#6c5ce7,#a29bfe);border:none;color:white;padding:14px 40px;border-radius:10px;font-size:18px;cursor:pointer;margin:10px;font-weight:bold;">⚔️ 双人对战</button>
             <button class="btn" id="btnTraining" onclick="startTraining()" style="background:linear-gradient(45deg,#2ed573,#1abc9c);">训练场</button>
             <button class="btn" id="openSettingsBtn" onclick="toggleSettings()" style="background:linear-gradient(45deg,#4f8eff,#74b9ff);margin-top:8px;">📖 说明</button>
+            <button class="btn touch-only" id="btnTouchSettings" onclick="openTouchSettings()" style="background:linear-gradient(45deg,#6c5ce7,#a29bfe);margin-top:8px;">🎮 按键设置</button>
         </div>
 
         <div id="gameOver" class="hidden">
@@ -1459,9 +1856,617 @@
         function resizeCanvas() {
             canvas.width = Math.max(320, Math.min(window.innerWidth * 0.96, 3600));
             canvas.height = Math.max(240, Math.min(window.innerHeight * 0.92, 2100));
+            // 尺寸变化后重算 HUD 缩放与触控按键位置 (需等触控系统初始化完成)
+            if (window.__mobileUiReady) {
+                try { applyUiScale(); applyTouchConfig(); } catch (e) { }
+            }
         }
         resizeCanvas();
         window.addEventListener('resize', resizeCanvas);
+
+        /* ==================================================================
+           移动端触控系统 (Task 2-8)
+           设备检测 / 触控层 / 多点触控 / 武器轮盘 / 按键设置 / 比例化 HUD
+           全部运行在同一份代码中, 通过 body[data-device="pc|touch"] 分支
+           ================================================================== */
+
+        // __TOUCH_TEST_BEGIN__ (纯函数区: 可被 Node 单元测试直接抽取执行)
+        /** 设备判定: env 可注入以利于测试; 默认读取真实浏览器环境 */
+        function detectInputDevice(env) {
+            env = env || {};
+            const hasWindow = (typeof window !== 'undefined');
+            const search = (env.search !== undefined) ? String(env.search)
+                : (hasWindow && window.location ? String(window.location.search || '') : '');
+            try {
+                const params = new URLSearchParams(search);
+                if (params.get('touch') === '1') return 'touch';   // URL 强制触控
+                if (params.get('pc') === '1') return 'pc';         // URL 强制电脑
+            } catch (e) { }
+            const nav = (typeof navigator !== 'undefined') ? navigator : {};
+            const ua = String(env.ua !== undefined ? env.ua : (nav.userAgent || '')).toLowerCase();
+            const maxTouch = (env.maxTouchPoints !== undefined) ? Number(env.maxTouchPoints) : Number(nav.maxTouchPoints || 0);
+            const hasTouchStart = (env.hasTouchStart !== undefined) ? !!env.hasTouchStart
+                : (hasWindow && 'ontouchstart' in window);
+            const coarse = (env.coarse !== undefined) ? !!env.coarse
+                : (hasWindow && typeof window.matchMedia === 'function' && window.matchMedia('(pointer: coarse)').matches);
+            const fine = (env.fine !== undefined) ? !!env.fine
+                : (hasWindow && typeof window.matchMedia === 'function' && window.matchMedia('(pointer: fine)').matches);
+            const hover = (env.hover !== undefined) ? !!env.hover
+                : (hasWindow && typeof window.matchMedia === 'function' && window.matchMedia('(hover: hover)').matches);
+            const uaMobile = /android|iphone|ipad|ipod|mobile|harmonyos|windows phone|blackberry|opera mini|iemobile/i.test(ua);
+            // 优先级: URL 覆盖 > 移动UA/coarse > fine+hover(电脑, 含触摸屏笔记本/一体机) > maxTouch/ontouchstart > 兜底触控
+            if (uaMobile || coarse) return 'touch';
+            if (fine && hover) return 'pc';
+            if (maxTouch > 0 || hasTouchStart) return 'touch';
+            return 'touch';
+        }
+
+        /** 数值夹取: 非数字/越界回退 fallback */
+        function clampNumber(v, min, max, fallback) {
+            const n = Number(v);
+            if (!isFinite(n)) return fallback;
+            return Math.max(min, Math.min(max, n));
+        }
+
+        const TOUCH_CFG_KEY = 'shooter_touch_cfg_v1';
+        const TOUCH_DEFAULT_CFG = {
+            version: 1,
+            opacity: 1,
+            scale: 1,
+            move: { x: 0.17, y: 0.80 },
+            fire: { x: 0.84, y: 0.30 },
+            jump: { x: 0.84, y: 0.80 }
+        };
+
+        function _normTouchPos(obj, def) {
+            const o = (obj && typeof obj === 'object') ? obj : {};
+            return { x: clampNumber(o.x, 0, 1, def.x), y: clampNumber(o.y, 0, 1, def.y) };
+        }
+
+        /** 配置校验 + clamp; 非法字段逐项回退默认, 版本号统一迁移为 1 */
+        function validateTouchConfig(raw) {
+            const src = (raw && typeof raw === 'object') ? raw : {};
+            return {
+                version: 1,
+                opacity: clampNumber(src.opacity, 0.2, 1.0, TOUCH_DEFAULT_CFG.opacity),
+                scale: clampNumber(src.scale, 0.7, 1.6, TOUCH_DEFAULT_CFG.scale),
+                move: _normTouchPos(src.move, TOUCH_DEFAULT_CFG.move),
+                fire: _normTouchPos(src.fire, TOUCH_DEFAULT_CFG.fire),
+                jump: _normTouchPos(src.jump, TOUCH_DEFAULT_CFG.jump)
+            };
+        }
+
+        /** 轮盘角度 (0=正上, 90=正左, 180=正下, 逆时针) → 武器编号 1..6; 右半弧/越界 → 0 (取消) */
+        function wheelWeaponFromDeg(deg) {
+            let d = Number(deg);
+            // 浮点容差: atan2 在正下方可能返回 180.00000000000003
+            if (!isFinite(d) || d < -0.001 || d > 180.001) return 0;
+            d = Math.max(0, Math.min(180, d));
+            if (d >= 180) return 6;
+            return Math.min(6, Math.floor(d / 30) + 1);
+        }
+
+        /** 以按钮圆心为原点 (屏幕坐标, y 向下) → 武器编号 */
+        function wheelWeaponFromPoint(dx, dy) {
+            // 显式消除 -0: 否则 atan2(-0, -100) 返回 -π, 正下方会被误判为右半弧
+            const ax = (dx === 0) ? 0 : -dx;
+            const ay = (dy === 0) ? 0 : -dy;
+            const deg = Math.atan2(ax, ay) * 180 / Math.PI;
+            return wheelWeaponFromDeg(deg);
+        }
+        // __TOUCH_TEST_END__
+
+        const TOUCH_WHEEL_TO_WEAPON = { 1: 'pistol', 2: 'rifle', 3: 'shotgun', 4: 'smg', 5: 'sniper', 6: 'sword' };
+        const touchState = { left: false, right: false, fire: false, jumpQueued: false };
+        const _touchPointers = new Map();
+        const _touchFirePointers = new Set();
+        let _touchJumpPointer = null;
+        let touchCfg = JSON.parse(JSON.stringify(TOUCH_DEFAULT_CFG));
+        let _touchSettingsOpen = false;
+        let _touchSettingsTarget = 'move';
+        let _touchSettingsDrag = null;
+
+        /** 消费一次触控跳跃 (与 keysJustPressed 并列使用) */
+        function consumeTouchJump() {
+            if (!touchState.jumpQueued) return false;
+            touchState.jumpQueued = false;
+            return true;
+        }
+
+        /** 读取安全区像素值 (通过 CSS 变量 --safe-*) */
+        function _safeInsetPx(side) {
+            try {
+                const v = getComputedStyle(document.documentElement).getPropertyValue('--safe-' + side).trim();
+                const n = parseFloat(v);
+                return isFinite(n) ? n : 0;
+            } catch (e) { return 0; }
+        }
+
+        /** 触控控件基准尺寸 (未乘以用户缩放) */
+        function _touchBaseSize() {
+            const vmin = Math.min(window.innerWidth || 360, window.innerHeight || 360) / 100;
+            return Math.max(56, Math.min(vmin * 18, 120));
+        }
+
+        /** 位置夹取: 保证控件完整落在安全区内 (留 8px + env(safe-area-inset-*)) */
+        function _clampTouchPositions(cfg) {
+            try {
+                const vw = window.innerWidth || 360;
+                const vh = window.innerHeight || 360;
+                const size = _touchBaseSize() * cfg.scale;
+                const half = size / 2;
+                const pad = 8;
+                const minX = (pad + _safeInsetPx('left') + half) / vw;
+                const maxX = (vw - pad - _safeInsetPx('right') - half) / vw;
+                const minY = (pad + _safeInsetPx('top') + half) / vh;
+                const maxY = (vh - pad - _safeInsetPx('bottom') - half) / vh;
+                ['move', 'fire', 'jump'].forEach(function (k) {
+                    cfg[k].x = (minX <= maxX) ? clampNumber(cfg[k].x, minX, maxX, (minX + maxX) / 2) : 0.5;
+                    cfg[k].y = (minY <= maxY) ? clampNumber(cfg[k].y, minY, maxY, (minY + maxY) / 2) : 0.5;
+                });
+            } catch (e) { }
+            return cfg;
+        }
+
+        /** 应用配置: 写入 CSS 变量并夹取位置 */
+        function applyTouchConfig() {
+            touchCfg = _clampTouchPositions(validateTouchConfig(touchCfg));
+            const rs = document.documentElement.style;
+            rs.setProperty('--touch-opacity', String(touchCfg.opacity));
+            rs.setProperty('--touch-scale', String(touchCfg.scale));
+            rs.setProperty('--move-x', (touchCfg.move.x * 100).toFixed(2) + '%');
+            rs.setProperty('--move-y', (touchCfg.move.y * 100).toFixed(2) + '%');
+            rs.setProperty('--fire-x', (touchCfg.fire.x * 100).toFixed(2) + '%');
+            rs.setProperty('--fire-y', (touchCfg.fire.y * 100).toFixed(2) + '%');
+            rs.setProperty('--jump-x', (touchCfg.jump.x * 100).toFixed(2) + '%');
+            rs.setProperty('--jump-y', (touchCfg.jump.y * 100).toFixed(2) + '%');
+            _syncTouchSettingsUI();
+        }
+
+        function loadTouchConfig() {
+            try {
+                const raw = JSON.parse(localStorage.getItem(TOUCH_CFG_KEY) || 'null');
+                return validateTouchConfig(raw);
+            } catch (e) {
+                return JSON.parse(JSON.stringify(TOUCH_DEFAULT_CFG));
+            }
+        }
+
+        function saveTouchConfig(cfg) {
+            try { localStorage.setItem(TOUCH_CFG_KEY, JSON.stringify(validateTouchConfig(cfg))); } catch (e) { }
+        }
+
+        /** 按键设置面板内的实时预览与滑杆同步 */
+        function _syncTouchSettingsUI() {
+            const stage = document.getElementById('touchSettingsStage');
+            if (!stage) return;
+            ['move', 'fire', 'jump'].forEach(function (k) {
+                const dot = stage.querySelector('.tsc-dot[data-key="' + k + '"]');
+                if (!dot) return;
+                dot.style.left = (touchCfg[k].x * 100) + '%';
+                dot.style.top = (touchCfg[k].y * 100) + '%';
+                dot.classList.toggle('selected', _touchSettingsTarget === k);
+            });
+            const op = document.getElementById('touchOpacityRange');
+            const opv = document.getElementById('touchOpacityVal');
+            if (op) op.value = String(Math.round(touchCfg.opacity * 100));
+            if (opv) opv.textContent = Math.round(touchCfg.opacity * 100) + '%';
+            const sc = document.getElementById('touchSizeRange');
+            const scv = document.getElementById('touchSizeVal');
+            if (sc) sc.value = String(Math.round(touchCfg.scale * 100));
+            if (scv) scv.textContent = Math.round(touchCfg.scale * 100) + '%';
+            const tgt = document.getElementById('touchSettingsTargetLabel');
+            if (tgt) tgt.textContent = ({ move: '移动盘', fire: '开火', jump: '跳跃/轮盘' })[_touchSettingsTarget] || '移动盘';
+            const pos = touchCfg[_touchSettingsTarget] || touchCfg.move;
+            const xr = document.getElementById('touchXRange');
+            const xv = document.getElementById('touchXVal');
+            if (xr) xr.value = String(Math.round(pos.x * 100));
+            if (xv) xv.textContent = Math.round(pos.x * 100) + '%';
+            const yr = document.getElementById('touchYRange');
+            const yv = document.getElementById('touchYVal');
+            if (yr) yr.value = String(Math.round(pos.y * 100));
+            if (yv) yv.textContent = Math.round(pos.y * 100) + '%';
+        }
+
+        function openTouchSettings() {
+            _touchSettingsOpen = true;
+            const el = document.getElementById('touchSettings');
+            if (el) el.style.display = 'flex';
+            _syncTouchSettingsUI();
+            updateTouchLayerVisibility();
+            try {
+                if (!GameAudio.ctx) GameAudio.init();
+                if (GameAudio.ctx && GameAudio.ctx.state === 'suspended') GameAudio.ctx.resume();
+            } catch (e) { }
+        }
+
+        function closeTouchSettings() {
+            _touchSettingsOpen = false;
+            const el = document.getElementById('touchSettings');
+            if (el) el.style.display = 'none';
+            updateTouchLayerVisibility();
+        }
+
+        /** 绑定设置面板: 预览拖动 / 透明度 / 大小 / X/Y / 恢复默认 / 保存 */
+        function _bindTouchSettingsUI() {
+            const stage = document.getElementById('touchSettingsStage');
+            if (stage) {
+                const dots = stage.querySelectorAll('.tsc-dot');
+                dots.forEach(function (dot) {
+                    dot.addEventListener('pointerdown', function (e) {
+                        e.preventDefault();
+                        _touchSettingsTarget = dot.getAttribute('data-key') || 'move';
+                        _touchSettingsDrag = { pointerId: e.pointerId, key: _touchSettingsTarget };
+                        try { dot.setPointerCapture(e.pointerId); } catch (err) { }
+                        _syncTouchSettingsUI();
+                    });
+                    dot.addEventListener('pointermove', function (e) {
+                        if (!_touchSettingsDrag || _touchSettingsDrag.pointerId !== e.pointerId) return;
+                        const r = stage.getBoundingClientRect();
+                        const x = clampNumber((e.clientX - r.left) / Math.max(1, r.width), 0, 1, 0.5);
+                        const y = clampNumber((e.clientY - r.top) / Math.max(1, r.height), 0, 1, 0.5);
+                        touchCfg[_touchSettingsDrag.key] = { x: x, y: y };
+                        applyTouchConfig();
+                    });
+                    const endDrag = function (e) {
+                        if (!_touchSettingsDrag || _touchSettingsDrag.pointerId !== e.pointerId) return;
+                        _touchSettingsDrag = null;
+                    };
+                    dot.addEventListener('pointerup', endDrag);
+                    dot.addEventListener('pointercancel', endDrag);
+                });
+            }
+            const op = document.getElementById('touchOpacityRange');
+            if (op) op.addEventListener('input', function () {
+                touchCfg.opacity = clampNumber(Number(this.value) / 100, 0.2, 1.0, 1);
+                applyTouchConfig();
+            });
+            const sc = document.getElementById('touchSizeRange');
+            if (sc) sc.addEventListener('input', function () {
+                touchCfg.scale = clampNumber(Number(this.value) / 100, 0.7, 1.6, 1);
+                applyTouchConfig();
+            });
+            const xr = document.getElementById('touchXRange');
+            if (xr) xr.addEventListener('input', function () {
+                const p = touchCfg[_touchSettingsTarget] || touchCfg.move;
+                p.x = clampNumber(Number(this.value) / 100, 0, 1, p.x);
+                applyTouchConfig();
+            });
+            const yr = document.getElementById('touchYRange');
+            if (yr) yr.addEventListener('input', function () {
+                const p = touchCfg[_touchSettingsTarget] || touchCfg.move;
+                p.y = clampNumber(Number(this.value) / 100, 0, 1, p.y);
+                applyTouchConfig();
+            });
+            const reset = document.getElementById('touchResetBtn');
+            if (reset) reset.addEventListener('click', function () {
+                touchCfg = JSON.parse(JSON.stringify(TOUCH_DEFAULT_CFG));
+                _touchSettingsTarget = 'move';
+                applyTouchConfig();
+                _syncTouchSettingsUI();
+            });
+            const save = document.getElementById('touchSaveBtn');
+            if (save) save.addEventListener('click', function () {
+                touchCfg = validateTouchConfig(touchCfg);
+                applyTouchConfig();
+                saveTouchConfig(touchCfg);
+                const oldText = save.textContent;
+                save.textContent = '✓ 已保存';
+                setTimeout(function () { save.textContent = oldText; }, 1200);
+            });
+            const c1 = document.getElementById('touchSettingsClose');
+            if (c1) c1.addEventListener('click', closeTouchSettings);
+            const c2 = document.getElementById('touchSettingsClose2');
+            if (c2) c2.addEventListener('click', closeTouchSettings);
+        }
+
+        /** 移动盘: 以圆心 x 判定左右半区 (按住可滑过中线) */
+        function _updateMoveFromClientX(pad, clientX) {
+            const r = pad.getBoundingClientRect();
+            const cx = r.left + r.width / 2;
+            touchState.left = clientX < cx;
+            touchState.right = !touchState.left;
+            pad.classList.toggle('lean-left', touchState.left);
+            pad.classList.toggle('lean-right', touchState.right);
+        }
+
+        function _highlightWheel(weapon) {
+            const wheel = document.getElementById('touchWheel');
+            if (!wheel) return;
+            wheel.querySelectorAll('.tw-sec').forEach(function (s) {
+                s.classList.toggle('on', Number(s.getAttribute('data-weapon')) === weapon);
+            });
+            const center = wheel.querySelector('.tw-center');
+            if (center) center.textContent = weapon > 0 ? String(weapon) : '';
+        }
+
+        /** 轮盘切枪: 复用现有 switchWeapon; PvP 作用于 playerA */
+        function _switchWeaponByWheel(weapon) {
+            const name = TOUCH_WHEEL_TO_WEAPON[weapon];
+            if (!name) return;
+            let p = null;
+            try {
+                p = (gameState === 'pvp' && typeof playerA !== 'undefined' && playerA) ? playerA : player;
+            } catch (e) { p = null; }
+            if (p && p.weapons && p.weapons[name]) {
+                p.switchWeapon(name);
+                try { GameAudio.play('pickup'); } catch (e) { }
+            }
+        }
+
+        /** 清理触控输入状态 (暂停/失焦时调用) */
+        function clearTouchInputState() {
+            touchState.left = false;
+            touchState.right = false;
+            touchState.fire = false;
+            touchState.jumpQueued = false;
+            _touchPointers.clear();
+            _touchFirePointers.clear();
+            _touchJumpPointer = null;
+            const pad = document.getElementById('touchMovePad');
+            if (pad) pad.classList.remove('pressed', 'lean-left', 'lean-right');
+            const fire = document.getElementById('touchFire');
+            if (fire) fire.classList.remove('pressed');
+            const jump = document.getElementById('touchJump');
+            if (jump) jump.classList.remove('pressed', 'wheel-open');
+            _highlightWheel(0);
+        }
+
+        /** 触控暂停: 复用现有暂停菜单 (含训练场「保存数值」按钮状态) */
+        function touchTogglePause() {
+            if (gameState !== 'playing' && gameState !== 'pvp' && gameState !== 'training') return;
+            if (isDrafting || isAwardShowing) return;
+            clearTouchInputState();
+            isPaused = !isPaused;
+            const pm = document.getElementById('pauseMenu');
+            if (pm) pm.style.display = isPaused ? 'flex' : 'none';
+            const pst = document.getElementById('pauseSaveTuneBtn');
+            if (pst) pst.style.display = (isPaused && gameState === 'training') ? 'flex' : 'none';
+            updateTouchLayerVisibility();
+        }
+
+        /** 覆盖层是否可见 (带 show 类, 或 display 非 none) */
+        function _touchOverlayShown(el) {
+            if (!el) return false;
+            if (el.classList.contains('show')) return true;
+            const d = el.style.display;
+            return !!(d && d !== 'none');
+        }
+
+        /** 触控层显隐: 仅游戏进行中且无暂停/选卡/奖励/属性面板; 设置面板打开时强制预览 */
+        let _touchLayerLastDisplay = '';
+        function updateTouchLayerVisibility() {
+            const layer = document.getElementById('touchLayer');
+            if (!layer) return;
+            let show = false;
+            try {
+                if (document.body.getAttribute('data-device') === 'touch') {
+                    if (_touchSettingsOpen) {
+                        // 设置面板打开时强制显示触控预览
+                        show = true;
+                    } else {
+                        // 训练商店 / 数值设置打开时, 触控层(含底部暂停键)让位, 避免压在面板上
+                        const _shopOpen = _touchOverlayShown(document.getElementById('trainShop'));
+                        const _tuneOpen = _touchOverlayShown(document.getElementById('trainTune'));
+                        show = !(_shopOpen || _tuneOpen)
+                            && (gameState === 'playing' || gameState === 'pvp' || gameState === 'training')
+                            && !isPaused && !isDrafting && !isAwardShowing && !statPanelOpen;
+                    }
+                }
+            } catch (e) { show = false; }
+            const want = show ? 'block' : 'none';
+            if (_touchLayerLastDisplay !== want) {
+                layer.style.display = want;
+                _touchLayerLastDisplay = want;
+            }
+            if (!show && _touchPointers.size > 0) clearTouchInputState();
+        }
+
+        /** 绑定触控层: Pointer Events + pointerId 所有权 + setPointerCapture */
+        function _bindTouchLayer() {
+            const pad = document.getElementById('touchMovePad');
+            const fire = document.getElementById('touchFire');
+            const jump = document.getElementById('touchJump');
+            const pause = document.getElementById('touchPause');
+            if (!pad || !fire || !jump) return;
+
+            // --- 移动盘: 左右半区, 按住可滑过中线 ---
+            pad.addEventListener('pointerdown', function (e) {
+                e.preventDefault();
+                _touchPointers.set(e.pointerId, { control: 'move' });
+                try { pad.setPointerCapture(e.pointerId); } catch (err) { }
+                pad.classList.add('pressed');
+                _updateMoveFromClientX(pad, e.clientX);
+            });
+            pad.addEventListener('pointermove', function (e) {
+                const rec = _touchPointers.get(e.pointerId);
+                if (!rec || rec.control !== 'move') return;
+                _updateMoveFromClientX(pad, e.clientX);
+            });
+            const endMove = function (e) {
+                const rec = _touchPointers.get(e.pointerId);
+                if (!rec || rec.control !== 'move') return;
+                _touchPointers.delete(e.pointerId);
+                let still = false;
+                _touchPointers.forEach(function (r) { if (r.control === 'move') still = true; });
+                if (!still) {
+                    touchState.left = false;
+                    touchState.right = false;
+                    pad.classList.remove('pressed', 'lean-left', 'lean-right');
+                }
+            };
+            pad.addEventListener('pointerup', endMove);
+            pad.addEventListener('pointercancel', endMove);
+
+            // --- 开火: 按住持续射击, 松开停止 ---
+            fire.addEventListener('pointerdown', function (e) {
+                e.preventDefault();
+                _touchPointers.set(e.pointerId, { control: 'fire' });
+                _touchFirePointers.add(e.pointerId);
+                touchState.fire = true;
+                fire.classList.add('pressed');
+                try { fire.setPointerCapture(e.pointerId); } catch (err) { }
+            });
+            const endFire = function (e) {
+                const rec = _touchPointers.get(e.pointerId);
+                if (!rec || rec.control !== 'fire') return;
+                _touchPointers.delete(e.pointerId);
+                _touchFirePointers.delete(e.pointerId);
+                if (_touchFirePointers.size === 0) {
+                    touchState.fire = false;
+                    fire.classList.remove('pressed');
+                }
+            };
+            fire.addEventListener('pointerup', endFire);
+            fire.addEventListener('pointercancel', endFire);
+
+            // --- 跳跃 / 武器轮盘: 左滑超阈值展开, 松手切枪或跳跃 ---
+            jump.addEventListener('pointerdown', function (e) {
+                e.preventDefault();
+                if (_touchJumpPointer) return;
+                _touchJumpPointer = { id: e.pointerId, startX: e.clientX, startY: e.clientY, wheelMode: false, weapon: 0 };
+                _touchPointers.set(e.pointerId, { control: 'jump' });
+                try { jump.setPointerCapture(e.pointerId); } catch (err) { }
+                jump.classList.add('pressed');
+            });
+            jump.addEventListener('pointermove', function (e) {
+                const jp = _touchJumpPointer;
+                if (!jp || jp.id !== e.pointerId) return;
+                const r = jump.getBoundingClientRect();
+                const size = Math.max(1, Math.min(r.width, r.height));
+                const threshold = Math.min(40, size * 0.35);
+                const dxStart = e.clientX - jp.startX;
+                if (!jp.wheelMode && dxStart < -threshold) {
+                    jp.wheelMode = true;
+                    jump.classList.add('wheel-open');
+                }
+                if (jp.wheelMode) {
+                    const cx = r.left + r.width / 2;
+                    const cy = r.top + r.height / 2;
+                    const relX = e.clientX - cx;
+                    const relY = e.clientY - cy;
+                    const dist = Math.sqrt(relX * relX + relY * relY);
+                    const dead = size * 0.18;
+                    const weapon = dist < dead ? 0 : wheelWeaponFromPoint(relX, relY);
+                    jp.weapon = weapon;
+                    _highlightWheel(weapon);
+                }
+            });
+            const endJump = function (e) {
+                const jp = _touchJumpPointer;
+                if (!jp || jp.id !== e.pointerId) return;
+                _touchJumpPointer = null;
+                _touchPointers.delete(e.pointerId);
+                jump.classList.remove('pressed', 'wheel-open');
+                _highlightWheel(0);
+                if (jp.wheelMode) {
+                    if (jp.weapon > 0) _switchWeaponByWheel(jp.weapon);
+                } else {
+                    touchState.jumpQueued = true;
+                }
+            };
+            jump.addEventListener('pointerup', endJump);
+            jump.addEventListener('pointercancel', function (e) {
+                const jp = _touchJumpPointer;
+                if (!jp || jp.id !== e.pointerId) return;
+                _touchJumpPointer = null;
+                _touchPointers.delete(e.pointerId);
+                jump.classList.remove('pressed', 'wheel-open');
+                _highlightWheel(0);
+            });
+
+            // --- 暂停按钮 ---
+            if (pause) {
+                // pointerdown 只阻止冒泡, 不做 preventDefault, 避免后续 click 被吞掉
+                pause.addEventListener('pointerdown', function (e) { e.stopPropagation(); });
+                // 暂停切换改在 pointerup 执行 (保留 stopPropagation)
+                pause.addEventListener('pointerup', function (e) {
+                    e.preventDefault();
+                    e.stopPropagation();
+                    touchTogglePause();
+                });
+            }
+        }
+
+        /* ===== Task 7: 比例化 HUD ===== */
+        function computeUiScale() {
+            const cw = (canvas && canvas.clientWidth) ? canvas.clientWidth : (canvas ? canvas.width : (window.innerWidth || 1280));
+            const ch = (canvas && canvas.clientHeight) ? canvas.clientHeight : (canvas ? canvas.height : (window.innerHeight || 720));
+            const raw = Math.min(cw / 1280, ch / 720);
+            return Math.max(0.62, Math.min(1.0, raw));
+        }
+
+        function _scalePanel(id, scale, origin, keepCenterX) {
+            const el = document.getElementById(id);
+            if (!el) return;
+            el.style.transformOrigin = origin;
+            el.style.transform = keepCenterX
+                ? 'translateX(-50%) scale(' + scale + ')'
+                : 'scale(' + scale + ')';
+        }
+
+        function applyUiScale() {
+            const s = computeUiScale();
+            document.documentElement.style.setProperty('--ui-scale', String(s));
+            _scalePanel('hud', s, '0 0', false);
+            _scalePanel('hudFullStatus', s, '0 0', false);
+            _scalePanel('statusPanel', s, '0 100%', false);
+            _scalePanel('livesInfo', s, '50% 0', true);
+            _scalePanel('killFeedPanel', s, '100% 0', false);
+            _scalePanel('minimapContainer', s, '100% 100%', false);
+            _scalePanel('score', s, '100% 0', false);
+            _scalePanel('topStatusPanel', s, '50% 0', true);
+            _scalePanel('controls', s, '50% 100%', true);
+        }
+
+        /* ===== 启动: 设备标记 / 绑定 / 配置应用 / 兼容性修复 ===== */
+        function initMobileTouch() {
+            const device = detectInputDevice({});
+            window.__SHOOTER_DEVICE__ = device;
+            document.body.setAttribute('data-device', device);
+
+            // 低性能标记: 触控设备或 CPU 核心数 <= 4
+            let lowPerf = (device === 'touch');
+            try { if (Number(navigator.hardwareConcurrency || 8) <= 4) lowPerf = true; } catch (e) { }
+            document.body.classList.toggle('low-perf', lowPerf);
+
+            touchCfg = loadTouchConfig();
+            _bindTouchLayer();
+            _bindTouchSettingsUI();
+            applyTouchConfig();
+
+            // 标记就绪, 之后 resizeCanvas 会同步重算 UI 与触控布局
+            window.__mobileUiReady = true;
+            applyUiScale();
+            updateTouchLayerVisibility();
+
+            // 首次 pointerdown 解锁 GameAudio (移动端自动播放限制)
+            const unlockAudio = function () {
+                try {
+                    if (!GameAudio.ctx) GameAudio.init();
+                    if (GameAudio.ctx && GameAudio.ctx.state === 'suspended') GameAudio.ctx.resume();
+                } catch (e) { }
+                document.removeEventListener('pointerdown', unlockAudio);
+            };
+            document.addEventListener('pointerdown', unlockAudio, { passive: true });
+
+            // 横竖屏 / 视口尺寸变化: 重算画布、HUD 缩放、触控位置
+            const relayout = function () {
+                try { resizeCanvas(); } catch (e) { }
+                try { applyUiScale(); } catch (e) { }
+                try { applyTouchConfig(); } catch (e) { }
+                updateTouchLayerVisibility();
+            };
+            window.addEventListener('orientationchange', function () { setTimeout(relayout, 120); });
+            if (window.visualViewport) {
+                window.visualViewport.addEventListener('resize', relayout);
+            }
+
+            // 触控端禁用 Safari 手势缩放
+            if (device === 'touch') {
+                document.addEventListener('gesturestart', function (e) { e.preventDefault(); });
+            }
+        }
 
         const CONFIG = {
             MAP_WIDTH: 4800,
@@ -4922,15 +5927,16 @@
                         if (keysJustPressed['o'] && this.weapons.pistol) this.switchWeapon('pistol');
                         if (keysJustPressed['i'] && this.weapons.sword) this.switchWeapon('sword');
                     } else {
-                        if (keys['a'] || keys['A']) { this.vx -= spd * 0.48 * timeScale; this.facingRight = false; }
-                        if (keys['d'] || keys['D']) { this.vx += spd * 0.48 * timeScale; this.facingRight = true; }
-                        if ((keysJustPressed['w'] || keysJustPressed['W']) && this.jumpCount < this.maxJumps) {
+                        if (keys['a'] || keys['A'] || touchState.left) { this.vx -= spd * 0.48 * timeScale; this.facingRight = false; }
+                        if (keys['d'] || keys['D'] || touchState.right) { this.vx += spd * 0.48 * timeScale; this.facingRight = true; }
+                        const _touchJumpNow = consumeTouchJump();
+                        if ((keysJustPressed['w'] || keysJustPressed['W'] || _touchJumpNow) && this.jumpCount < this.maxJumps) {
                             const bf = this.buffs ? getBuffEffects(this) : { jumpDisabled: false };
                             if (!bf.jumpDisabled) {
                                 this.jump();
                             }
                         }
-                        if ((keys['v'] || keys['V']) && this.canShoot) {
+                        if ((keys['v'] || keys['V'] || touchState.fire) && this.canShoot) {
                             if (this.weapon && this.weapon.isMelee) {
                                 this.slashAttack();
                             } else {
@@ -4938,6 +5944,8 @@
                                 this.shoot();
                             }
                         }
+                        // 触控开火: 弹匣为空且未在换弹时自动换弹
+                        if (touchState.fire && this.weapon && !this.weapon.isMelee && this.weapon.ammo === 0 && !this.isReloading) this.reload();
                         if ((keys['r'] || keys['R']) && this.currentWeapon !== 'sword') this.reload();
 
                         if (keys['e'] || keys['E']) {
@@ -8596,9 +9604,22 @@
             ctx.font = 'bold 24px sans-serif';
             ctx.textAlign = 'center';
             ctx.fillText('训练场模式', canvas.width / 2, 40);
-            ctx.font = '14px sans-serif';
+            // 触控端显示触控说明, 电脑端保持原 A/D 键盘说明
+            const _touchTip = (document.body.getAttribute('data-device') === 'touch');
+            const _tipText = _touchTip
+                ? '左下移动 · 右上开火 · 右下跳跃 / 左滑切枪 · 左上训练调试'
+                : '无限命 | 无限弹药 | 靶子由 ←/→ 移动 · ↑ 跳 · L 开火 | 左上角可调装备/数值';
+            let _tipSize = 14;
+            if (_touchTip) {
+                // 触屏窄屏自动缩小字号, 避免提示文字被裁切
+                ctx.font = '14px sans-serif';
+                const _tipW = ctx.measureText(_tipText).width;
+                const _maxW = Math.max(120, canvas.width - 24);
+                if (_tipW > _maxW) _tipSize = Math.max(9, Math.floor(14 * _maxW / _tipW));
+            }
+            ctx.font = _tipSize + 'px sans-serif';
             ctx.fillStyle = '#888';
-            ctx.fillText('无限命 | 无限弹药 | 靶子由 ←/→ 移动 · ↑ 跳 · L 开火 | 左上角可调装备/数值', canvas.width / 2, 65);
+            ctx.fillText(_tipText, canvas.width / 2, 65);
             ctx.textAlign = 'left';
         }
 
@@ -11434,6 +12455,9 @@
                 Diag.log('PERF', `帧时间: ${frameTime.toFixed(2)}ms, 平均: ${perfStats.avgFrameTime.toFixed(2)}ms, 最大: ${perfStats.maxFrameTime.toFixed(2)}ms`);
             }
 
+            // 触控层显隐: 仅游戏进行中且无暂停/选卡/奖励/属性面板时显示
+            updateTouchLayerVisibility();
+
             requestAnimationFrame(gameLoop);
             keysJustPressed = {};
         }
@@ -11522,6 +12546,9 @@
         function returnToHub() {
             goHomeMenu(true);
         }
+
+        // 初始化移动端触控系统 (设备检测 / 控件绑定 / 配置应用)
+        initMobileTouch();
 
         gameLoop();
     </script>
