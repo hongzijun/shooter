@@ -12036,6 +12036,24 @@
             pvpRound++;
             growEntityPerRound(playerA, 'mine', true);
             growEntityPerRound(playerB, 'mine', true);
+            // 无条件恢复双方回合初始状态: 防止 hpPerRound=0 或输方死亡位置导致 health=0 被 gameLoop 跳过而"消失"
+            [playerA, playerB].forEach(function (p) {
+                if (!p) return;
+                p.health = p.maxHealth;
+                p.shield = 0;
+                p.lives = 2;
+                if ('maxLives' in p) p.maxLives = 2;
+                p.burningStacks = 0;
+                p.burnStacks = [];
+                p.activeEffects = [];
+                p.dotDamage = null;
+                p.slowEffect = null;
+                p.isReloading = false;
+                p.frozen = false;
+                p.vx = 0;
+                p.vy = 0;
+                p._lastBurnDamage = undefined;
+            });
             // 回合重置: 双方命回满3条, 位置回出生点 (A左/B右, 与 startPvP 一致), 清空子弹/粒子
             pvpLivesA = 2; pvpLivesB = 2;
             bullets = []; particles = [];
