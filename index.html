@@ -3459,10 +3459,11 @@
                     fx.turbineStacks = Math.min(3, (fx.turbineStacks || 0) + 1);
                     fx.lastTurbine = now;
                 }
-                // 超频过载: 普攻命中 +10 点攻速 (5秒)
+                // 超频过载: 普攻命中叠 1 层 (每层 +10 物攻, 上限 20 * 卡数)
                 if (fx.overclock > 0) {
-                    fx.overclockStacks = Math.min(20, (fx.overclockStacks || 0) + 1);
+                    fx.overclockStacks = Math.min(20 * (fx.overclock || 1), (fx.overclockStacks || 0) + 1);
                     fx.lastOverclock = now;
+                    fx.nextOverclockDecayAt = 0;   // 有新命中: 停止衰减
                 }
                 // 共振切割器: 命中 +5%攻速 (3秒叠5), 满层+10%移速; 普攻附 10%物攻+10%法攻 魔伤
                 if (fx.resoncutter > 0) {
@@ -3615,9 +3616,22 @@
             }
             // 适应力: 受伤后叠防御 (6秒, 10层)
             if (fx.adaptDef > 0 && now - (fx.lastAdapt || 0) > 6000) fx.adaptStacks = 0;
-            // 层数过期: 智械涡轮 7s / 超频过载 5s / 共振切割器 3s
+            // 层数过期: 智械涡轮 7s / 超频过载 1s 后逐层衰减 / 共振切割器 3s
             if (fx.turbine > 0 && now - (fx.lastTurbine || 0) > 7000) fx.turbineStacks = 0;
-            if (fx.overclock > 0 && now - (fx.lastOverclock || 0) > 5000) fx.overclockStacks = 0;
+            if (fx.overclock > 0) {
+                if ((fx.overclockStacks || 0) > 0) {
+                    if (now - (fx.lastOverclock || 0) > 1000) {
+                        if (!fx.nextOverclockDecayAt || now >= fx.nextOverclockDecayAt) {
+                            fx.overclockStacks = Math.max(0, (fx.overclockStacks || 0) - 1);
+                            fx.nextOverclockDecayAt = now + 150;
+                        }
+                    } else {
+                        fx.nextOverclockDecayAt = 0;   // 1 秒内有新命中, 停止衰减
+                    }
+                } else {
+                    fx.nextOverclockDecayAt = 0;
+                }
+            }
             if (fx.resoncutter > 0 && now - (fx.lastReson || 0) > 3000) fx.resonStacks = 0;
         }
 
@@ -3795,7 +3809,7 @@
               apply(p) { const f = ensureFx(p); f.energy = (f.energy || 0) + 1; fxInst(p, 'fx_energy_e', f.energy); } },
             { id: 'fx_undying_e', name: '不败传奇', icon: '👑', type: 'effect', rarity: 'epic', desc: '受到致死伤害时不死亡，1秒无敌并恢复至10%生命，CD120秒',
               apply(p) { const f = ensureFx(p); f.revive = (f.revive || 0) + 1; fxInst(p, 'fx_undying_e', f.revive); } },
-            { id: 'fx_overclock_e', name: '超频过载', icon: '⚙️', type: 'effect', rarity: 'epic', desc: '普攻命中获得10点攻速，攻速满后溢出转为攻击力（持续5秒）',
+            { id: 'fx_overclock_e', name: '超频过载', icon: '⚙️', type: 'effect', rarity: 'epic', desc: '普攻命中叠 1 层，每层 +10 物理攻击力，最多 20 层（多张卡上限叠加）；1 秒未命中后每 0.15 秒掉 1 层',
               apply(p) { const f = ensureFx(p); f.overclock = (f.overclock || 0) + 1; } },
             { id: 'fx_pierce_e', name: '穿针引线', icon: '🪡', type: 'effect', rarity: 'epic', desc: '获得40点物理和法术穿透（降级：固定穿透）',
               apply(p) { const f = ensureFx(p); f.pen += 40; f.penM += 40; } },
@@ -5104,6 +5118,8 @@
                 let fxAtk = 0;
                 if (fx) {
                     fxAtk = (fx.atk || 0) + (fx.hpToAtk > 0 ? this.maxHealth * fx.hpToAtk : 0);
+                    // 超频过载: 每层 +10 物理攻击力 (面板/子弹/特效同源)
+                    if (fx.overclock > 0) fxAtk += (fx.overclockStacks || 0) * 10;
                 }
                 const _secBonus = this._atkPerSecBonus || 0;   // 每秒物理攻击力加成 (击杀后清零)
                 if (this.isAI) return (this.aiAtk || 100) + eqAtk + fxAtk + _secBonus;
@@ -5124,7 +5140,6 @@
                 if (fx && fx.lowHpAtkSpeed > 0 && this.maxHealth > 0 && this.health < this.maxHealth * 0.5) fxSpd += fx.lowHpAtkSpeed;
                 if (fx) {
                     fxSpd += (fx.turbineStacks || 0) * 0.15 * (fx.turbine || 1);      // 智械涡轮: 暴击后 15%/层 (每张叠加)
-                    fxSpd += (fx.overclockStacks || 0) * 0.10 * (fx.overclock || 1);    // 超频过载: 命中 10 点攻速/层 (每张叠加)
                     fxSpd += (fx.resonStacks || 0) * 0.05 * (fx.resoncutter || 1);        // 共振切割器: 命中 5%/层 (每张叠加)
                 }
                 if (this.isAI) return Math.max(-0.8, eqSpd + fxSpd + (this._turbineSpd || 0) + (this._surgeSpd || 0));
@@ -7768,7 +7783,7 @@
                 if (fx.titanCombat > 0) { const _n = fx.titanCombat || 1; out.push({ type: 'stack', key: 'titan', name: '钛合夹克', iconId: 'titanjacket', stacks: Math.max(0, Math.min(4 * _n, Math.round((fx.titanBonus || 0) / 0.05))), total: 4 * _n }); }
                 if (fx.turbine > 0) { const _n = fx.turbine || 1; out.push({ type: 'stack', key: 'turbine', name: '智械涡轮', iconId: 'turbine', stacks: Math.min(fx.turbineStacks || 0, 3) * _n, total: 3 * _n }); }
                 if (fx.resoncutter > 0) { const _n = fx.resoncutter || 1; out.push({ type: 'stack', key: 'reson', name: '共振切割', iconId: 'resoncutter', stacks: Math.max(0, Math.min(fx.resonStacks || 0, 5)) * _n, total: 5 * _n }); }
-                if (fx.overclock > 0) { const _n = fx.overclock || 1; out.push({ type: 'stack', key: 'overclock', name: '超频过载', iconId: 'fx_overclock_e', stacks: Math.min(fx.overclockStacks || 0, 20) * _n, total: 20 * _n }); }
+                if (fx.overclock > 0) { const _n = fx.overclock || 1; out.push({ type: 'stack', key: 'overclock', name: '超频过载', iconId: 'fx_overclock_e', stacks: Math.min(fx.overclockStacks || 0, 20 * _n), total: 20 * _n }); }
                 // 被动已就绪 (不读秒)
                 if (fx.firstHitDmg > 0) out.push({ type: 'ready', key: 'opening', name: '盛大开场', iconId: 'fx_opening_e', ready: !fx.firstHitDone });
                 if (fx.skillNextAtkPct > 0) out.push({ type: 'ready', key: 'kinetic', name: '动能铁臂', iconId: 'kineticarm', ready: (ent._skillNextAtk || 0) > 0 });
@@ -8471,6 +8486,7 @@
         // === 飘字防重叠: 记录显示中的飘字矩形, 约束同点最多 3 个、任意两者重叠 ≤60% ===
         const FLOAT_LIFE = 1120;   // 原 1600ms, 缩短 30%: 伤害/治疗飘字存续 1.12s
         const _floatRects = [];
+        let _floatQuickMerge = null;   // 合并后 150ms 快速吸收窗口 { kind, until, rec }
         // 候选槽位: 以命中点为中心的网格, 按距离由近到远排序 (预先计算)
         const FLOAT_OFFSETS = (function () {
             const arr = [];
@@ -8602,18 +8618,24 @@
                 div.style.left = _slot.left + 'px';
                 div.style.top = _slot.top + 'px';
                 // 记录数值/图标/是否合计, 供「按窗口精确合并」使用; 容量淘汰统一由 _floatTrim 同步删除 DOM
-                _floatRects.push({
+                // 合并总层级: 物理总 2100 / 特效总 2050 / 其他 2000
+                if (opt.sum) {
+                    div.style.zIndex = (opt._kind === 'phys') ? '2100' : ((opt._kind === 'fx') ? '2050' : '2000');
+                }
+                const rec = {
                     left: _slot.left, top: _slot.top, w: _tw, h: _th, born: Date.now(), el: div,
                     num: (/^-[0-9]+$/.test(text) ? parseInt(String(text).slice(1), 10) : 0),
                     pre: opt.prefix || '', kind: opt._kind || '',
                     val: opt._val || 0, icons: _icons.slice(), sum: !!opt.sum,
                     msize: (opt.msize || 0),   // 显示大小 = 该条目已发生的合并次数 (普通 = 0)
-                    txtEl: _txtEl, baseText: fullText,
+                    txtEl: _txtEl, baseText: fullText, fs: fs,
                     spanFrom: (opt.sum ? (opt.spanFrom || Date.now()) : 0),
                     wx: x, wy: y   // 世界坐标: 合并「总」按它定位, 避免屏幕坐标二次换算
-                });
+                };
+                _floatRects.push(rec);
                 document.getElementById('ui').appendChild(div);
                 setTimeout(() => { try { if (div && div.parentNode) div.parentNode.removeChild(div); } catch (e) { } }, FLOAT_LIFE);
+                return rec;
             } catch (e) { }
         }
 
@@ -8675,7 +8697,8 @@
             }
             if (acc.n <= 0 || acc.sum <= 0) return;
             const sign = (kind === 'heal' || kind === 'shield') ? '+' : '-';
-            _floatSpawn(acc.wx / acc.n, acc.wy / acc.n - 60,
+            const _mergeNow = Date.now();
+            const _sumRec = _floatSpawn(acc.wx / acc.n, acc.wy / acc.n - 60,
                 '总' + sign + Math.round(acc.sum), _FLOAT_KCOLOR[kind] || DMG_COLORS.phys,
                 {
                     icons: acc.icons, prefix: kind === 'heal' ? '💚' : (kind === 'shield' ? '🛡' : ''),
@@ -8683,6 +8706,8 @@
                     msize: acc.msize + 1,
                     spanFrom: (isFinite(acc.spanFrom) ? acc.spanFrom : Date.now())
                 });
+            // 合并瞬间开启 150ms 吸收窗口; 后续吸收不延长该窗口
+            if (_sumRec) _floatQuickMerge = { kind: kind, until: _mergeNow + 150, rec: _sumRec };
         }
         // 容量控制(进位制): 只有「同类型 + 同显示大小」凑满 cap 条才合并成一条「总」
         //   · 例: 10 个大小0 -> 1 个大小1; 9 个大小0 + 1 个大小1 仍是 10 条, 不越级合并
@@ -8757,6 +8782,50 @@
             }
         }
         setInterval(_floatTickSpan, 80);
+        /** 150ms 快速吸收: 把新数值并入刚生成的「总」; 保持该总原有层级, 不延长窗口 */
+        function _floatAbsorb(kind, num, text, opt, now) {
+            const q = _floatQuickMerge;
+            if (!q) return false;
+            if (now > q.until || q.kind !== kind || !(num > 0)
+                || !q.rec || !q.rec.el || !q.rec.el.parentNode) {
+                _floatQuickMerge = null;   // 窗口到期或记录失效
+                return false;
+            }
+            const rec = q.rec;
+            rec.val = (rec.val || 0) + num;
+            const sign = (kind === 'heal' || kind === 'shield') ? '+' : '-';
+            rec.baseText = (rec.pre || '') + '总' + sign + Math.round(rec.val);
+            // 合并图标
+            const _incoming = (Array.isArray(opt.icons) ? opt.icons.filter(Boolean) : (opt.iconId ? [opt.iconId] : []));
+            if (!rec.icons) rec.icons = [];
+            _incoming.forEach(function (id) {
+                if (!id || rec.icons.indexOf(id) >= 0 || rec.icons.length >= 8) return;
+                rec.icons.push(id);
+                try {
+                    const img = document.createElement('img');
+                    img.className = 'dmg-icon';
+                    img.src = 'assets/cards/' + id + '.jpg';
+                    img.alt = '';
+                    img.onerror = function () { this.style.display = 'none'; };
+                    if (rec.txtEl && rec.txtEl.parentNode === rec.el) rec.el.insertBefore(img, rec.txtEl);
+                    else rec.el.appendChild(img);
+                } catch (e) { }
+            });
+            // 文案变长/新增图标时同步记录宽度, 供后续防重叠使用
+            const _w = Math.max(28, String(rec.baseText).length * (rec.fs || 20) * 0.62 + rec.icons.length * 20);
+            if (_w > rec.w) rec.w = _w;
+            // 立即刷新文本 (含当前时间跨度); 不修改 born, 也不延长窗口
+            if (rec.txtEl) {
+                if (rec.spanFrom) {
+                    const sec = Math.max(0, (now - rec.spanFrom) / 1000);
+                    rec.txtEl.textContent = rec.baseText + ' (' + sec.toFixed(1) + 's)';
+                } else {
+                    rec.txtEl.textContent = rec.baseText;
+                }
+            }
+            return true;
+        }
+
         // Task 飘字规范: showFloatingNumber(x, y, text, color, opts)
         // opts: { prefix, iconId, icons(横排多图), type('heal'|'fx') }
         function showFloatingNumber(x, y, text, color, opts) {
@@ -8768,6 +8837,8 @@
 
             opt._kind = kind;
             opt._val = num;
+            // 合并后 150ms 内同类型正数: 直接并入「总」, 不新增飘字
+            if (_floatAbsorb(kind, num, text, opt, now)) return;
             _floatSpawn(x, y, text, color, opt);
             // 本窗口新增 > 10 → 合并本窗口条目; 否则仅按容量淘汰更早的普通条目
             // 实时保持屏幕上 ≤10 条: 只有超过 10 条才合并 (同类型 → 「总」, 多个总继续合并)
@@ -10748,159 +10819,106 @@
             if (!content) return;
 
             content.innerHTML = `
-                <h3 style="color:#2ed573;margin-top:0;">🔫 枪械数据</h3>
-                <table style="width:100%;border-collapse:collapse;color:white;font-size:13px;">
-                    <tr style="background:rgba(255,255,255,0.05);"><th style="padding:8px;text-align:left;border-bottom:1px solid rgba(255,255,255,0.1);">武器</th><th style="padding:8px;border-bottom:1px solid rgba(255,255,255,0.1);">伤害</th><th style="padding:8px;border-bottom:1px solid rgba(255,255,255,0.1);">射速</th><th style="padding:8px;border-bottom:1px solid rgba(255,255,255,0.1);">弹夹</th><th style="padding:8px;border-bottom:1px solid rgba(255,255,255,0.1);">备注</th></tr>
-                    <tr><td style="padding:8px;border-bottom:1px solid rgba(255,255,255,0.05);">🔫 手枪</td><td style="padding:8px;border-bottom:1px solid rgba(255,255,255,0.05);">25</td><td style="padding:8px;border-bottom:1px solid rgba(255,255,255,0.05);">快</td><td style="padding:8px;border-bottom:1px solid rgba(255,255,255,0.05);">15</td><td style="padding:8px;border-bottom:1px solid rgba(255,255,255,0.05);color:#888;">综合性能好</td></tr>
-                    <tr><td style="padding:8px;border-bottom:1px solid rgba(255,255,255,0.05);">🔫 步枪</td><td style="padding:8px;border-bottom:1px solid rgba(255,255,255,0.05);">42</td><td style="padding:8px;border-bottom:1px solid rgba(255,255,255,0.05);">很快</td><td style="padding:8px;border-bottom:1px solid rgba(255,255,255,0.05);">32</td><td style="padding:8px;border-bottom:1px solid rgba(255,255,255,0.05);color:#888;">高伤害</td></tr>
-                    <tr><td style="padding:8px;border-bottom:1px solid rgba(255,255,255,0.05);">🔫 霰弹枪</td><td style="padding:8px;border-bottom:1px solid rgba(255,255,255,0.05);">18×12</td><td style="padding:8px;border-bottom:1px solid rgba(255,255,255,0.05);">很慢</td><td style="padding:8px;border-bottom:1px solid rgba(255,255,255,0.05);">10</td><td style="padding:8px;border-bottom:1px solid rgba(255,255,255,0.05);color:#888;">近身神器</td></tr>
-                    <tr><td style="padding:8px;border-bottom:1px solid rgba(255,255,255,0.05);">🔫 冲锋枪</td><td style="padding:8px;border-bottom:1px solid rgba(255,255,255,0.05);">14</td><td style="padding:8px;border-bottom:1px solid rgba(255,255,255,0.05);">极快</td><td style="padding:8px;border-bottom:1px solid rgba(255,255,255,0.05);">45</td><td style="padding:8px;border-bottom:1px solid rgba(255,255,255,0.05);color:#888;">弹量充足</td></tr>
-                    <tr><td style="padding:8px;">🎯 狙击枪</td><td style="padding:8px;">120</td><td style="padding:8px;">很慢</td><td style="padding:8px;">6</td><td style="padding:8px;color:#e74c3c;">需要换弹</td></tr>
-                </table>
+                <!-- === 新手指南 (重写) === -->
+                <div style="display:flex;flex-direction:column;gap:14px;color:#dfe6f5;font-size:13px;line-height:1.65;">
+                    <!-- 1. 标题 + 一句话玩法 -->
+                    <div style="background:linear-gradient(135deg,rgba(46,213,115,0.16),rgba(79,142,255,0.12));border:1px solid rgba(46,213,115,0.35);border-radius:14px;padding:14px 16px;">
+                        <div style="font-size:20px;font-weight:bold;color:#2ed573;margin-bottom:4px;">🎮 2D 枪战游戏 · 新手指南</div>
+                        <div style="color:#9fb2d8;">一句话玩法：<span style="color:#fff;">选模式 → 移动 / 跳跃 / 射击 → 击败敌人 → 每波抽卡变强。</span></div>
+                    </div>
 
-                <h3 style="color:#2ed573;margin-top:24px;">⚡ Buff效果</h3>
-                <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;">
-                    <div style="background:rgba(255,255,255,0.05);padding:10px;border-radius:8px;"><span style="color:#f1c40f;">⭐ 无敌</span> — 无敌5秒</div>
-                    <div style="background:rgba(255,255,255,0.05);padding:10px;border-radius:8px;"><span style="color:#2ecc71;">💚 再生</span> — 持续回血</div>
-                    <div style="background:rgba(255,255,255,0.05);padding:10px;border-radius:8px;"><span style="color:#e74c3c;">🔥 狂暴</span> — 伤害×2</div>
-                    <div style="background:rgba(255,255,255,0.05);padding:10px;border-radius:8px;"><span style="color:#2ed573;">⚡ 极速</span> — 移速×1.5</div>
-                    <div style="background:rgba(255,255,255,0.05);padding:10px;border-radius:8px;"><span style="color:#3498db;">🛡️ 护盾</span> — 伤害减免</div>
-                    <div style="background:rgba(255,255,255,0.05);padding:10px;border-radius:8px;"><span style="color:#9b59b6;">❄️ 冰冻</span> — 敌人冻结</div>
-                    <div style="background:rgba(255,255,255,0.05);padding:10px;border-radius:8px;"><span style="color:#e67e22;">🔥 燃烧</span> — 持续伤害</div>
-                    <div style="background:rgba(255,255,255,0.05);padding:10px;border-radius:8px;"><span style="color:#f39c12;">🐌 减速</span> — 移速降低</div>
-                </div>
+                    <!-- 2. 模式选择 -->
+                    <section style="background:rgba(255,255,255,0.05);border:1px solid rgba(255,255,255,0.1);border-radius:12px;padding:12px 14px;">
+                        <h3 style="color:#4f8eff;margin:0 0 8px;font-size:15px;">🧭 模式选择</h3>
+                        <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:8px;">
+                            <div style="background:rgba(0,0,0,0.25);border-radius:10px;padding:9px 10px;"><span style="color:#ffd700;font-weight:bold;">开始游戏 2（v2）</span><br>当前版本，推荐从这里开始。</div>
+                            <div style="background:rgba(0,0,0,0.25);border-radius:10px;padding:9px 10px;"><span style="color:#ff9f43;font-weight:bold;">开始游戏</span><br>会跳转到旧版 v1，想体验旧内容时再用。</div>
+                            <div style="background:rgba(0,0,0,0.25);border-radius:10px;padding:9px 10px;"><span style="color:#a29bfe;font-weight:bold;">双人对战</span><br>同一键盘两人，回合制；每回合双方各抽卡，命打光的一方输掉本回合。</div>
+                            <div style="background:rgba(0,0,0,0.25);border-radius:10px;padding:9px 10px;"><span style="color:#2ed573;font-weight:bold;">训练场</span><br>无限命、无限弹药，可调数值、自由装配卡牌，适合练枪。</div>
+                        </div>
+                    </section>
 
-                <h3 style="color:#ff6b6b;margin-top:24px;">📊 状态详情(超详)</h3>
-                <div style="background:rgba(0,0,0,0.3);border-radius:8px;padding:12px;max-height:500px;overflow-y:auto;color:#ccc;font-size:10px;line-height:1.5;">
-                    <details style="margin-bottom:10px;" open>
-                        <summary style="color:#f1c40f;cursor:pointer;font-weight:bold;">⚡ Buff系统</summary>
-                        <table style="width:100%;border-collapse:collapse;margin-top:6px;">
-                            <tr style="background:rgba(255,255,255,0.08);"><th style="padding:6px;text-align:left;border-bottom:1px solid rgba(255,255,255,0.1);">状态</th><th style="padding:6px;border-bottom:1px solid rgba(255,255,255,0.1);">触发</th><th style="padding:6px;border-bottom:1px solid rgba(255,255,255,0.1);">持续</th><th style="padding:6px;border-bottom:1px solid rgba(255,255,255,0.1);">效果数值</th><th style="padding:6px;border-bottom:1px solid rgba(255,255,255,0.1);">叠加</th></tr>
-                            <tr><td style="padding:6px;border-bottom:1px solid rgba(255,255,255,0.05);color:#f1c40f;">⭐ speedBoost</td><td style="padding:6px;border-bottom:1px solid rgba(255,255,255,0.05);">装备/效果触发</td><td style="padding:6px;border-bottom:1px solid rgba(255,255,255,0.05);">10000ms(10秒)</td><td style="padding:6px;border-bottom:1px solid rgba(255,255,255,0.05);">spd×1.8(180%)</td><td style="padding:6px;border-bottom:1px solid rgba(255,255,255,0.05);">不可叠加/刷新时间</td></tr>
-                            <tr><td style="padding:6px;border-bottom:1px solid rgba(255,255,255,0.05);color:#e74c3c;">🔥 damageBoost</td><td style="padding:6px;border-bottom:1px solid rgba(255,255,255,0.05);">装备/效果触发</td><td style="padding:6px;border-bottom:1px solid rgba(255,255,255,0.05);">10000ms(10秒)</td><td style="padding:6px;border-bottom:1px solid rgba(255,255,255,0.05);">damageMultiplier=1.5</td><td style="padding:6px;border-bottom:1px solid rgba(255,255,255,0.05);">不可叠加/刷新时间</td></tr>
-                            <tr><td style="padding:6px;border-bottom:1px solid rgba(255,255,255,0.05);color:#3498db;">🛡️ shieldBoost</td><td style="padding:6px;border-bottom:1px solid rgba(255,255,255,0.05);">装备/效果触发</td><td style="padding:6px;border-bottom:1px solid rgba(255,255,255,0.05);">永久(直到打破)</td><td style="padding:6px;border-bottom:1px solid rgba(255,255,255,0.05);">maxShield=500</td><td style="padding:6px;border-bottom:1px solid rgba(255,255,255,0.05);">不可叠加/刷新数值</td></tr>
-                            <tr><td style="padding:6px;border-bottom:1px solid rgba(255,255,255,0.05);color:#9b59b6;">👻 stealth</td><td style="padding:6px;border-bottom:1px solid rgba(255,255,255,0.05);">装备/效果触发</td><td style="padding:6px;border-bottom:1px solid rgba(255,255,255,0.05);">5000ms(5秒)</td><td style="padding:6px;border-bottom:1px solid rgba(255,255,255,0.05);">AI无法追踪此实体</td><td style="padding:6px;border-bottom:1px solid rgba(255,255,255,0.05);">不可叠加/刷新时间</td></tr>
-                            <tr><td style="padding:6px;border-bottom:1px solid rgba(255,255,255,0.05);color:#2ecc71;">💚 regen</td><td style="padding:6px;border-bottom:1px solid rgba(255,255,255,0.05);">装备/效果触发</td><td style="padding:6px;border-bottom:1px solid rgba(255,255,255,0.05);">10000ms(10秒)</td><td style="padding:6px;border-bottom:1px solid rgba(255,255,255,0.05);">+30HP/秒</td><td style="padding:6px;border-bottom:1px solid rgba(255,255,255,0.05);">不可叠加/刷新时间</td></tr>
-                            <tr><td style="padding:6px;border-bottom:1px solid rgba(255,255,255,0.05);color:#f39c12;">🐌 slowEffect</td><td style="padding:6px;border-bottom:1px solid rgba(255,255,255,0.05);">冰弹命中</td><td style="padding:6px;border-bottom:1px solid rgba(255,255,255,0.05);">3000ms(3秒)</td><td style="padding:6px;border-bottom:1px solid rgba(255,255,255,0.05);">spd×slowEffect.mult</td><td style="padding:6px;border-bottom:1px solid rgba(255,255,255,0.05);">可叠加/刷新时间</td></tr>
-                            <tr><td style="padding:6px;color:#e67e22;">🔥 burningStacks</td><td style="padding:6px;">火焰子弹</td><td style="padding:6px;">每层2秒/可叠加</td><td style="padding:6px;">伤害:2DPS/层 | 减速:5%/层</td><td style="padding:6px;">最大10层</td></tr>
-                        </table>
-                    </details>
-                    <details style="margin-bottom:10px;" open>
-                        <summary style="color:#e74c3c;cursor:pointer;font-weight:bold;">🔫 武器系统</summary>
-                        <table style="width:100%;border-collapse:collapse;margin-top:6px;">
-                            <tr style="background:rgba(255,255,255,0.08);"><th style="padding:6px;text-align:left;border-bottom:1px solid rgba(255,255,255,0.1);">武器</th><th style="padding:6px;border-bottom:1px solid rgba(255,255,255,0.1);">伤害</th><th style="padding:6px;border-bottom:1px solid rgba(255,255,255,0.1);">射速</th><th style="padding:6px;border-bottom:1px solid rgba(255,255,255,0.1);">射程</th><th style="padding:6px;border-bottom:1px solid rgba(255,255,255,0.1);">弹夹</th><th style="padding:6px;border-bottom:1px solid rgba(255,255,255,0.1);">备注</th></tr>
-                            <tr><td style="padding:6px;border-bottom:1px solid rgba(255,255,255,0.05);">pistol</td><td style="padding:6px;border-bottom:1px solid rgba(255,255,255,0.05);">80</td><td style="padding:6px;border-bottom:1px solid rgba(255,255,255,0.05);">400ms</td><td style="padding:6px;border-bottom:1px solid rgba(255,255,255,0.05);">∞无限</td><td style="padding:6px;border-bottom:1px solid rgba(255,255,255,0.05);">12/∞</td><td style="padding:6px;border-bottom:1px solid rgba(255,255,255,0.05);">默认武器</td></tr>
-                            <tr><td style="padding:6px;border-bottom:1px solid rgba(255,255,255,0.05);">rifle</td><td style="padding:6px;border-bottom:1px solid rgba(255,255,255,0.05);">50</td><td style="padding:6px;border-bottom:1px solid rgba(255,255,255,0.05);">150ms</td><td style="padding:6px;border-bottom:1px solid rgba(255,255,255,0.05);">∞无限</td><td style="padding:6px;border-bottom:1px solid rgba(255,255,255,0.05);">32/∞</td><td style="padding:6px;border-bottom:1px solid rgba(255,255,255,0.05);">连续射击</td></tr>
-                            <tr><td style="padding:6px;border-bottom:1px solid rgba(255,255,255,0.05);">shotgun</td><td style="padding:6px;border-bottom:1px solid rgba(255,255,255,0.05);">150(12发)</td><td style="padding:6px;border-bottom:1px solid rgba(255,255,255,0.05);">800ms</td><td style="padding:6px;border-bottom:1px solid rgba(255,255,255,0.05);">300px</td><td style="padding:6px;border-bottom:1px solid rgba(255,255,255,0.05);">10/∞</td><td style="padding:6px;border-bottom:1px solid rgba(255,255,255,0.05);">霰弹扩散</td></tr>
-                            <tr><td style="padding:6px;">sniper</td><td style="padding:6px;">300</td><td style="padding:6px;">1500ms</td><td style="padding:6px;">∞无限</td><td style="padding:6px;">5/∞</td><td style="padding:6px;">高精度</td></tr>
-                        </table>
-                        <div style="margin-top:8px;padding:6px;background:rgba(0,0,0,0.3);border-radius:4px;">
-                            <div>射程判断:霰弹最优175px | 狙击最优350px | 其他最优300px</div>
-                            <div>弹药&lt;30%时降低射击频率 | 弹药=0时自动切换到pistol</div>
+                    <!-- 3. 操作说明 -->
+                    <section style="background:rgba(255,255,255,0.05);border:1px solid rgba(255,255,255,0.1);border-radius:12px;padding:12px 14px;">
+                        <h3 style="color:#ffd700;margin:0 0 8px;font-size:15px;">🎮 操作说明</h3>
+                        <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(210px,1fr));gap:8px;">
+                            <div style="background:rgba(79,142,255,0.08);border:1px solid rgba(79,142,255,0.25);border-radius:10px;padding:10px;">
+                                <div style="color:#4f8eff;font-weight:bold;margin-bottom:6px;">🖥 电脑 · PvE / 训练场</div>
+                                <div style="display:flex;flex-wrap:wrap;gap:4px 10px;">
+                                    <span><b style="color:#fff;">A/D</b> 移动</span>
+                                    <span><b style="color:#fff;">W</b> 跳跃（二段跳）</span>
+                                    <span><b style="color:#fff;">V</b> 射击</span>
+                                    <span><b style="color:#fff;">R</b> 换弹</span>
+                                    <span><b style="color:#fff;">1-5</b> 切换枪械</span>
+                                    <span><b style="color:#fff;">E</b> 战刃</span>
+                                    <span><b style="color:#fff;">Esc</b> 暂停</span>
+                                    <span><b style="color:#fff;">Tab</b> 全属性面板</span>
+                                    <span><b style="color:#fff;">Caps</b> 透明暂停</span>
+                                </div>
+                            </div>
+                            <div style="background:rgba(162,155,254,0.08);border:1px solid rgba(162,155,254,0.3);border-radius:10px;padding:10px;">
+                                <div style="color:#a29bfe;font-weight:bold;margin-bottom:6px;">⚔️ 双人对战（同一键盘）</div>
+                                <div>1P：<b style="color:#fff;">A/D</b> 移动、<b style="color:#fff;">W</b> 跳跃、<b style="color:#fff;">V</b> 射击</div>
+                                <div>2P：<b style="color:#fff;">←/→</b> 移动、<b style="color:#fff;">↑</b> 跳跃、<b style="color:#fff;">L</b> 射击</div>
+                            </div>
+                            <div style="background:rgba(46,213,115,0.08);border:1px solid rgba(46,213,115,0.3);border-radius:10px;padding:10px;">
+                                <div style="color:#2ed573;font-weight:bold;margin-bottom:6px;">📱 手机 / 非电脑</div>
+                                <div>左下移动盘：左半区左移，右半区右移。</div>
+                                <div>右上「发射」：按住持续射击。</div>
+                                <div>右下「跳」：点击跳跃。</div>
+                                <div>按住「跳」向左滑：展开 1-6 武器轮盘，松手切枪。</div>
+                                <div>底部中间：暂停按钮。</div>
+                                <div>大厅「🎮 按键设置」：调整位置、大小、透明度。</div>
+                            </div>
                         </div>
-                    </details>
-                    <details style="margin-bottom:10px;" open>
-                        <summary style="color:#ff6b6b;cursor:pointer;font-weight:bold;">💥 子弹系统</summary>
-                        <table style="width:100%;border-collapse:collapse;margin-top:6px;">
-                            <tr style="background:rgba(255,255,255,0.08);"><th style="padding:6px;text-align:left;border-bottom:1px solid rgba(255,255,255,0.1);">类型</th><th style="padding:6px;border-bottom:1px solid rgba(255,255,255,0.1);">效果</th><th style="padding:6px;border-bottom:1px solid rgba(255,255,255,0.1);">附加状态</th></tr>
-                            <tr><td style="padding:6px;border-bottom:1px solid rgba(255,255,255,0.05);">normal</td><td style="padding:6px;border-bottom:1px solid rgba(255,255,255,0.05);">无特殊效果</td><td style="padding:6px;border-bottom:1px solid rgba(255,255,255,0.05);">-</td></tr>
-                            <tr><td style="padding:6px;border-bottom:1px solid rgba(255,255,255,0.05);">fire</td><td style="padding:6px;border-bottom:1px solid rgba(255,255,255,0.05);">附加灼烧</td><td style="padding:6px;border-bottom:1px solid rgba(255,255,255,0.05);">+burningStacks</td></tr>
-                            <tr><td style="padding:6px;border-bottom:1px solid rgba(255,255,255,0.05);">ice</td><td style="padding:6px;border-bottom:1px solid rgba(255,255,255,0.05);">附加减速</td><td style="padding:6px;border-bottom:1px solid rgba(255,255,255,0.05);">+slowEffect</td></tr>
-                            <tr><td style="padding:6px;">shield</td><td style="padding:6px;">附加护盾</td><td style="padding:6px;">+shieldBoost</td></tr>
-                        </table>
-                        <div style="margin-top:8px;padding:6px;background:rgba(0,0,0,0.3);border-radius:4px;">
-                            <div>伤害公式:actualDamage=damage×(damageBoost?1.5:1)</div>
-                            <div>扣除顺序:护盾→HP | shield-=actualDamage | 超额→health</div>
-                            <div>子弹属性:{x,y,vx,vy,damage,owner,ownerIsPlayer,type,active,radius,maxRange,totalDist,pierce,trail,effect}</div>
-                        </div>
-                    </details>
-                    <details style="margin-bottom:10px;" open>
-                        <summary style="color:#3498db;cursor:pointer;font-weight:bold;">🤖 AI系统</summary>
-                        <table style="width:100%;border-collapse:collapse;margin-top:6px;">
-                            <tr style="background:rgba(255,255,255,0.08);"><th style="padding:6px;text-align:left;border-bottom:1px solid rgba(255,255,255,0.1);">参数</th><th style="padding:6px;border-bottom:1px solid rgba(255,255,255,0.1);">数值</th><th style="padding:6px;text-align:left;border-bottom:1px solid rgba(255,255,255,0.1);">参数</th><th style="padding:6px;border-bottom:1px solid rgba(255,255,255,0.1);">数值</th></tr>
-                            <tr><td style="padding:6px;border-bottom:1px solid rgba(255,255,255,0.05);">基础速度</td><td style="padding:6px;border-bottom:1px solid rgba(255,255,255,0.05);">5.5</td><td style="padding:6px;border-bottom:1px solid rgba(255,255,255,0.05);">速度范围</td><td style="padding:6px;border-bottom:1px solid rgba(255,255,255,0.05);">5.5~7.0</td></tr>
-                            <tr><td style="padding:6px;border-bottom:1px solid rgba(255,255,255,0.05);">速度公式</td><td style="padding:6px;border-bottom:1px solid rgba(255,255,255,0.05);">spd×(1.1+aggr×0.2)</td><td style="padding:6px;border-bottom:1px solid rgba(255,255,255,0.05);">加速度</td><td style="padding:6px;border-bottom:1px solid rgba(255,255,255,0.05);">accel=spd×0.3</td></tr>
-                            <tr><td style="padding:6px;border-bottom:1px solid rgba(255,255,255,0.05);">摩擦力</td><td style="padding:6px;border-bottom:1px solid rgba(255,255,255,0.05);">vx×=0.85</td><td style="padding:6px;border-bottom:1px solid rgba(255,255,255,0.05);">方向冷却</td><td style="padding:6px;border-bottom:1px solid rgba(255,255,255,0.05);">5帧</td></tr>
-                            <tr><td style="padding:6px;border-bottom:1px solid rgba(255,255,255,0.05);">激进(HP&gt;)</td><td style="padding:6px;border-bottom:1px solid rgba(255,255,255,0.05);">40%</td><td style="padding:6px;border-bottom:1px solid rgba(255,255,255,0.05);">保守(HP&lt;)</td><td style="padding:6px;border-bottom:1px solid rgba(255,255,255,0.05);">40%</td></tr>
-                            <tr><td style="padding:6px;border-bottom:1px solid rgba(255,255,255,0.05);">逃跑(HP&lt;)</td><td style="padding:6px;border-bottom:1px solid rgba(255,255,255,0.05);">30%</td><td style="padding:6px;border-bottom:1px solid rgba(255,255,255,0.05);">射击射程</td><td style="padding:6px;border-bottom:1px solid rgba(255,255,255,0.05);">800px</td></tr>
-                            <tr><td style="padding:6px;border-bottom:1px solid rgba(255,255,255,0.05);">射击冷却(激进)</td><td style="padding:6px;border-bottom:1px solid rgba(255,255,255,0.05);">12帧</td><td style="padding:6px;border-bottom:1px solid rgba(255,255,255,0.05);">射击冷却(保守)</td><td style="padding:6px;border-bottom:1px solid rgba(255,255,255,0.05);">20帧</td></tr>
-                            <tr><td style="padding:6px;">精度公式</td><td style="padding:6px;" colspan="3">(1-aiBaseAccuracy)×min(40,dist×0.05)</td></tr>
-                        </table>
-                        <div style="margin-top:8px;padding:6px;background:rgba(0,0,0,0.3);border-radius:4px;">
-                            <div>跳跃条件:玩家上方 | dist&gt;200且|dx|&lt;300需追击 | 检测子弹80px内躲避 | HP&lt;30%逃跑</div>
-                            <div>追击逻辑:远距离&gt;optimalRange+50全速追 | 太近&lt;optimalRange-50后退200px | 范围内横向移动150px</div>
-                            <div>属性成长:aiBaseAccuracy=0.7+waveLevel×0.03 | maxHealth=1000×(1+waveLevel×0.1)</div>
-                        </div>
-                    </details>
-                    <details style="margin-bottom:10px;" open>
-                        <summary style="color:#2ed573;cursor:pointer;font-weight:bold;">🦘 跳跃物理</summary>
-                        <table style="width:100%;border-collapse:collapse;margin-top:6px;">
-                            <tr style="background:rgba(255,255,255,0.08);"><th style="padding:6px;text-align:left;border-bottom:1px solid rgba(255,255,255,0.1);">参数</th><th style="padding:6px;border-bottom:1px solid rgba(255,255,255,0.1);">数值</th><th style="padding:6px;text-align:left;border-bottom:1px solid rgba(255,255,255,0.1);">参数</th><th style="padding:6px;border-bottom:1px solid rgba(255,255,255,0.1);">数值</th></tr>
-                            <tr><td style="padding:6px;border-bottom:1px solid rgba(255,255,255,0.05);">跳跃速度</td><td style="padding:6px;border-bottom:1px solid rgba(255,255,255,0.05);">vy=-13</td><td style="padding:6px;border-bottom:1px solid rgba(255,255,255,0.05);">最大跳跃</td><td style="padding:6px;border-bottom:1px solid rgba(255,255,255,0.05);">2次(二段跳)</td></tr>
-                            <tr><td style="padding:6px;border-bottom:1px solid rgba(255,255,255,0.05);">重力</td><td style="padding:6px;border-bottom:1px solid rgba(255,255,255,0.05);">GRAVITY=0.6</td><td style="padding:6px;border-bottom:1px solid rgba(255,255,255,0.05);">地面检测</td><td style="padding:6px;border-bottom:1px solid rgba(255,255,255,0.05);">y+height&gt;=GROUND_Y</td></tr>
-                            <tr><td style="padding:6px;border-bottom:1px solid rgba(255,255,255,0.05);">Player左边界</td><td style="padding:6px;border-bottom:1px solid rgba(255,255,255,0.05);">x=45,vx=0</td><td style="padding:6px;border-bottom:1px solid rgba(255,255,255,0.05);">Player右边界</td><td style="padding:6px;border-bottom:1px solid rgba(255,255,255,0.05);">x=MAP_WIDTH-45</td></tr>
-                            <tr><td style="padding:6px;">AI边界反弹</td><td style="padding:6px;" colspan="3">x&lt;80:x=80,vx=|vx|×0.5 | x&gt;MAP_WIDTH-80:x=...,vx=-|vx|×0.5</td></tr>
-                        </table>
-                    </details>
-                    <details style="margin-bottom:10px;" open>
-                        <summary style="color:#e74c3c;cursor:pointer;font-weight:bold;">❤️ 生命护盾</summary>
-                        <table style="width:100%;border-collapse:collapse;margin-top:6px;">
-                            <tr style="background:rgba(255,255,255,0.08);"><th style="padding:6px;text-align:left;border-bottom:1px solid rgba(255,255,255,0.1);">属性</th><th style="padding:6px;border-bottom:1px solid rgba(255,255,255,0.1);">数值</th><th style="padding:6px;text-align:left;border-bottom:1px solid rgba(255,255,255,0.1);">属性</th><th style="padding:6px;border-bottom:1px solid rgba(255,255,255,0.1);">数值</th></tr>
-                            <tr><td style="padding:6px;border-bottom:1px solid rgba(255,255,255,0.05);">MAX_HEALTH</td><td style="padding:6px;border-bottom:1px solid rgba(255,255,255,0.05);">1000</td><td style="padding:6px;border-bottom:1px solid rgba(255,255,255,0.05);">起始生命</td><td style="padding:6px;border-bottom:1px solid rgba(255,255,255,0.05);">1000</td></tr>
-                            <tr><td style="padding:6px;border-bottom:1px solid rgba(255,255,255,0.05);">死亡条件</td><td style="padding:6px;border-bottom:1px solid rgba(255,255,255,0.05);">health&lt;=0</td><td style="padding:6px;border-bottom:1px solid rgba(255,255,255,0.05);">复活次数</td><td style="padding:6px;border-bottom:1px solid rgba(255,255,255,0.05);">maxLives=2</td></tr>
-                            <tr><td style="padding:6px;border-bottom:1px solid rgba(255,255,255,0.05);">护盾上限</td><td style="padding:6px;border-bottom:1px solid rgba(255,255,255,0.05);">500</td><td style="padding:6px;border-bottom:1px solid rgba(255,255,255,0.05);">护盾来源</td><td style="padding:6px;border-bottom:1px solid rgba(255,255,255,0.05);">shieldBoost / 装备</td></tr>
-                            <tr><td style="padding:6px;" colspan="4">扣除顺序:shield-=damage → 超额→health | 护盾破碎后health+=shield(shield归0)</td></tr>
-                        </table>
-                    </details>
-                    <details style="margin-bottom:10px;" open>
-                        <summary style="color:#f39c12;cursor:pointer;font-weight:bold;">🌊 波次系统</summary>
-                        <table style="width:100%;border-collapse:collapse;margin-top:6px;">
-                            <tr style="background:rgba(255,255,255,0.08);"><th style="padding:6px;text-align:left;border-bottom:1px solid rgba(255,255,255,0.1);">波次</th><th style="padding:6px;border-bottom:1px solid rgba(255,255,255,0.1);">敌人数量</th><th style="padding:6px;border-bottom:1px solid rgba(255,255,255,0.1);">属性倍率</th><th style="padding:6px;border-bottom:1px solid rgba(255,255,255,0.1);">波次</th><th style="padding:6px;border-bottom:1px solid rgba(255,255,255,0.1);">敌人数量</th><th style="padding:6px;border-bottom:1px solid rgba(255,255,255,0.1);">属性倍率</th></tr>
-                            <tr><td style="padding:6px;border-bottom:1px solid rgba(255,255,255,0.05);">I</td><td style="padding:6px;border-bottom:1px solid rgba(255,255,255,0.05);">1-2</td><td style="padding:6px;border-bottom:1px solid rgba(255,255,255,0.05);">1.0x</td><td style="padding:6px;border-bottom:1px solid rgba(255,255,255,0.05);">IV</td><td style="padding:6px;border-bottom:1px solid rgba(255,255,255,0.05);">4-5</td><td style="padding:6px;border-bottom:1px solid rgba(255,255,255,0.05);">1.6x</td></tr>
-                            <tr><td style="padding:6px;border-bottom:1px solid rgba(255,255,255,0.05);">II</td><td style="padding:6px;border-bottom:1px solid rgba(255,255,255,0.05);">2-3</td><td style="padding:6px;border-bottom:1px solid rgba(255,255,255,0.05);">1.2x</td><td style="padding:6px;border-bottom:1px solid rgba(255,255,255,0.05);">V+</td><td style="padding:6px;border-bottom:1px solid rgba(255,255,255,0.05);">5+</td><td style="padding:6px;border-bottom:1px solid rgba(255,255,255,0.05);">1.8x+</td></tr>
-                            <tr><td style="padding:6px;">III</td><td style="padding:6px;">3-4</td><td style="padding:6px;">1.4x</td><td style="padding:6px;" colspan="3">每15波提升一个档次</td></tr>
-                        </table>
-                    </details>
-                    <details style="margin-bottom:10px;" open>
-                        <summary style="color:#c0392b;cursor:pointer;font-weight:bold;">💀 击退与控制</summary>
-                        <table style="width:100%;border-collapse:collapse;margin-top:6px;">
-                            <tr style="background:rgba(255,255,255,0.08);"><th style="padding:6px;text-align:left;border-bottom:1px solid rgba(255,255,255,0.1);">状态</th><th style="padding:6px;border-bottom:1px solid rgba(255,255,255,0.1);">触发</th><th style="padding:6px;border-bottom:1px solid rgba(255,255,255,0.1);">持续</th><th style="padding:6px;border-bottom:1px solid rgba(255,255,255,0.1);">效果</th></tr>
-                            <tr><td style="padding:6px;border-bottom:1px solid rgba(255,255,255,0.05);">frozen</td><td style="padding:6px;border-bottom:1px solid rgba(255,255,255,0.05);">冰弹命中</td><td style="padding:6px;border-bottom:1px solid rgba(255,255,255,0.05);">3秒</td><td style="padding:6px;border-bottom:1px solid rgba(255,255,255,0.05);">无法移动跳跃</td></tr>
-                            <tr><td style="padding:6px;border-bottom:1px solid rgba(255,255,255,0.05);">isDodging</td><td style="padding:6px;border-bottom:1px solid rgba(255,255,255,0.05);">_executeDodge()</td><td style="padding:6px;border-bottom:1px solid rgba(255,255,255,0.05);">300ms</td><td style="padding:6px;border-bottom:1px solid rgba(255,255,255,0.05);">闪避动作</td></tr>
-                            <tr><td style="padding:6px;">burning</td><td style="padding:6px;">fire弹</td><td style="padding:6px;">按层衰减</td><td style="padding:6px;">持续HP伤害</td></tr>
-                        </table>
-                        <div style="margin-top:8px;padding:6px;background:rgba(0,0,0,0.3);border-radius:4px;">
-                            <div>AI被击中击退:kdx/kdist×10, kdy/kdist×5-3</div>
-                            <div>子弹击中:根据子弹方向和力度</div>
-                        </div>
-                    </details>
-                    <details open>
-                        <summary style="color:#1abc9c;cursor:pointer;font-weight:bold;">📋 完整属性表</summary>
-                        <div style="margin-top:8px;padding:8px;background:rgba(0,0,0,0.3);border-radius:4px;font-size:9px;line-height:1.8;">
-                            <div style="color:#3498db;">共有属性:{x,y,vx,vy,width,height,health,maxHealth,shield,maxShield,lives,maxLives,isOnGround,jumpCount,maxJumps,speed,weapon,ammo,facingRight,frozen,isDodging,lastDodgeTime,dodgeCooldown}</div>
-                            <div style="color:#e74c3c;margin-top:6px;">AI专有:{isAI:true,aiAggression,aiBaseAccuracy,aiDecisionCooldown,_tacticalTargetX,_tacticalJump,_dirChangeCooldown,strafeDir,strafeTimer,_aiMoving,_aiShootCooldown}</div>
-                            <div style="color:#2ecc71;margin-top:6px;">Buff属性:{speedBoost,speedBoostEnd,damageBoost,damageBoostEnd,shieldBoost,shieldBoostEnd,stealth,stealthEnd,regen,regenEnd,slowEffect:{mult,end},burningStacks,damageMultiplier}</div>
-                        </div>
-                    </details>
-                </div>
+                    </section>
 
-                <h3 style="color:#2ed573;margin-top:24px;">🎮 操作说明</h3>
-                <div style="background:rgba(255,255,255,0.05);padding:12px;border-radius:8px;color:#ccc;font-size:12px;line-height:1.8;">
-                    <div>移动: <span style="color:#fff;">A/D 或 ←/→</span></div>
-                    <div>跳跃: <span style="color:#fff;">W 或 ↑ 或 空格</span></div>
-                    <div>射击: <span style="color:#fff;">J 或 鼠标左键</span></div>
-                    <div>换弹: <span style="color:#fff;">K 或 R</span></div>
-                    <div>切换武器: <span style="color:#fff;">Q 或 数字键 1-5</span></div>
-                    <div>打开设置: <span style="color:#fff;">ESC</span></div>
-                </div>
+                    <!-- 4. 战斗基础 -->
+                    <section style="background:rgba(255,255,255,0.05);border:1px solid rgba(255,255,255,0.1);border-radius:12px;padding:12px 14px;">
+                        <h3 style="color:#e74c3c;margin:0 0 8px;font-size:15px;">❤️ 战斗基础</h3>
+                        <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(230px,1fr));gap:8px;">
+                            <div style="background:rgba(231,76,60,0.12);border:1px solid rgba(231,76,60,0.3);border-radius:10px;padding:10px;"><b style="color:#fff;">生命与命数</b><br>PvE 有 2 条命，命打光本局结束；PvP 每回合命打光的一方判负。</div>
+                            <div style="background:rgba(79,142,255,0.1);border:1px solid rgba(79,142,255,0.28);border-radius:10px;padding:10px;"><b style="color:#fff;">护盾</b><br>最多 4 条最大生命，受到伤害时优先扣除护盾。</div>
+                            <div style="background:rgba(255,215,0,0.08);border:1px solid rgba(255,215,0,0.25);border-radius:10px;padding:10px;"><b style="color:#fff;">伤害颜色</b><br>物理=红，法术=紫，真实伤害=白，特效伤害=绿，暴击=黄。</div>
+                            <div style="background:rgba(255,255,255,0.06);border:1px solid rgba(255,255,255,0.15);border-radius:10px;padding:10px;"><b style="color:#fff;">防御与穿透</b><br>防御降低受到的物理伤害，穿透抵消对方防御；减伤率表示最终减伤的百分比。</div>
+                        </div>
+                    </section>
 
-                <h3 style="color:#e74c3c;margin-top:24px;">💀 游戏规则</h3>
-                <div style="background:rgba(231,76,60,0.1);padding:12px;border-radius:8px;color:#ccc;font-size:12px;line-height:1.8;border:1px solid rgba(231,76,60,0.3);">
-                    <div>• 每人 <span style="color:#e74c3c;font-weight:bold;">3条命</span>，死亡后减少1命并重生</div>
-                    <div>• 0命后游戏结束</div>
-                    <div>• 击杀敌人获得分数（500分 + 波次×100）</div>
-                    <div>• 每15波后波次提升，敌人更强</div>
+                    <!-- 5. 卡牌与成长 -->
+                    <section style="background:rgba(255,255,255,0.05);border:1px solid rgba(255,255,255,0.1);border-radius:12px;padding:12px 14px;">
+                        <h3 style="color:#a29bfe;margin:0 0 8px;font-size:15px;">🎴 卡牌与成长</h3>
+                        <div style="display:flex;flex-direction:column;gap:6px;background:rgba(162,155,254,0.08);border:1px solid rgba(162,155,254,0.28);border-radius:10px;padding:10px 12px;">
+                            <div>• 每波 / 每回合从 3 张卡里选 1 张，卡牌永久生效，可叠层。</div>
+                            <div>• 装备卡增加基础属性；效果卡提供特殊能力。</div>
+                            <div>• 稀有度越高，通常越强。</div>
+                            <div>• 训练场可自由装配卡牌、调整数值。</div>
+                        </div>
+                    </section>
+
+                    <!-- 6. 新手建议 -->
+                    <section style="background:rgba(255,255,255,0.05);border:1px solid rgba(255,255,255,0.1);border-radius:12px;padding:12px 14px;">
+                        <h3 style="color:#ffd700;margin:0 0 8px;font-size:15px;">💡 新手建议</h3>
+                        <ol style="margin:0;padding-left:20px;display:flex;flex-direction:column;gap:4px;color:#dfe6f5;">
+                            <li>保持距离，边跳边打，避免原地站桩。</li>
+                            <li>优先选生存或攻速 / 伤害类卡牌，站得住才有输出。</li>
+                            <li>留意弹药，打空及时换弹，不要等贴脸才想起。</li>
+                            <li>有护盾和减伤时优先拿，容错率更高。</li>
+                            <li>打不过先回训练场练枪、装配卡牌和调数值。</li>
+                        </ol>
+                    </section>
+
+                    <!-- 7. 常见问题 -->
+                    <section style="background:rgba(255,255,255,0.05);border:1px solid rgba(255,255,255,0.1);border-radius:12px;padding:12px 14px;">
+                        <h3 style="color:#4f8eff;margin:0 0 8px;font-size:15px;">❓ 常见问题</h3>
+                        <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(230px,1fr));gap:8px;">
+                            <div style="background:rgba(0,0,0,0.25);border-radius:10px;padding:9px 10px;"><b style="color:#fff;">卡住了怎么办？</b><br>按 Esc 打开暂停菜单，可继续、重开或返回主页。</div>
+                            <div style="background:rgba(0,0,0,0.25);border-radius:10px;padding:9px 10px;"><b style="color:#fff;">手机上看不到按键？</b><br>在大厅打开「🎮 按键设置」，调整触控按键位置、大小和透明度。</div>
+                            <div style="background:rgba(0,0,0,0.25);border-radius:10px;padding:9px 10px;"><b style="color:#fff;">双人怎么玩？</b><br>同一键盘：1P 用 A/D/W/V，2P 用 ←/→/↑/L。</div>
+                            <div style="background:rgba(0,0,0,0.25);border-radius:10px;padding:9px 10px;"><b style="color:#fff;">训练场靶子怎么动？</b><br>用 ←/→ 移动、↑ 跳跃、L 开火。</div>
+                        </div>
+                    </section>
                 </div>
+            
             `;
         }
 
