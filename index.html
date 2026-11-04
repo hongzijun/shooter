@@ -2685,7 +2685,7 @@
             TRAIN_WEAPON_KEYS.forEach(function (k) {
                 const w = TRAIN_WEAPON_DEF[k];
                 // atkSpeed 字段 = 本武器攻速倍率 y (基准 1; 射速 = sps × (1 + 攻速 × y))
-                weapons[k] = { sps: w.sps, dmgBase: w.dmgBase, atkCoef: (k === 'sword' && isEnemy) ? 0.3 : w.atkCoef, atkSpeed: 0.1 };
+                weapons[k] = { sps: w.sps, dmgBase: w.dmgBase, atkCoef: (k === 'sword' && isEnemy) ? 0.3 : w.atkCoef, atkSpeed: 0.3 };
             });
             return {
                 baseHp: 500,
@@ -2698,12 +2698,13 @@
                 shieldMult: 1,
                 healResist: 0,
                 weapons: weapons,
-                aiRound: isEnemy ? 1 : 2,
+                aiRound: 2,
                 aiDrawCount: 1,
                 growthVer: 1,
+                tuneVer: 2,
                 growth: isEnemy
-                    ? { hpPerRound: 100, atkPerRound: 10, dmgMultPerRound: 0, defPerRound: 10, penPerRound: 2, redDefPerRound: 20, atkPerSecPerRound: 1 }
-                    : { hpPerRound: 100, atkPerRound: 5, dmgMultPerRound: 0, defPerRound: 5, penPerRound: 0, redDefPerRound: 20, atkPerSecPerRound: 1 }
+                    ? { hpPerRound: 200, atkPerRound: 10, dmgMultPerRound: 0.05, defPerRound: 10, penPerRound: 5, redDefPerRound: 20, atkPerSecPerRound: 1 }
+                    : { hpPerRound: 150, atkPerRound: 5, dmgMultPerRound: 0, defPerRound: 5, penPerRound: 3, redDefPerRound: 18, atkPerSecPerRound: 0.8 }
             };
         }
         // 双方默认数值统一在 _trainDefaultTune 维护 (面板可调, 保存写入本地存档)
@@ -2856,9 +2857,9 @@
             const i = Math.max(0, wave - 1);
             // 数值设置 (全局): AI 的基础值与成长曲线取「敌人」页签, 默认值与旧公式完全一致
             const _tt = (typeof TRAIN_TUNE !== 'undefined' && TRAIN_TUNE && TRAIN_TUNE.enemy) ? TRAIN_TUNE.enemy : null;
-            const _g = (_tt && _tt.growth) || { hpPerRound: 200, atkPerRound: 10, dmgMultPerRound: 0.2, defPerRound: 8, penPerRound: 4 };
-            const _baseHp = _tt ? _tt.baseHp : CONFIG.MAX_HEALTH;
-            const _baseAtk = _tt ? _tt.atk : 100;
+            const _g = (_tt && _tt.growth) || { hpPerRound: 200, atkPerRound: 10, dmgMultPerRound: 0.05, defPerRound: 10, penPerRound: 5, redDefPerRound: 20, atkPerSecPerRound: 1 };
+            const _baseHp = _tt ? _tt.baseHp : 500;
+            const _baseAtk = _tt ? _tt.atk : 40;
             const _baseDmgMult = _tt ? _tt.damageMult : 1;
             const maxHealth = Math.max(1, Math.round(_baseHp + _g.hpPerRound * i));
             return {
@@ -10364,6 +10365,16 @@
             } catch (err) { data = null; }
             const def = { mine: _trainDefaultTune('mine'), enemy: _trainDefaultTune('enemy') };
             const num = function (v, d) { return (typeof v === 'number' && isFinite(v)) ? v : d; };
+            // 旧存档无 tuneVer>=2: 直接重置为新默认, 避免旧 localStorage 掩盖新默认值
+            const _hasTuneVer = !!(data && typeof data === 'object'
+                && data.mine && data.enemy
+                && Number(data.mine.tuneVer) >= 2
+                && Number(data.enemy.tuneVer) >= 2);
+            if (!_hasTuneVer) {
+                TRAIN_TUNE.mine = _trainDefaultTune('mine');
+                TRAIN_TUNE.enemy = _trainDefaultTune('enemy');
+                return;
+            }
             ['mine', 'enemy'].forEach(function (side) {
                 const so = (data && typeof data === 'object' && data[side] && typeof data[side] === 'object') ? data[side] : {};
                 const d = def[side];
@@ -10384,6 +10395,7 @@
                     aiRound: Math.max(1, Math.round(num(so.aiRound, d.aiRound))),
                     aiDrawCount: Math.max(1, Math.min(10, Math.round(num(so.aiDrawCount, d.aiDrawCount)))),
                     growthVer: 1,
+                    tuneVer: 2,
                     growth: {
                         hpPerRound: num(so.growth && so.growth.hpPerRound, _gd.hpPerRound),
                         // 兼容旧存档: 老版本增量存在顶层 atkPerSec (1 为「无成长」基准, 其它值视为每波增量)
