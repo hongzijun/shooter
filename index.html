@@ -305,7 +305,7 @@
             position: fixed;
             top: 50%; left: 50%;
             transform: translate(-50%, -50%);
-            z-index: 9000;
+            z-index: 9800;
             display: none;
             background: rgba(10, 12, 24, 0.92);
             border: 2px solid #4f8eff;
@@ -1111,6 +1111,9 @@
             --ui-scale: 1;
             --touch-opacity: 1;
             --touch-scale: 1;
+            --move-scale: 1;
+            --fire-scale: 1;
+            --jump-scale: 1;
             --touch-size: clamp(56px, 18vmin, 120px);
             --wheel-r: calc(var(--touch-size) * 0.92);
             --sec-size: calc(var(--touch-size) * 0.34);
@@ -1161,7 +1164,7 @@
         #touchLayer > * { pointer-events: auto; }
 
         /* 三个主控件 + 暂停键的玻璃拟态公共样式 */
-        #touchMovePad, #touchFire, #touchJump, #touchPause {
+        #touchMovePad, #touchFire, #touchJump, #touchPause, #touchStats, #touchStatsClose {
             position: absolute;
             width: var(--touch-size);
             height: var(--touch-size);
@@ -1183,10 +1186,10 @@
             transition: transform 0.12s ease, background 0.12s ease, box-shadow 0.12s ease;
         }
 
-        /* 默认位置: 移动盘 (17%,80%) / 开火 (84%,17%) / 跳跃 (84%,80%) */
-        #touchMovePad { left: var(--move-x); top: var(--move-y); transform: translate(-50%, -50%) scale(var(--touch-scale)); }
-        #touchFire { left: var(--fire-x); top: var(--fire-y); transform: translate(-50%, -50%) scale(var(--touch-scale)); font-size: calc(var(--touch-size) * 0.36); }
-        #touchJump { left: var(--jump-x); top: var(--jump-y); transform: translate(-50%, -50%) scale(var(--touch-scale)); font-size: calc(var(--touch-size) * 0.30); overflow: visible; }
+        /* 默认位置: 移动盘 (17%,80%) / 开火 (84%,30%) / 跳跃 (84%,80%) */
+        #touchMovePad { left: var(--move-x); top: var(--move-y); transform: translate(-50%, -50%) scale(var(--move-scale)); }
+        #touchFire { left: var(--fire-x); top: var(--fire-y); transform: translate(-50%, -50%) scale(var(--fire-scale)); font-size: calc(var(--touch-size) * 0.36); }
+        #touchJump { left: var(--jump-x); top: var(--jump-y); transform: translate(-50%, -50%) scale(var(--jump-scale)); font-size: calc(var(--touch-size) * 0.30); overflow: visible; }
 
         /* 底部居中触控暂停: 小号按钮, 打开既有暂停菜单 */
         #touchPause {
@@ -1201,14 +1204,45 @@
             z-index: 2;
         }
 
+        /* 属性面板键: 位于暂停键正上方 */
+        #touchStats {
+            left: 50%;
+            top: auto;
+            bottom: calc(10px + var(--safe-bottom) + var(--touch-size) * 0.56 + 8px);
+            width: calc(var(--touch-size) * 0.56);
+            height: calc(var(--touch-size) * 0.56);
+            transform: translateX(-50%) scale(var(--touch-scale));
+            transform-origin: 50% 100%;
+            font-size: calc(var(--touch-size) * 0.22);
+            z-index: 2;
+        }
+
+        /* 属性面板关闭键: 独立于触控层, 固定在右上角 */
+        #touchStatsClose {
+            position: fixed;
+            top: calc(10px + var(--safe-top));
+            right: calc(10px + var(--safe-right));
+            left: auto;
+            bottom: auto;
+            width: calc(var(--touch-size) * 0.56);
+            height: calc(var(--touch-size) * 0.56);
+            display: none;
+            transform: scale(var(--touch-scale));
+            transform-origin: 100% 0;
+            font-size: calc(var(--touch-size) * 0.22);
+            z-index: 10050;
+            pointer-events: auto;
+            touch-action: none;
+        }
+
         /* 按下反馈: 缩放 + 高亮发光 */
         #touchMovePad.pressed, #touchFire.pressed, #touchJump.pressed {
             background: radial-gradient(circle at 32% 26%, rgba(160,220,255,0.66), rgba(40,90,180,0.55) 62%, rgba(20,40,90,0.66));
             box-shadow: 0 0 26px rgba(120,190,255,0.85), inset 0 0 0 2px rgba(190,225,255,0.35);
         }
-        #touchMovePad.pressed, #touchFire.pressed, #touchJump.pressed {
-            transform: translate(-50%, -50%) scale(calc(var(--touch-scale) * 0.92));
-        }
+        #touchMovePad.pressed { transform: translate(-50%, -50%) scale(calc(var(--move-scale) * 0.92)); }
+        #touchFire.pressed { transform: translate(-50%, -50%) scale(calc(var(--fire-scale) * 0.92)); }
+        #touchJump.pressed { transform: translate(-50%, -50%) scale(calc(var(--jump-scale) * 0.92)); }
 
         /* 移动盘内部: 左右半区提示 + 中心菱形 */
         #touchMovePad .tmp-half {
@@ -1337,8 +1371,8 @@
         /* 预览圆点: 尺寸/透明度跟随触控按钮的根 CSS 变量 */
         #touchSettings .tsc-dot {
             position: absolute;
-            width: calc(var(--touch-size) * var(--touch-scale));
-            height: calc(var(--touch-size) * var(--touch-scale));
+            width: calc(var(--touch-size) * var(--dot-scale, 1));
+            height: calc(var(--touch-size) * var(--dot-scale, 1));
             border-radius: 50%;
             display: flex;
             align-items: center;
@@ -1709,9 +1743,13 @@
                     <div class="tw-sec" data-weapon="6" style="--a:165deg;">6</div>
                 </div>
             </div>
-            <!-- 左上触控暂停: 打开既有暂停菜单 -->
+            <!-- 底部触控暂停: 打开既有暂停菜单 -->
             <div id="touchPause">⏸</div>
+            <!-- 暂停键上方: 打开全属性面板 -->
+            <div id="touchStats">属性</div>
         </div>
+        <!-- 属性面板关闭键: 固定在右上角, 仅属性面板打开时显示 -->
+        <div id="touchStatsClose">✕</div>
 
         <!-- === 按键设置覆盖层 (Task 6, 仅触控显示) === -->
         <div id="touchSettings">
@@ -1927,27 +1965,34 @@
         const TOUCH_DEFAULT_CFG = {
             version: 1,
             opacity: 1,
-            scale: 1,
-            move: { x: 0.17, y: 0.80 },
-            fire: { x: 0.84, y: 0.30 },
-            jump: { x: 0.84, y: 0.80 }
+            scale: 1,                       // legacy 顶层缩放, 仅作旧存档 fallback
+            move: { x: 0.17, y: 0.80, scale: 1 },
+            fire: { x: 0.84, y: 0.30, scale: 1 },
+            jump: { x: 0.84, y: 0.80, scale: 1 }
         };
 
-        function _normTouchPos(obj, def) {
+        /** 控件位置 + 独立大小; 旧存档无 per-key scale 时使用顶层 legacyScale */
+        function _normTouchCtrl(obj, def, legacyScale) {
             const o = (obj && typeof obj === 'object') ? obj : {};
-            return { x: clampNumber(o.x, 0, 1, def.x), y: clampNumber(o.y, 0, 1, def.y) };
+            return {
+                x: clampNumber(o.x, 0, 1, def.x),
+                y: clampNumber(o.y, 0, 1, def.y),
+                scale: clampNumber(o.scale, 0.7, 1.6, legacyScale)
+            };
         }
 
         /** 配置校验 + clamp; 非法字段逐项回退默认, 版本号统一迁移为 1 */
         function validateTouchConfig(raw) {
             const src = (raw && typeof raw === 'object') ? raw : {};
+            // 旧存档只有顶层 scale: 作为三个控件的 fallback; 新存档以 per-key 为准
+            const legacyScale = clampNumber(src.scale, 0.7, 1.6, TOUCH_DEFAULT_CFG.scale);
             return {
                 version: 1,
                 opacity: clampNumber(src.opacity, 0.2, 1.0, TOUCH_DEFAULT_CFG.opacity),
-                scale: clampNumber(src.scale, 0.7, 1.6, TOUCH_DEFAULT_CFG.scale),
-                move: _normTouchPos(src.move, TOUCH_DEFAULT_CFG.move),
-                fire: _normTouchPos(src.fire, TOUCH_DEFAULT_CFG.fire),
-                jump: _normTouchPos(src.jump, TOUCH_DEFAULT_CFG.jump)
+                scale: legacyScale,
+                move: _normTouchCtrl(src.move, TOUCH_DEFAULT_CFG.move, legacyScale),
+                fire: _normTouchCtrl(src.fire, TOUCH_DEFAULT_CFG.fire, legacyScale),
+                jump: _normTouchCtrl(src.jump, TOUCH_DEFAULT_CFG.jump, legacyScale)
             };
         }
 
@@ -2008,14 +2053,15 @@
             try {
                 const vw = window.innerWidth || 360;
                 const vh = window.innerHeight || 360;
-                const size = _touchBaseSize() * cfg.scale;
-                const half = size / 2;
                 const pad = 8;
-                const minX = (pad + _safeInsetPx('left') + half) / vw;
-                const maxX = (vw - pad - _safeInsetPx('right') - half) / vw;
-                const minY = (pad + _safeInsetPx('top') + half) / vh;
-                const maxY = (vh - pad - _safeInsetPx('bottom') - half) / vh;
                 ['move', 'fire', 'jump'].forEach(function (k) {
+                    // 每个控件用自己的 scale 计算半径与安全区边界
+                    const size = _touchBaseSize() * clampNumber(cfg[k].scale, 0.7, 1.6, 1);
+                    const half = size / 2;
+                    const minX = (pad + _safeInsetPx('left') + half) / vw;
+                    const maxX = (vw - pad - _safeInsetPx('right') - half) / vw;
+                    const minY = (pad + _safeInsetPx('top') + half) / vh;
+                    const maxY = (vh - pad - _safeInsetPx('bottom') - half) / vh;
                     cfg[k].x = (minX <= maxX) ? clampNumber(cfg[k].x, minX, maxX, (minX + maxX) / 2) : 0.5;
                     cfg[k].y = (minY <= maxY) ? clampNumber(cfg[k].y, minY, maxY, (minY + maxY) / 2) : 0.5;
                 });
@@ -2028,7 +2074,10 @@
             touchCfg = _clampTouchPositions(validateTouchConfig(touchCfg));
             const rs = document.documentElement.style;
             rs.setProperty('--touch-opacity', String(touchCfg.opacity));
-            rs.setProperty('--touch-scale', String(touchCfg.scale));
+            rs.setProperty('--touch-scale', '1');                 // 暂停/统计键沿用统一缩放
+            rs.setProperty('--move-scale', String(touchCfg.move.scale));
+            rs.setProperty('--fire-scale', String(touchCfg.fire.scale));
+            rs.setProperty('--jump-scale', String(touchCfg.jump.scale));
             rs.setProperty('--move-x', (touchCfg.move.x * 100).toFixed(2) + '%');
             rs.setProperty('--move-y', (touchCfg.move.y * 100).toFixed(2) + '%');
             rs.setProperty('--fire-x', (touchCfg.fire.x * 100).toFixed(2) + '%');
@@ -2060,6 +2109,7 @@
                 if (!dot) return;
                 dot.style.left = (touchCfg[k].x * 100) + '%';
                 dot.style.top = (touchCfg[k].y * 100) + '%';
+                dot.style.setProperty('--dot-scale', String(touchCfg[k].scale));
                 dot.classList.toggle('selected', _touchSettingsTarget === k);
             });
             const op = document.getElementById('touchOpacityRange');
@@ -2068,8 +2118,9 @@
             if (opv) opv.textContent = Math.round(touchCfg.opacity * 100) + '%';
             const sc = document.getElementById('touchSizeRange');
             const scv = document.getElementById('touchSizeVal');
-            if (sc) sc.value = String(Math.round(touchCfg.scale * 100));
-            if (scv) scv.textContent = Math.round(touchCfg.scale * 100) + '%';
+            const _selScale = (touchCfg[_touchSettingsTarget] || touchCfg.move).scale || 1;
+            if (sc) sc.value = String(Math.round(_selScale * 100));
+            if (scv) scv.textContent = Math.round(_selScale * 100) + '%';
             const tgt = document.getElementById('touchSettingsTargetLabel');
             if (tgt) tgt.textContent = ({ move: '移动盘', fire: '开火', jump: '跳跃/轮盘' })[_touchSettingsTarget] || '移动盘';
             const pos = touchCfg[_touchSettingsTarget] || touchCfg.move;
@@ -2138,7 +2189,8 @@
             });
             const sc = document.getElementById('touchSizeRange');
             if (sc) sc.addEventListener('input', function () {
-                touchCfg.scale = clampNumber(Number(this.value) / 100, 0.7, 1.6, 1);
+                const p = touchCfg[_touchSettingsTarget] || touchCfg.move;
+                p.scale = clampNumber(Number(this.value) / 100, 0.7, 1.6, p.scale || 1);
                 applyTouchConfig();
             });
             const xr = document.getElementById('touchXRange');
@@ -2240,6 +2292,28 @@
             updateTouchLayerVisibility();
         }
 
+        /** 触控打开/关闭全属性面板; 打开时冻结游戏并显示右上角关闭键 */
+        function touchToggleStats() {
+            if (gameState !== 'playing' && gameState !== 'pvp' && gameState !== 'training') return;
+            if (isPaused || isDrafting || isAwardShowing) return;
+            if (statPanelOpen) { touchCloseStats(); return; }
+            clearTouchInputState();
+            statPanelOpen = true;
+            const sp = document.getElementById('statPanel');
+            if (sp) sp.style.display = 'block';
+            renderStatPanel();
+            updateTouchLayerVisibility();
+        }
+
+        function touchCloseStats() {
+            statPanelOpen = false;
+            const sp = document.getElementById('statPanel');
+            if (sp) sp.style.display = 'none';
+            const sc = document.getElementById('touchStatsClose');
+            if (sc) sc.style.display = 'none';
+            updateTouchLayerVisibility();
+        }
+
         /** 覆盖层是否可见 (带 show 类, 或 display 非 none) */
         function _touchOverlayShown(el) {
             if (!el) return false;
@@ -2275,6 +2349,12 @@
                 _touchLayerLastDisplay = want;
             }
             if (!show && _touchPointers.size > 0) clearTouchInputState();
+            // 属性面板关闭键: 仅触控端且属性面板打开时显示
+            const _statsClose = document.getElementById('touchStatsClose');
+            if (_statsClose) {
+                const _isTouch = (document.body.getAttribute('data-device') === 'touch');
+                _statsClose.style.display = (_isTouch && statPanelOpen) ? 'flex' : 'none';
+            }
         }
 
         /** 绑定触控层: Pointer Events + pointerId 所有权 + setPointerCapture */
@@ -2283,6 +2363,8 @@
             const fire = document.getElementById('touchFire');
             const jump = document.getElementById('touchJump');
             const pause = document.getElementById('touchPause');
+            const stats = document.getElementById('touchStats');
+            const statsClose = document.getElementById('touchStatsClose');
             if (!pad || !fire || !jump) return;
 
             // --- 移动盘: 左右半区, 按住可滑过中线 ---
@@ -2399,6 +2481,29 @@
                     e.preventDefault();
                     e.stopPropagation();
                     touchTogglePause();
+                });
+            }
+
+            // --- 属性面板按钮 ---
+            if (stats) {
+                stats.addEventListener('pointerdown', function (e) { e.stopPropagation(); });
+                stats.addEventListener('pointerup', function (e) {
+                    e.preventDefault();
+                    e.stopPropagation();
+                    touchToggleStats();
+                });
+            }
+            // --- 属性面板右上角关闭键 (在 touchLayer 外部) ---
+            if (statsClose) {
+                statsClose.addEventListener('pointerdown', function (e) { e.stopPropagation(); });
+                statsClose.addEventListener('pointerup', function (e) {
+                    e.preventDefault();
+                    e.stopPropagation();
+                    touchCloseStats();
+                });
+                statsClose.addEventListener('click', function (e) {
+                    e.preventDefault();
+                    touchCloseStats();
                 });
             }
         }
