@@ -2171,7 +2171,9 @@
                         const r = stage.getBoundingClientRect();
                         const x = clampNumber((e.clientX - r.left) / Math.max(1, r.width), 0, 1, 0.5);
                         const y = clampNumber((e.clientY - r.top) / Math.max(1, r.height), 0, 1, 0.5);
-                        touchCfg[_touchSettingsDrag.key] = { x: x, y: y };
+                        // 拖动只改位置: 必须沿用该按键已设置的大小, 否则重建对象会丢掉 scale 并被重置为默认
+                        const _prevCtrl = touchCfg[_touchSettingsDrag.key] || {};
+                        touchCfg[_touchSettingsDrag.key] = { x: x, y: y, scale: clampNumber(_prevCtrl.scale, 0.7, 1.6, 1) };
                         applyTouchConfig();
                     });
                     const endDrag = function (e) {
