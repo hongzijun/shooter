@@ -2701,9 +2701,9 @@
                 aiRound: 2,
                 aiDrawCount: 1,
                 growthVer: 1,
-                tuneVer: 2,
+                tuneVer: 3,
                 growth: isEnemy
-                    ? { hpPerRound: 200, atkPerRound: 10, dmgMultPerRound: 0.05, defPerRound: 10, penPerRound: 5, redDefPerRound: 20, atkPerSecPerRound: 1 }
+                    ? { hpPerRound: 200, atkPerRound: 10, dmgMultPerRound: 0, defPerRound: 10, penPerRound: 5, redDefPerRound: 20, atkPerSecPerRound: 1 }
                     : { hpPerRound: 150, atkPerRound: 5, dmgMultPerRound: 0, defPerRound: 5, penPerRound: 3, redDefPerRound: 18, atkPerSecPerRound: 0.8 }
             };
         }
@@ -2857,7 +2857,7 @@
             const i = Math.max(0, wave - 1);
             // 数值设置 (全局): AI 的基础值与成长曲线取「敌人」页签, 默认值与旧公式完全一致
             const _tt = (typeof TRAIN_TUNE !== 'undefined' && TRAIN_TUNE && TRAIN_TUNE.enemy) ? TRAIN_TUNE.enemy : null;
-            const _g = (_tt && _tt.growth) || { hpPerRound: 200, atkPerRound: 10, dmgMultPerRound: 0.05, defPerRound: 10, penPerRound: 5, redDefPerRound: 20, atkPerSecPerRound: 1 };
+            const _g = (_tt && _tt.growth) || { hpPerRound: 200, atkPerRound: 10, dmgMultPerRound: 0, defPerRound: 10, penPerRound: 5, redDefPerRound: 20, atkPerSecPerRound: 1 };
             const _baseHp = _tt ? _tt.baseHp : 500;
             const _baseAtk = _tt ? _tt.atk : 40;
             const _baseDmgMult = _tt ? _tt.damageMult : 1;
@@ -2865,7 +2865,7 @@
             return {
                 i: i,
                 maxHealth: maxHealth,
-                damageMult: _baseDmgMult * (1 + _g.dmgMultPerRound * i),
+                damageMult: _baseDmgMult,   // 不再按波次隐式放大: 面板「伤害倍率」为唯一来源
                 bossShield: (wave % 5 === 0) ? Math.round(maxHealth * 0.15 * i) : 0,
                 // AI 攻防成长: 基础值取面板, 每回合增量取面板「成长」字段
                 aiAtk: _baseAtk + _g.atkPerRound * i,
@@ -5352,7 +5352,13 @@
             getFireInterval(w) {
                 if (!w) return 200;
                 let sps = w.sps || (w.fireRate > 0 ? 1000 / w.fireRate : 5);
-                const baseW = WEAPONS[this.currentWeapon];
+                // 基准表必须按「传入的那把武器」取键: 旧代码用 this.currentWeapon,
+                // 属性面板列出非当前武器时会串算基准 fireRate, 导致同武器双方间隔显示相差数倍
+                let wk = null;
+                if (this.weapons) {
+                    for (const k in this.weapons) { if (this.weapons[k] === w) { wk = k; break; } }
+                }
+                const baseW = WEAPONS[wk || this.currentWeapon];
                 if (w.fireRate > 0 && baseW && baseW.fireRate > 0) {
                     sps *= baseW.fireRate / w.fireRate;
                 }
@@ -5450,7 +5456,9 @@
 
                     const critResult = checkCrit(this);
                     const isCrit = critResult.isCrit;
-                    const finalDamage = isCrit ? Math.round(baseDamage * (this.critDamageMult || 1.50)) : baseDamage;
+                    // 暴击倍率只在 takeDamage 内按 getCritDamageMult() 结算一次
+                    // (此前这里已乘一次 raw critDamageMult, 目标再乘一次 -> 暴击被乘两次)
+                    const finalDamage = baseDamage;
 
                     const bulletData = {
                         x: this.x + (this.facingRight ? 30 : -30),
@@ -10326,7 +10334,7 @@
                 ent.aiDefM = ent.aiDef;
                 ent.aiPen = g.penPerRound * i;
                 ent.aiPenM = ent.aiPen;
-                ent.aiDamageMult = t.damageMult * (1 + g.dmgMultPerRound * i);
+                ent.aiDamageMult = t.damageMult;   // 只用面板「伤害倍率」, 不再叠加隐藏成长倍率
                 if (ent.equip) ent.equip.atkSpeed = t.atkSpeed;   // AI 攻速加成走装备聚合读取
             } else {
                 ent.atk = t.atk + g.atkPerRound * i;
@@ -10378,6 +10386,8 @@
             ['mine', 'enemy'].forEach(function (side) {
                 const so = (data && typeof data === 'object' && data[side] && typeof data[side] === 'object') ? data[side] : {};
                 const d = def[side];
+                // v3 迁移: 旧存档的 AI 成长伤害倍率 (默认 0.05/回合) 归 0, 其余自定义值保持不变
+                const _enemyDmgFix = (side === 'enemy' && Number(so.tuneVer) < 3);
                 // 旧存档无 growthVer: 玩家成长此前从未生效, 迁移为全 0
                 const _legacyMine = (side === 'mine' && !so.growthVer);
                 const _gd = _legacyMine ? { hpPerRound: 0, atkPerRound: 0, dmgMultPerRound: 0, defPerRound: 0, penPerRound: 0, redDefPerRound: 0, atkPerSecPerRound: 0 } : d.growth;
@@ -10395,14 +10405,14 @@
                     aiRound: Math.max(1, Math.round(num(so.aiRound, d.aiRound))),
                     aiDrawCount: Math.max(1, Math.min(10, Math.round(num(so.aiDrawCount, d.aiDrawCount)))),
                     growthVer: 1,
-                    tuneVer: 2,
+                    tuneVer: 3,
                     growth: {
                         hpPerRound: num(so.growth && so.growth.hpPerRound, _gd.hpPerRound),
                         // 兼容旧存档: 老版本增量存在顶层 atkPerSec (1 为「无成长」基准, 其它值视为每波增量)
                         atkPerSecPerRound: num(so.growth && so.growth.atkPerSecPerRound,
                             (typeof so.atkPerSec === 'number' && so.atkPerSec !== 1) ? so.atkPerSec : _gd.atkPerSecPerRound),
                         atkPerRound: num(so.growth && so.growth.atkPerRound, _gd.atkPerRound),
-                        dmgMultPerRound: num(so.growth && so.growth.dmgMultPerRound, _gd.dmgMultPerRound),
+                        dmgMultPerRound: _enemyDmgFix ? 0 : num(so.growth && so.growth.dmgMultPerRound, _gd.dmgMultPerRound),
                         defPerRound: num(so.growth && so.growth.defPerRound, _gd.defPerRound),
                         penPerRound: num(so.growth && so.growth.penPerRound, _gd.penPerRound),
                         redDefPerRound: num(so.growth && so.growth.redDefPerRound,
