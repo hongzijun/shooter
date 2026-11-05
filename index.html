@@ -2703,10 +2703,10 @@
                 aiRound: 2,
                 aiDrawCount: 1,
                 growthVer: 1,
-                tuneVer: 3,
+                tuneVer: 4,
                 growth: isEnemy
-                    ? { hpPerRound: 200, atkPerRound: 10, dmgMultPerRound: 0, defPerRound: 10, penPerRound: 5, redDefPerRound: 20, atkPerSecPerRound: 1 }
-                    : { hpPerRound: 150, atkPerRound: 5, dmgMultPerRound: 0, defPerRound: 5, penPerRound: 3, redDefPerRound: 18, atkPerSecPerRound: 0.8 }
+                    ? { hpPerRound: 200, atkPerRound: 10, dmgMultPerRound: 0, defPerRound: 10, penPerRound: 5, redDefPerRound: 20, atkPerSecPerRound: 0.2 }
+                    : { hpPerRound: 150, atkPerRound: 5, dmgMultPerRound: 0, defPerRound: 5, penPerRound: 3, redDefPerRound: 18, atkPerSecPerRound: 0.15 }
             };
         }
         // 双方默认数值统一在 _trainDefaultTune 维护 (面板可调, 保存写入本地存档)
@@ -2859,7 +2859,7 @@
             const i = Math.max(0, wave - 1);
             // 数值设置 (全局): AI 的基础值与成长曲线取「敌人」页签, 默认值与旧公式完全一致
             const _tt = (typeof TRAIN_TUNE !== 'undefined' && TRAIN_TUNE && TRAIN_TUNE.enemy) ? TRAIN_TUNE.enemy : null;
-            const _g = (_tt && _tt.growth) || { hpPerRound: 200, atkPerRound: 10, dmgMultPerRound: 0, defPerRound: 10, penPerRound: 5, redDefPerRound: 20, atkPerSecPerRound: 1 };
+            const _g = (_tt && _tt.growth) || { hpPerRound: 200, atkPerRound: 10, dmgMultPerRound: 0, defPerRound: 10, penPerRound: 5, redDefPerRound: 20, atkPerSecPerRound: 0.2 };
             const _baseHp = _tt ? _tt.baseHp : 500;
             const _baseAtk = _tt ? _tt.atk : 40;
             const _baseDmgMult = _tt ? _tt.damageMult : 1;
@@ -10407,12 +10407,15 @@
                     aiRound: Math.max(1, Math.round(num(so.aiRound, d.aiRound))),
                     aiDrawCount: Math.max(1, Math.min(10, Math.round(num(so.aiDrawCount, d.aiDrawCount)))),
                     growthVer: 1,
-                    tuneVer: 3,
+                    tuneVer: 4,
                     growth: {
                         hpPerRound: num(so.growth && so.growth.hpPerRound, _gd.hpPerRound),
                         // 兼容旧存档: 老版本增量存在顶层 atkPerSec (1 为「无成长」基准, 其它值视为每波增量)
-                        atkPerSecPerRound: num(so.growth && so.growth.atkPerSecPerRound,
-                            (typeof so.atkPerSec === 'number' && so.atkPerSec !== 1) ? so.atkPerSec : _gd.atkPerSecPerRound),
+                        // v4 迁移: 每秒物攻成长默认值调整 (敌 1->0.2, 我 0.8->0.15), 旧存档统一按新默认覆盖
+                        atkPerSecPerRound: (Number(so.tuneVer) < 4)
+                            ? ((side === 'enemy') ? 0.2 : 0.15)
+                            : num(so.growth && so.growth.atkPerSecPerRound,
+                                (typeof so.atkPerSec === 'number' && so.atkPerSec !== 1) ? so.atkPerSec : _gd.atkPerSecPerRound),
                         atkPerRound: num(so.growth && so.growth.atkPerRound, _gd.atkPerRound),
                         dmgMultPerRound: _enemyDmgFix ? 0 : num(so.growth && so.growth.dmgMultPerRound, _gd.dmgMultPerRound),
                         defPerRound: num(so.growth && so.growth.defPerRound, _gd.defPerRound),
