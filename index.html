@@ -2658,14 +2658,14 @@
         // === Task 2.2/2.3: 武器表公式化 ===
         //   sps      : 基准发/秒 (实际发/秒 = sps × (1+攻速%), 攻速含装备加成)
         //   dmgBase  : 伤害基值 (最终伤害 = dmgBase + 攻击者攻击力×atkCoef, AI 用 aiAtk)
-        //   fxMult   : 特效伤害乘数 (冲锋枪×0.6 / 刀剑×1.5 / 其余×1, 作用于装备卡普攻特效)
+        //   fxMult   : 特效伤害乘数 (冲锋枪×1 / 刀剑×1.5 / 其余×1, 作用于装备卡普攻特效)
         //   damage   : 展示基准值 (按玩家基础攻 100 代入公式, 供强化武器 damageMult 等旧逻辑兼容)
         //   fireRate : 基准射击间隔 ms = 1000/sps (强化武器 fireRateMult 会改写实例值, getFireInterval 据此换算)
         const WEAPONS = {
             pistol: { name: '手枪', sps: 5, dmgBase: 15, atkCoef: 0.4, damage: 55, fireRate: 200, ammo: 15, maxAmmo: 15, reserve: 9999, reloadTime: 700, speed: 19, spread: 0.025, color: '#ffd700', knockbackMultiplier: 1.0 },
             rifle: { name: '步枪', sps: 8, dmgBase: 20, atkCoef: 0.25, damage: 45, fireRate: 125, ammo: 32, maxAmmo: 32, reserve: 9999, reloadTime: 1300, speed: 24, spread: 0.042, color: '#4f8eff', knockbackMultiplier: 1.0 },
             shotgun: { name: '霰弹枪', sps: 1.4, dmgBase: 20, atkCoef: 0.3, damage: 50, fireRate: 714, ammo: 10, maxAmmo: 10, reserve: 9999, reloadTime: 1800, speed: 18, spread: 0.24, pellets: 6, color: '#ff6b35', knockbackMultiplier: 1.8, closeRangeBonus: true },
-            smg: { name: '冲锋枪', sps: 12, dmgBase: 3, atkCoef: 0.04, fxMult: 0.6, damage: 7, fireRate: 83, ammo: 45, maxAmmo: 45, reserve: 9999, reloadTime: 1100, speed: 19, spread: 0.095, color: '#a29bfe', knockbackMultiplier: 0.7 },
+            smg: { name: '冲锋枪', sps: 12, dmgBase: 3, atkCoef: 0.04, fxMult: 1, damage: 7, fireRate: 83, ammo: 45, maxAmmo: 45, reserve: 9999, reloadTime: 1100, speed: 19, spread: 0.095, color: '#a29bfe', knockbackMultiplier: 0.7 },
             sniper: { name: '狙击枪', sps: 1.1, dmgBase: 80, atkCoef: 0.9, damage: 170, fireRate: 909, ammo: 6, maxAmmo: 6, reserve: 30, reloadTime: 2800, speed: 34, spread: 0.006, color: '#2ed573', knockbackMultiplier: 2.0 },
             sword: { name: '⚔️ 战刃', sps: 1.8, dmgBase: 80, atkCoef: 0.3, fxMult: 1.5, damage: 110, fireRate: 556, chargeFullMs: 3000, attackRange: 95, maxCombo: 5, color: '#e0e0e0', knockbackMultiplier: 1.5, isMelee: true, ammo: Infinity, maxAmmo: Infinity }
         };
@@ -3244,7 +3244,7 @@
 
         // === Task 4/逐装备特效: 装备卡普攻命中钩子 (子弹命中与刀剑命中共用) —— 逐装备独立条目版 ===
         // 返回值: 特效条目数组 [{ id:'hunter', icon:'🎯', dmg:xx }, { id:'club', icon:'🔨', dmg:xx }, ...]
-        // 每张装备独立一条 (hunterFx=2 则两条 hunter 条目), dmg 已乘特效乘数 fxMult (冲锋枪×0.6 / 刀剑×1.5 / 其余×1);
+        // 每张装备独立一条 (hunterFx=2 则两条 hunter 条目), dmg 已乘特效乘数 fxMult (冲锋枪×1 / 刀剑×1.5 / 其余×1);
         // 由调用方逐条走 takeDamage isFxPass 独立通道并弹出绿色飘字 (DMG_COLORS.fx), 合计值仍用于吸血基数;
         // 其余装备无伤害特效不产生条目, 但各自副作用 (治疗降低/移速叠层/6秒制裁) 保留原样
         function applyEquipOnHitList(attacker, target, fxMult) {
@@ -5339,7 +5339,7 @@
                     if (fx.lifestealPerAtk > 0) v += fx.lifestealPerAtk * this.getAtkP() * 0.01;
                     if (fx.lowHpLifesteal > 0 && this.maxHealth > 0 && this.health < this.maxHealth * 0.5) v += fx.lowHpLifesteal;
                 }
-                return Math.max(0, Math.min(1, v));
+                return Math.max(0, v);   // 吸血无上限 (面板与实际同源)
             }
             // Task 2.2: 刀剑满蓄时长 (默认 3s, 暗黑戒指每张 ×0.8 可叠加)
             getSwordChargeFull() {
