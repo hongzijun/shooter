@@ -5628,9 +5628,10 @@
                     const critResult = checkCrit(this, finalCritRate - this.critRate);
 
                     if (critResult.isCrit) {
-                        const critFinalDmg = Math.round(finalDmg * tempCritDmgMult);
+                        // 暴击倍率统一由 takeDamage 内的 getCritDamageMult() 结算一次
+                        // (此前这里先乘 tempCritDmgMult, 目标再乘一次 -> 近战暴击同样被乘两次)
                         // Task 逐装备特效: 基础+连击伤害走主通道(可暴击), 装备特效逐条独立通道绿色飘字
-                        target.takeDamage(critFinalDmg + cb75, this, true);
+                        target.takeDamage(finalDmg + cb75, this, true);
                         for (let fi = 0; fi < fxList.length; fi++) {
                             const fr = target.takeDamage(fxList[fi].dmg, this, false, 'phys', true);
                             if (fr && (fr.dmg + (fr.absorbed || 0)) > 0) showFloatingNumber(target.x, target.y - 72 - fi * 22, '-' + (fr.dmg + (fr.absorbed || 0)), DMG_COLORS.fx, { prefix: (fr.shield ? '🛡' : ''), iconId: fxList[fi].id === 'photon' ? 'photonbow' : fxList[fi].id, type: 'fx' });
@@ -5646,7 +5647,7 @@
 
                         createParticles(target.x, target.y - 20, '#ffd700', 12);
 
-                        Diag.log('COMBAT', (this.isAI ? 'AI' : 'Player') + ' 刀剑暴击! 连击=' + this.swordComboCount + ' 伤害=' + critFinalDmg);
+                        Diag.log('COMBAT', (this.isAI ? 'AI' : 'Player') + ' 刀剑暴击! 连击=' + this.swordComboCount + ' 伤害=' + finalDmg);
                     } else {
                         // Task 逐装备特效: 连击伤害并入主通道; 装备特效逐条独立通道绿色飘字
                         target.takeDamage(finalDmg + cb75, this);
@@ -6683,6 +6684,21 @@
                     actualDamage = Math.max(1, Math.round(actualDamage * (1 - _rdRate)));
                 }
 
+                // === 受伤倍率 (陷阱易伤 / buff 受伤加成) ===
+                // 必须在护盾吸收之前结算: 否则被护盾吸收的那部分伤害不吃易伤/受伤加成 -> 有盾与无盾不一致
+                const vulnerableEffect = this.activeEffects.find(e => e.effect === 'vulnerable');
+                if (vulnerableEffect) {
+                    const stacks = vulnerableEffect.stacks || 1;
+                    actualDamage = Math.round(actualDamage * (1 + 0.15 * stacks));
+                }
+
+                if (this.buffs) {
+                    const buffEffects = getBuffEffects(this);
+                    if (buffEffects.damageTakenMult > 1) {
+                        actualDamage = Math.round(actualDamage * buffEffects.damageTakenMult);
+                    }
+                }
+
                 // === 阶段3: AP弹无视护盾 ===
                 const bulletIsAP = attacker && attacker.currentSpecialAmmo === 'ap';
 
@@ -6707,20 +6723,6 @@
                     }
                 }
 
-                // === 陷阱系统: 易伤效果 ===
-                const vulnerableEffect = this.activeEffects.find(e => e.effect === 'vulnerable');
-                if (vulnerableEffect) {
-                    const stacks = vulnerableEffect.stacks || 1;
-                    actualDamage = Math.round(actualDamage * (1 + 0.15 * stacks));
-                }
-
-                if (this.buffs) {
-                    const buffEffects = getBuffEffects(this);
-                    if (buffEffects.damageTakenMult > 1) {
-                        actualDamage = Math.round(actualDamage * buffEffects.damageTakenMult);
-                    }
-                }
-
                 // === 效果卡: 不败传奇 免死 (致死伤害→留1血 + 1秒无敌 + 回10%, CD120秒) ===
                 if (this.fx && this.fx.revive > 0 && this.health - actualDamage <= 0) {
                     const _rvNow = Date.now();
@@ -6742,7 +6744,10 @@
                 this.lastDamageTime = Date.now();
 
                 // === 效果卡: 命中触发 (暴击护盾/暴击回血/攻击附魔/每N次命中/灼烧/吸血转盾) ===
-                if (!isFxPass && attacker && attacker.fx) fxOnHit(attacker, this, actualDamage, isCrit);
+                // 命中量口径统一: 血扣量 + 护盾吸收量
+                // 护盾把伤害全部挡掉时 actualDamage=0, 若拿它当命中量, 吸血转化护盾/暴击护盾等会变成 0 —— 有盾/无盾不一致
+                const hitTotal = actualDamage + shieldAbsorbed;
+                if (!isFxPass && attacker && attacker.fx) fxOnHit(attacker, this, hitTotal, isCrit);
                 // === 效果卡/装备: 反弹 (反弹/反弹马甲/崎岖外壳) ===
                 // 防套娃: 本次伤害本身是反弹伤害 (isReflect) 时不再触发二次反弹 —— 双方都有反弹只弹 1 次
                 if (!isReflect && this.fx && attacker && attacker !== this && attacker.health > 0) {
@@ -6790,7 +6795,7 @@
                 }
 
                 // === 追踪最高单次伤害 ===
-                if (actualDamage > highestDamageSingleShot) highestDamageSingleShot = actualDamage;
+                if (hitTotal > highestDamageSingleShot) highestDamageSingleShot = hitTotal;
 
                 // === 训练场: 受伤统计 (总伤害 / 秒伤, 3 秒无伤害清零) ===
                 if (gameState === 'training' && this.isAI) {
@@ -9452,7 +9457,8 @@
                             // Task 10: 反弹独立显示 —— 肉色 + "反弹"前缀 (在 AI 头顶)
                             const thornDmg = Math.round(damageToApply * 0.15 * player.cardPerks.thorns);
                             const tr = b.owner.takeDamage(thornDmg, player, false, 'true', true, true);
-                            showFloatingNumber(b.owner.x, b.owner.y - 50, '-' + (tr ? tr.dmg : thornDmg), DMG_COLORS.true, { prefix: '↩', type: 'fx' });
+                            const _trShown = tr ? ((tr.dmg || 0) + (tr.absorbed || 0)) : thornDmg;
+                            if (_trShown > 0) showFloatingNumber(b.owner.x, b.owner.y - 50, '-' + _trShown, DMG_COLORS.true, { prefix: (tr && tr.shield) ? '🛡↩' : '↩', type: 'fx' });
                         }
                         const kbMult = b.knockbackMult || 1.0;
                         // 枪械击退整体减半: 原倍率 1.5 → 0.75 (各枪型 knockbackMultiplier 相对比例不变)
