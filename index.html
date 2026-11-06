@@ -1788,7 +1788,7 @@
             <!-- v2 版本: 本文件是独立代码分支; "开始游戏" 跳回 v1(index.html), "开始游戏2" 在本文件开局 -->
             <button class="btn" id="btnStartGame" onclick="goToGameV1()">开始游戏</button>
             <button class="btn" id="btnStartGame2" onclick="askStartGame()" style="background:linear-gradient(45deg,#ff9f43,#ee5253);margin-left:10px;">开始游戏 2 (v2)</button>
-            <button id="btnPvP" onclick="startPvP()" style="background:linear-gradient(135deg,#6c5ce7,#a29bfe);border:none;color:white;padding:14px 40px;border-radius:10px;font-size:18px;cursor:pointer;margin:10px;font-weight:bold;">⚔️ 双人对战</button>
+            <button id="btnPvP" onclick="askStartPvP()" style="background:linear-gradient(135deg,#6c5ce7,#a29bfe);border:none;color:white;padding:14px 40px;border-radius:10px;font-size:18px;cursor:pointer;margin:10px;font-weight:bold;">⚔️ 双人对战</button>
             <button class="btn" id="btnTraining" onclick="startTraining()" style="background:linear-gradient(45deg,#2ed573,#1abc9c);">训练场</button>
             <button class="btn" id="openSettingsBtn" onclick="toggleSettings()" style="background:linear-gradient(45deg,#4f8eff,#74b9ff);margin-top:8px;">📖 说明</button>
             <button class="btn touch-only" id="btnTouchSettings" onclick="openTouchSettings()" style="background:linear-gradient(45deg,#6c5ce7,#a29bfe);margin-top:8px;">🎮 按键设置</button>
@@ -4700,7 +4700,8 @@
 
         // === 多存档 (最近 10 局): 索引 + 每局独立槽位 ===
         const SAVE_INDEX_KEY = 'gunfight_save_index';
-        const SAVE_SLOT_LIMIT = 10;
+        const SAVE_SLOT_LIMIT = 20;                    // 存档数量上限 (模式各 20)
+        const SAVE_TOTAL_CHARS_MAX = 1500000;          // 所有存档 JSON 总字符上限 (localStorage 配额保护)
         let _runId = null;     // 当前这局存档的 id (自动存档写入同一槽)
 
         function _newRunId() {
@@ -4727,8 +4728,26 @@
                 return d;
             } catch (e) { return null; }
         }
-        // 写入/更新索引摘要, 保留最近 SAVE_SLOT_LIMIT 局, 超出时删除最旧槽位
-        function _saveSummary(id, data) {
+        // 索引裁剪: 数量超上限或总字符超配额时, 从最旧开始淘汰 (绝不淘汰当前正在写的存档)
+        function _trimSaveIndex(idx, keepId) {
+            const totalChars = function () {
+                let t = 0;
+                for (let i = 0; i < idx.length; i++) t += (idx[i].size != null ? idx[i].size : 60000);   // 旧条目无 size: 按 60KB 估算
+                return t;
+            };
+            while ((idx.length > SAVE_SLOT_LIMIT || totalChars() > SAVE_TOTAL_CHARS_MAX) && idx.length > 1) {
+                let victim = -1;
+                for (let i = idx.length - 1; i >= 0; i--) {
+                    if (idx[i].id !== keepId) { victim = i; break; }
+                }
+                if (victim < 0) break;
+                const old = idx.splice(victim, 1)[0];
+                try { localStorage.removeItem(getSaveSlotKey(old.id)); } catch (e) { }
+            }
+        }
+
+        // 写入/更新索引摘要 (size = 该存档 JSON 字符数, 用于配额保护)
+        function _saveSummary(id, data, size) {
             try {
                 const entry = {
                     id: id,
@@ -4740,18 +4759,14 @@
                     pvpRound: (data.pvp && data.pvp.round) || 1,
                     lives: data.player ? (data.player.lives || 0) : ((data.pvp && data.pvp.livesA) || 0),
                     hp: data.player ? Math.round(data.player.health || 0) : 0,
-                    maxHp: data.player ? Math.round(data.player.maxHealth || 0) : 0
+                    maxHp: data.player ? Math.round(data.player.maxHealth || 0) : 0,
+                    size: (typeof size === 'number' && isFinite(size)) ? size : null
                 };
                 let idx = _readSaveIndex();
                 const pos = idx.findIndex(function (s) { return s.id === id; });
                 if (pos >= 0) idx[pos] = entry; else idx.push(entry);
                 idx.sort(function (a, b) { return (b.t || 0) - (a.t || 0); });
-                while (idx.length > SAVE_SLOT_LIMIT) {
-                    const old = idx.pop();
-                    if (old && old.id && old.id !== id) {
-                        try { localStorage.removeItem(getSaveSlotKey(old.id)); } catch (e) { }
-                    }
-                }
+                _trimSaveIndex(idx, id);
                 localStorage.setItem(SAVE_INDEX_KEY, JSON.stringify(idx));
             } catch (e) { }
         }
@@ -4912,16 +4927,18 @@
                     pvpB: gameState === 'pvp' ? _snapEntity(playerB) : null
                 };
                 if (!_runId) _beginNewRun();
-                localStorage.setItem(getSaveSlotKey(_runId), JSON.stringify(data));
-                _saveSummary(_runId, data);
+                const _payload = JSON.stringify(data);
+                localStorage.setItem(getSaveSlotKey(_runId), _payload);
+                _saveSummary(_runId, data, _payload.length);
                 _lastSaveAt = performance.now();
             } catch (e) { }
         }
 
         // 读取存档 (不改变游戏状态, 仅用于询问弹窗判断)
-        function peekSaveGame() {
+        function peekSaveGame(mode) {
             const idx = _readSaveIndex();
             for (let i = 0; i < idx.length; i++) {
+                if (mode && idx[i].state !== mode) continue;
                 const d = _readSaveData(idx[i].id);
                 if (d) return d;
             }
@@ -5052,9 +5069,9 @@
             else loadSingleSave(data);
         }
 
-        // 继续最近一局
+        // 继续当前模式的最近一局 (模式独立)
         function continueGame() {
-            const idx = _readSaveIndex();
+            const idx = _readSaveIndex().filter(function (s) { return s.state === _startChoiceMode; });
             if (!idx.length) { closeStartChoice(); return; }
             loadSaveById(idx[0].id);
         }
@@ -5062,11 +5079,25 @@
         // === 兼容旧调用: 直接读槽位0 ===
         function loadSaveGame() { continueGame(); }
 
-        // 渲染多存档列表 (最近 10 局, 点击任意一条直接开始该局)
-        function renderSaveSlotList() {
+        // 删除指定存档 (只删该槽, 不影响其它局; 若删的是当前局则下次自动存档会新建槽)
+        function deleteSaveById(id) {
+            const sid = String(id);
+            try {
+                const idx = _readSaveIndex().filter(function (s) { return s.id !== sid; });
+                localStorage.setItem(SAVE_INDEX_KEY, JSON.stringify(idx));
+                localStorage.removeItem(getSaveSlotKey(sid));
+                if (_runId === sid) _runId = null;
+            } catch (e) { }
+            renderSaveSlotList(_startChoiceMode);
+            _refreshStartChoiceHint();
+        }
+
+        // 渲染多存档列表 (按模式独立, 点击任意一条直接开始该局, 右侧可删除)
+        function renderSaveSlotList(mode) {
             const box = document.getElementById('saveSlotList');
             if (!box) return;
-            const idx = _readSaveIndex();
+            // 模式独立: 单人只列 playing, 双人只列 pvp
+            const idx = _readSaveIndex().filter(function (s) { return !mode || s.state === mode; });
             if (!idx.length) {
                 box.innerHTML = '<div style="color:#888;font-size:13px;padding:8px 0;text-align:left;">暂无存档</div>';
                 return;
@@ -5076,28 +5107,56 @@
                 const kind = isPvp ? '双人对战' : '单人无尽';
                 const detail = isPvp ? ('第 ' + (s.pvpRound || 1) + ' 回合') : ('第 ' + (s.wave || 1) + ' 波');
                 const extra = isPvp ? ('比分 ' + (s.score || 0)) : ((s.score || 0) + ' 分');
-                return '<button onclick="loadSaveById(\'' + String(s.id) + '\')" ' +
-                    'style="display:flex;justify-content:space-between;align-items:center;gap:12px;width:100%;padding:10px 14px;border-radius:10px;border:1px solid rgba(79,142,255,0.45);background:linear-gradient(45deg,rgba(108,92,231,0.35),rgba(41,128,185,0.35));color:#fff;font-size:13px;cursor:pointer;text-align:left;">' +
+                const sid = String(s.id);
+                return '<div style="display:flex;gap:6px;align-items:stretch;">' +
+                    '<button onclick="loadSaveById(\'' + sid + '\')" ' +
+                    'style="flex:1;display:flex;justify-content:space-between;align-items:center;gap:12px;padding:10px 14px;border-radius:10px;border:1px solid rgba(79,142,255,0.45);background:linear-gradient(45deg,rgba(108,92,231,0.35),rgba(41,128,185,0.35));color:#fff;font-size:13px;cursor:pointer;text-align:left;">' +
                     '<span>' + (isPvp ? '🔵' : '🎯') + ' ' + kind + ' · ' + detail + '</span>' +
                     '<span style="color:#9ad0ff;font-size:12px;white-space:nowrap;">' + extra + ' · ' + _fmtSaveTime(s.t) + '</span>' +
-                    '</button>';
+                    '</button>' +
+                    '<button onclick="deleteSaveById(\'' + sid + '\')" title="删除该存档" aria-label="删除该存档" ' +
+                    'style="flex:0 0 42px;width:42px;border-radius:10px;border:1px solid rgba(255,92,92,0.5);background:rgba(231,76,60,0.22);color:#ff8a80;font-size:15px;cursor:pointer;">🗑</button>' +
+                    '</div>';
             }).join('');
         }
 
-        // === 开始游戏询问弹窗: 重新开始 / 选择最近存档 ===
-        function askStartGame() {
-            const box = document.getElementById('startChoice');
-            if (!box) { startGame(); return; }
-            const idx = _readSaveIndex();
+        // === 开始询问弹窗: 按模式独立显示各自存档 (单人 playing / 双人 pvp) ===
+        let _startChoiceMode = 'playing';
+
+        function askStartGame() { _openStartChoice('playing'); }
+        function askStartPvP() { _openStartChoice('pvp'); }
+
+        // 刷新当前模式的存档提示 (数量/上限)
+        function _refreshStartChoiceHint() {
+            const mode = _startChoiceMode;
+            const idx = _readSaveIndex().filter(function (s) { return s.state === mode; });
             const hint = document.getElementById('startChoiceHint');
             if (hint) {
                 hint.textContent = idx.length
-                    ? ('最近存档 ' + idx.length + ' / ' + SAVE_SLOT_LIMIT + ' · 选择其中一局继续')
+                    ? ((mode === 'pvp' ? '双人' : '单人') + '存档 ' + idx.length + ' / ' + SAVE_SLOT_LIMIT + ' · 选择其中一局继续')
                     : '暂无存档';
             }
+            return idx;
+        }
+
+        function _openStartChoice(mode) {
+            _startChoiceMode = (mode === 'pvp') ? 'pvp' : 'playing';
+            const box = document.getElementById('startChoice');
+            if (!box) {
+                if (_startChoiceMode === 'pvp') startPvP(); else startGame();
+                return;
+            }
+            const title = document.getElementById('startChoiceTitle');
+            const newBtn = document.getElementById('startChoiceNewBtn');
+            if (title) title.textContent = (_startChoiceMode === 'pvp') ? '双人对战' : '开始游戏';
+            if (newBtn) {
+                newBtn.textContent = (_startChoiceMode === 'pvp') ? '🔄 重新对战' : '🔄 重新开始';
+                newBtn.onclick = (_startChoiceMode === 'pvp') ? startNewPvP : startNewGame;
+            }
+            _refreshStartChoiceHint();
             const contBtn = document.getElementById('startChoiceContinueBtn');
             if (contBtn) contBtn.style.display = 'none';   // 旧单存档按钮已由列表替代
-            renderSaveSlotList();
+            renderSaveSlotList(_startChoiceMode);
             box.style.display = 'flex';
         }
 
@@ -5109,6 +5168,11 @@
         function startNewGame() {
             closeStartChoice();
             startGame();
+        }
+
+        function startNewPvP() {
+            closeStartChoice();
+            startPvP();
         }
 
         function lerpColor(c1, c2, t) {
@@ -12942,11 +13006,11 @@
     <div id="startChoice" style="position:fixed;top:0;left:0;width:100%;height:100%;background:rgba(0,0,0,0.65);z-index:10001;display:none;align-items:center;justify-content:center;">
         <div style="background:linear-gradient(135deg,#1a1a2e,#16213e);border-radius:20px;padding:36px 44px;border:2px solid #4f8eff;text-align:center;min-width:340px;">
             <div style="font-size:42px;margin-bottom:8px;">🎮</div>
-            <h2 style="color:#4f8eff;font-size:26px;margin:0 0 10px;">开始游戏</h2>
+            <h2 id="startChoiceTitle" style="color:#4f8eff;font-size:26px;margin:0 0 10px;">开始游戏</h2>
             <div id="startChoiceHint" style="color:#aaa;font-size:14px;margin-bottom:24px;min-height:20px;"></div>
             <div style="display:flex;flex-direction:column;gap:12px;min-width:380px;">
-                <button onclick="startNewGame()" style="background:linear-gradient(45deg,#2ed573,#1e90ff);border:none;color:white;padding:15px 40px;border-radius:10px;font-size:17px;cursor:pointer;font-weight:bold;">🔄 重新开始</button>
-                <div style="text-align:left;color:#9ad0ff;font-size:13px;font-weight:bold;margin-top:4px;">📂 最近存档 (最多 10 局)</div>
+                <button id="startChoiceNewBtn" onclick="startNewGame()" style="background:linear-gradient(45deg,#2ed573,#1e90ff);border:none;color:white;padding:15px 40px;border-radius:10px;font-size:17px;cursor:pointer;font-weight:bold;">🔄 重新开始</button>
+                <div style="text-align:left;color:#9ad0ff;font-size:13px;font-weight:bold;margin-top:4px;">📂 最近存档</div>
                 <div id="saveSlotList" style="display:flex;flex-direction:column;gap:8px;max-height:42vh;overflow-y:auto;padding-right:2px;"></div>
                 <button id="startChoiceContinueBtn" onclick="continueGame()" style="display:none;background:linear-gradient(45deg,#6c5ce7,#a29bfe);border:none;color:white;padding:15px 40px;border-radius:10px;font-size:17px;cursor:pointer;font-weight:bold;">📂 继续游戏</button>
             </div>
