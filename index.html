@@ -2705,8 +2705,8 @@
                 growthVer: 1,
                 tuneVer: 4,
                 growth: isEnemy
-                    ? { hpPerRound: 200, atkPerRound: 10, dmgMultPerRound: 0, defPerRound: 10, penPerRound: 5, redDefPerRound: 20, atkPerSecPerRound: 0.2 }
-                    : { hpPerRound: 150, atkPerRound: 5, dmgMultPerRound: 0, defPerRound: 5, penPerRound: 3, redDefPerRound: 18, atkPerSecPerRound: 0.15 }
+                    ? { hpPerRound: 200, atkPerRound: 10, dmgMultPerRound: 0, defPerRound: 10, penPerRound: 5, redDefPerRound: 20, atkPerSecPerRound: 0.2, drawEveryRounds: 10, drawAddPerStep: 1 }
+                    : { hpPerRound: 150, atkPerRound: 5, dmgMultPerRound: 0, defPerRound: 5, penPerRound: 3, redDefPerRound: 18, atkPerSecPerRound: 0.15, drawEveryRounds: 0, drawAddPerStep: 1 }
             };
         }
         // 双方默认数值统一在 _trainDefaultTune 维护 (面板可调, 保存写入本地存档)
@@ -2859,7 +2859,7 @@
             const i = Math.max(0, wave - 1);
             // 数值设置 (全局): AI 的基础值与成长曲线取「敌人」页签, 默认值与旧公式完全一致
             const _tt = (typeof TRAIN_TUNE !== 'undefined' && TRAIN_TUNE && TRAIN_TUNE.enemy) ? TRAIN_TUNE.enemy : null;
-            const _g = (_tt && _tt.growth) || { hpPerRound: 200, atkPerRound: 10, dmgMultPerRound: 0, defPerRound: 10, penPerRound: 5, redDefPerRound: 20, atkPerSecPerRound: 0.2 };
+            const _g = (_tt && _tt.growth) || { hpPerRound: 200, atkPerRound: 10, dmgMultPerRound: 0, defPerRound: 10, penPerRound: 5, redDefPerRound: 20, atkPerSecPerRound: 0.2, drawEveryRounds: 10, drawAddPerStep: 1 };
             const _baseHp = _tt ? _tt.baseHp : 500;
             const _baseAtk = _tt ? _tt.atk : 40;
             const _baseDmgMult = _tt ? _tt.damageMult : 1;
@@ -4079,10 +4079,24 @@
 
         // 发放 AI 装备: 数值/特效真实作用于 ai 实体 (与玩家同一套 card.apply), 并逐个播放获取动画
         // 抽卡个数由训练场数值设置「AI每次抽卡个数」控制 (默认 1, 取值 1..10)
+        // AI 每回合抽卡数 = 基础「AI每次抽卡个数」 + 成长: 每过 X 回合 +Y 张
+        // 回合数在无尽模式取当前波次 wave; 训练场取「模拟回合」aiRound
+        function aiDrawCountAtRound(round) {
+            const _tt = (typeof TRAIN_TUNE !== 'undefined' && TRAIN_TUNE && TRAIN_TUNE.enemy) ? TRAIN_TUNE.enemy : null;
+            const base = Math.max(1, Math.round((_tt && _tt.aiDrawCount) || 1));
+            const g = (_tt && _tt.growth) || {};
+            const x = Math.max(0, Math.round(g.drawEveryRounds != null ? g.drawEveryRounds : 10));
+            const y = Math.max(0, Math.round(g.drawAddPerStep != null ? g.drawAddPerStep : 1));
+            if (x <= 0 || y <= 0) return base;   // X=0 或 Y=0: 不成长
+            const r = Math.max(1, Math.round(round || 1));
+            return base + Math.floor((r - 1) / x) * y;
+        }
+
         function grantAiEquipForRound() {
             if (gameState !== 'playing' || !ai) return null;
             const _tt = (typeof TRAIN_TUNE !== 'undefined' && TRAIN_TUNE && TRAIN_TUNE.enemy) ? TRAIN_TUNE.enemy : null;
-            const count = Math.max(1, Math.min(10, Math.round((_tt && _tt.aiDrawCount) || 1)));
+            const _roundNow = Math.max(1, Math.round((typeof wave === 'number' ? wave : 1) || 1));
+            const count = aiDrawCountAtRound(_roundNow);
             const got = [];
             for (let i = 0; i < count; i++) {
                 const card = pickRandomEquipCard();
@@ -10107,7 +10121,9 @@
             { key: 'growth.penPerRound', label: '穿透成长/回合' },
             { key: 'growth.redDefPerRound', label: '减伤防御/回合' },
             { key: 'growth.atkPerSecPerRound', label: '每秒物理攻击力/波' },
-            { key: 'aiDrawCount', label: 'AI每次抽卡个数', only: 'enemy' }
+            { key: 'aiDrawCount', label: 'AI每次抽卡个数', only: 'enemy' },
+            { key: 'growth.drawEveryRounds', label: '抽卡成长: 每 X 回合', only: 'enemy' },
+            { key: 'growth.drawAddPerStep', label: '抽卡成长: 每次 +Y 张', only: 'enemy' }
         ];
 
         function _numStr(v) {
@@ -10184,6 +10200,21 @@
             const _ttEntNow = (trainTuneSide === 'enemy') ? ai : player;
             const _ttD = _ttEntNow ? Math.max(0, Math.round(_ttEntNow._trainDefRed || 0)) : Math.round(_ttCalcD);
             const _ttRatePct = (_ttD / (_ttD + 100) * 100);
+            // 当前回合 AI 实际抽卡数 (只读): 让「成长抽卡」可被直接核对
+            if (trainTuneSide === 'enemy') {
+                const _drawRound = Math.max(1, Math.round(t.aiRound || 1));
+                const _drawNow = aiDrawCountAtRound(_drawRound);
+                const _drawBase = Math.max(1, Math.round(t.aiDrawCount || 1));
+                const _dx = Math.max(0, Math.round((t.growth && t.growth.drawEveryRounds) || 0));
+                const _dy = Math.max(0, Math.round((t.growth && t.growth.drawAddPerStep) || 0));
+                html += '<div class="tt-sec">当前 AI 抽卡数 (只读)</div><div class="tt-grid">' +
+                    '<div class="tt-field"><span>模拟回合</span><b style="color:#2ed573">' + _drawRound + '</b></div>' +
+                    '<div class="tt-field"><span>本回合抽卡</span><b style="color:#2ed573">' + _drawNow + ' 张</b></div>' +
+                    '</div>' +
+                    '<div class="tt-hint" style="text-align:left">' + ((_dx > 0 && _dy > 0)
+                        ? ('规则: 基础 ' + _drawBase + ' 张 + 每 ' + _dx + ' 回合 +' + _dy + ' 张 (无尽模式按波次实时计算, 训练场按模拟回合预览)')
+                        : '抽卡成长未启用 (X=0 或 Y=0)') + '</div>';
+            }
             html += '<div class="tt-sec">当前减伤 (只读 · 含真伤)</div><div class="tt-grid">' +
                 '<div class="tt-field"><span>减伤防御</span><b style="color:#2ed573">' + _ttD + '</b></div>' +
                 '<div class="tt-field"><span>减伤率</span><b style="color:#2ed573">' + _ttRatePct.toFixed(0) + '%</b></div>' +
@@ -10279,6 +10310,8 @@
                 } else if (key) {
                     if (key === 'aiRound') t.aiRound = Math.max(1, Math.round(val));
                     else if (key === 'aiDrawCount') t.aiDrawCount = Math.max(1, Math.min(10, Math.round(val)));
+                    else if (key === 'growth.drawEveryRounds') { t.growth = t.growth || {}; t.growth.drawEveryRounds = Math.max(0, Math.round(val)); }
+                    else if (key === 'growth.drawAddPerStep') { t.growth = t.growth || {}; t.growth.drawAddPerStep = Math.max(0, Math.round(val)); }
                     else if (input.getAttribute('data-tune-pct')) _tuneSet(t, key, val / 100);
                     else _tuneSet(t, key, val);
                 }
@@ -10434,7 +10467,10 @@
                                     return Math.round(r / (1 - r) * 100);   // 旧「减伤倍率」换算成等效减伤防御
                                 }
                                 return _gd.redDefPerRound;
-                            })())
+                            })()),
+                        // 抽卡成长: 每 X 回合 +Y 张 (v5 新增, 缺省用云端默认 10 / 1)
+                        drawEveryRounds: Math.max(0, Math.round(num(so.growth && so.growth.drawEveryRounds, _gd.drawEveryRounds != null ? _gd.drawEveryRounds : 10))),
+                        drawAddPerStep: Math.max(0, Math.round(num(so.growth && so.growth.drawAddPerStep, _gd.drawAddPerStep != null ? _gd.drawAddPerStep : 1)))
                     }
                 };
                 TRAIN_WEAPON_KEYS.forEach(function (k) {
