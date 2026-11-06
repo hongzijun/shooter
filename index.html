@@ -8114,41 +8114,78 @@
             return out;
         }
 
+        // === 静态增益图标: 区域化自动布局 ===
+        // 原则: 每个角色有「上/下」两个区域; 优先保持基准尺寸 S=34 与名称行,
+        // 通过向右(左)增加列把区域铺满; 只有区域被铺满仍放不下时才缩小图标, 绝不超过区域范围。
+        // 分类: 状态/条件/层数类(type!=cd) 放上区, 装备冷却/技能类(type=cd) 放下区。
+        function _layoutStaticZone(items, x0, yTop, wZone, hZone, alignRight) {
+            const n = items.length;
+            if (!n) return;
+            const S0 = 34, L0 = 10, GAP = 6;
+            const maxCols = Math.max(1, Math.floor((wZone + GAP) / (S0 + GAP)));
+            let cols = 1, S = S0, LABEL_H = L0;
+            for (let c = 1; c <= maxCols; c++) {
+                const rows = Math.ceil(n / c);
+                if (rows * (S0 + L0 + GAP) - GAP <= hZone) { cols = c; S = S0; LABEL_H = L0; break; }
+                if (c === maxCols) {
+                    const rows2 = Math.ceil(n / c);
+                    const sWithLabel = Math.floor((hZone - rows2 * (L0 + GAP)) / rows2);
+                    if (sWithLabel >= 16) {
+                        S = Math.min(S0, sWithLabel); LABEL_H = L0;
+                    } else {
+                        LABEL_H = 0;
+                        S = Math.min(S0, Math.max(8, Math.floor((hZone - rows2 * GAP + GAP) / rows2)));
+                    }
+                    cols = c;
+                    break;
+                }
+            }
+            const rowH = S + LABEL_H + GAP, colW = S + GAP;
+            const rowsPerCol = Math.ceil(n / cols);
+            const totalH = rowsPerCol * rowH - GAP;
+            const y0 = yTop + Math.max(0, (hZone - totalH) / 2);
+            ctx.save();
+            for (let i = 0; i < n; i++) {
+                const col = Math.floor(i / rowsPerCol);
+                const rowIdx = i % rowsPerCol;
+                const x = alignRight ? (x0 - S - col * colW) : (x0 + col * colW);
+                const y = y0 + rowIdx * rowH;
+                _drawStaticIcon(items[i], x, y, S, LABEL_H);
+            }
+            ctx.restore();
+        }
+
         function drawStaticColumn(ent, side) {
             const items = collectStaticItems(ent);
             if (!items.length) return;
             const W = canvas.width, H = canvas.height;
-            const GAP = 6;
-            let LABEL_H = 10;
-            // 静态区限定在上下面板之间的空闲带内, 避免与四角效果面板重叠
-            const topLimit = 150 + 130;
-            const bottomLimit = H - ((gameState === 'pvp') ? 200 : 70) - 130;
-            const avail = Math.max(56, bottomLimit - topLimit);
-            // 无上限显示: 条目多时自动加列并缩小图标, 保证全部落在屏幕空闲带内 (不出屏幕)
-            let S = 34;
-            const rowsOneCol = Math.floor(avail / (S + LABEL_H + GAP));
-            const cols = (items.length <= rowsOneCol) ? 1 : ((items.length <= rowsOneCol * 2) ? 2 : 3);
-            const rowsPerCol = Math.ceil(items.length / cols);
-            let fitS = Math.floor((avail - rowsPerCol * (LABEL_H + GAP)) / rowsPerCol);
-            if (fitS < S) S = fitS;
-            if (S < 12) {   // 极端拥挤: 先省略名称行, 再压到最小图标
-                LABEL_H = 0;
-                S = Math.max(8, Math.min(12, Math.floor(avail / rowsPerCol) - GAP));
+            const isPvpMode = (gameState === 'pvp');
+            const isLeft = (side === 'left');
+            // 区域范围: 左右各占屏宽 34% (上限 420px), 垂直避开四角 HUD 与底部面板
+            const zoneW = Math.min(W * 0.34, 420);
+            const bottom = H - (isPvpMode ? 200 : 120);
+            const top = isLeft ? Math.max(150, Math.round(H * 0.33)) : Math.max(96, Math.round(H * 0.17));
+            if (bottom - top < 60) return;
+            const x0 = isLeft ? 10 : (W - 10);
+            const alignRight = !isLeft;
+            const statusItems = items.filter(function (it) { return it.type !== 'cd'; });
+            const skillItems = items.filter(function (it) { return it.type === 'cd'; });
+            if (!skillItems.length) {
+                _layoutStaticZone(statusItems, x0, top, zoneW, bottom - top, alignRight);
+                return;
             }
-            S = Math.max(8, S);
-            const ROW = S + LABEL_H + GAP, COLX = S + GAP;
-            const totalH = rowsPerCol * ROW - GAP;
-            const y0 = topLimit + Math.max(0, (avail - totalH) / 2);
-            const x0 = (side === 'left') ? 10 : (W - 10 - S);
+            if (!statusItems.length) {
+                _layoutStaticZone(skillItems, x0, top, zoneW, bottom - top, alignRight);
+                return;
+            }
+            const mid = top + Math.round((bottom - top) * 0.52);
+            _layoutStaticZone(statusItems, x0, top, zoneW, Math.max(40, mid - top - 6), alignRight);
+            _layoutStaticZone(skillItems, x0, mid + 6, zoneW, Math.max(40, bottom - mid - 6), alignRight);
+        }
 
-            ctx.save();
-            for (let i = 0; i < items.length; i++) {
-                const it = items[i];
-                const col = Math.floor(i / rowsPerCol);
-                const rowIdx = i % rowsPerCol;
-                const x = x0 + (side === 'left' ? col * COLX : -col * COLX);
-                const y = y0 + rowIdx * ROW;
-                const isCd = it.type === 'cd';
+        // 单个静态图标绘制 (S=图标边长, LABEL_H=名称行高)
+        function _drawStaticIcon(it, x, y, S, LABEL_H) {
+            const isCd = it.type === 'cd';
                 const cooling = isCd && it.remain > 0;
                 // Task C: 统一「激活」判定 —— 未激活一律灰显
                 let isActive = true;
@@ -8255,8 +8292,6 @@
                                 : 'rgba(200,214,238,0.90)'));
                     ctx.fillText(it.name, cx, y + S + 1, S + 14);
                 }
-            }
-            ctx.restore();
         }
 
         function drawStaticZones() {
