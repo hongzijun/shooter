@@ -2700,14 +2700,15 @@
                 healMult: 1,
                 shieldMult: 1,
                 healResist: 0,
+                healDecayBase: 0,     // x: 每秒减疗% 基数 (基础属性面板, 作用于对方回血)
                 weapons: weapons,
                 aiRound: 2,
                 aiDrawCount: 1,
                 growthVer: 1,
                 tuneVer: 5,
                 growth: isEnemy
-                    ? { hpPerRound: 200, atkPerRound: 10, dmgMultPerRound: 0, defPerRound: 10, penPerRound: 5, redDefPerRound: 20, atkPerSecPerRound: 0.2, drawEveryRounds: 10, drawAddPerStep: 1 }
-                    : { hpPerRound: 150, atkPerRound: 5, dmgMultPerRound: 0, defPerRound: 5, penPerRound: 3, redDefPerRound: 18, atkPerSecPerRound: 0.15, drawEveryRounds: 0, drawAddPerStep: 1 }
+                    ? { hpPerRound: 200, atkPerRound: 10, dmgMultPerRound: 0, defPerRound: 10, penPerRound: 5, redDefPerRound: 20, atkPerSecPerRound: 0.2, drawEveryRounds: 10, drawAddPerStep: 1, healDecayPerRound: 0 }
+                    : { hpPerRound: 150, atkPerRound: 5, dmgMultPerRound: 0, defPerRound: 5, penPerRound: 3, redDefPerRound: 18, atkPerSecPerRound: 0.15, drawEveryRounds: 0, drawAddPerStep: 1, healDecayPerRound: 0 }
             };
         }
         // 双方默认数值统一在 _trainDefaultTune 维护 (面板可调, 保存写入本地存档)
@@ -2733,12 +2734,38 @@
         //   · 主循环直接跳过 update/draw, 画面静止, 不显示任何暂停提示
         // ============================================================
         const _tpRealNow = Date.now.bind(Date);
+        const _tpRealPerf = performance.now.bind(performance);
         let _tpPaused = false;
         let _tpAccum = 0;            // 累计暂停毫秒 (从虚拟时间轴上扣除)
-        let _tpStartReal = 0;        // 本次暂停开始时的真实时间
+        let _tpStartReal = 0;        // 本次暂停开始时的真实时间 (兼容保留)
+        let _tpClockPaused = false;  // 虚拟时钟冻结: Caps / Esc 暂停菜单 / Tab 属性面板 共用
+        let _tpClockStartReal = 0;
+        let _tpPerfAccum = 0;
+        let _tpPerfFrozenAt = 0;
+        // 统一同步: 任一暂停状态 (Caps 透明暂停 / Esc 暂停 / Tab 属性面板) 都冻结时间轴
+        function _tpSyncClockPause() {
+            const frozen = _tpPaused || isPaused || statPanelOpen;
+            if (frozen) {
+                if (!_tpClockPaused) {
+                    _tpClockPaused = true;
+                    _tpClockStartReal = _tpRealNow();
+                    _tpPerfFrozenAt = _tpRealPerf();
+                    _tpStartReal = _tpClockStartReal;
+                }
+            } else if (_tpClockPaused) {
+                _tpAccum += _tpRealNow() - _tpClockStartReal;
+                _tpPerfAccum += _tpRealPerf() - _tpPerfFrozenAt;
+                _tpClockPaused = false;
+                _tpClockStartReal = 0;
+            }
+        }
         Date.now = function () {
-            if (_tpPaused) return _tpStartReal - _tpAccum;
+            if (_tpClockPaused) return _tpClockStartReal - _tpAccum;
             return _tpRealNow() - _tpAccum;
+        };
+        performance.now = function () {
+            if (_tpClockPaused) return _tpPerfFrozenAt - _tpPerfAccum;
+            return _tpRealPerf() - _tpPerfAccum;
         };
         const _tpTimeouts = new Map();
         const _tpIntervals = new Map();
@@ -2805,14 +2832,14 @@
         };
         function _tpTogglePause() {
             if (!_tpPaused) {
-                _tpStartReal = _tpRealNow();
                 _tpPaused = true;
+                _tpSyncClockPause();
                 showFloatingText('暂停游戏', '#ffeaa7');
                 return;
             }
             // 恢复: 扣除暂停时长, 保证虚拟时间轴连续 (CD/无敌/时间戳无缝衔接)
-            _tpAccum += _tpRealNow() - _tpStartReal;
             _tpPaused = false;
+            _tpSyncClockPause();
             _camLastTs = 0;   // 相机帧步长重置, 恢复首帧不跳变
             _tpTimeouts.forEach(function (rec, id) {
                 if (rec.done) return;
@@ -3409,6 +3436,19 @@
             const m = t ? t[kind === 'shield' ? 'shieldMult' : 'healMult'] : 1;
             return (typeof m === 'number' && isFinite(m) && m >= 0) ? m : 1;
         }
+        // 对手实体: PvP 为 A/B 互相, 其余为玩家/AI
+        function fxOpponentOf(p) {
+            if (!p) return null;
+            if (gameState === 'pvp') return (p === playerA) ? playerB : (p === playerB ? playerA : null);
+            return p.isAI ? player : ai;
+        }
+        // 对方累计的「每秒减疗」: 只减对方的回血, 不减自己 (上限95%)
+        function fxHealDecayFor(p) {
+            const o = fxOpponentOf(p);
+            const v = (o && o._healDecayBonus) || 0;
+            return Math.max(0, Math.min(0.95, v));
+        }
+
         // 抗治疗: 全局抗治疗(属性面板/训练场可改) + 临时减疗效果 (撼地重斧命中 3 秒 -40%)
         function fxHealResist(p) {
             let r = 0;
@@ -3439,6 +3479,8 @@
             }
             // 抗治疗: 相当于 治疗倍率 - 抗治疗 (撼地重斧的减疗并入抗治疗)
             v *= Math.max(0, fxMult(p, 'heal') - fxHealResist(p));
+            // 对方施加的「每秒减疗」: 任何回血(治疗)按该比例削减, 上限 95%
+            v *= (1 - fxHealDecayFor(p));
             v = Math.round(v);
             let applied = 0;
             if (v > 0) {
@@ -3454,6 +3496,8 @@
         // 吸血回复: 不属于「治疗」(治疗 = 非吸血类加血), 不吃治疗加成 / 减疗 debuff
         function fxDrainHeal(p, amt) {
             if (!p || p.health <= 0 || amt <= 0) return 0;
+            amt = Math.round(amt * (1 - fxHealDecayFor(p)));   // 吸血同样受对方减疗影响
+            if (amt <= 0) return 0;
             const before = p.health;
             p.health = Math.min(p.maxHealth, p.health + amt);
             return Math.round(p.health - before);
@@ -5591,7 +5635,7 @@
                     if (fx.lifestealPerAtk > 0) v += fx.lifestealPerAtk * this.getAtkP() * 0.01;
                     if (fx.lowHpLifesteal > 0 && this.maxHealth > 0 && this.health < this.maxHealth * 0.5) v += fx.lowHpLifesteal;
                 }
-                return Math.max(0, v);   // 吸血无上限 (面板与实际同源)
+                return Math.max(0, Math.min(2, v));   // 吸血上限 200% (面板与实际同源)
             }
             // Task 2.2: 刀剑满蓄时长 (默认 3s, 暗黑戒指每张 ×0.8 可叠加)
             getSwordChargeFull() {
@@ -6230,14 +6274,16 @@
 
             // 每秒物理攻击力加成: 每满 1 秒按本侧训练面板数值累积 (击杀后由 resetAtkPerSecBonus 清零)
             tickAtkPerSecGrowth() {
-                const _perSec = atkPerSecValue(this);   // 每秒物理攻击力 = x + (y-1)*当前波次/回合
+                const _perSec = atkPerSecValue(this);   // 每秒物理攻击力 = x + y*(波次-1)
+                const _decay = healDecayValue(this);    // 每秒减疗% (对对方回血生效)
                 const _now = Date.now();
-                if (_perSec <= 0) { this._atkSecAt = _now; return; }
                 if (!this._atkSecAt) this._atkSecAt = _now;
+                if (_perSec <= 0 && _decay <= 0) { this._atkSecAt = _now; return; }
                 const _el = _now - this._atkSecAt;
                 if (_el >= 1000) {
                     const _n = Math.floor(_el / 1000);
-                    this._atkPerSecBonus = (this._atkPerSecBonus || 0) + _perSec * _n;
+                    if (_perSec > 0) this._atkPerSecBonus = (this._atkPerSecBonus || 0) + _perSec * _n;
+                    if (_decay > 0) this._healDecayBonus = Math.min(0.95, (this._healDecayBonus || 0) + _decay * _n);
                     this._atkSecAt += _n * 1000;
                 }
             }
@@ -8861,6 +8907,8 @@
                     multRow('shieldMult', '护盾倍率') +
                     row('每秒物理攻击力', '<span style="color:#ffd166">' + (Math.round(atkPerSecValue(e) * 10) / 10) + '</span>' +
                         ' <span style="color:#7f8ba8">(已累积 +' + Math.round(e._atkPerSecBonus || 0) + ')</span>') +
+                    row('减疗(对敌)', '<span style="color:#ff9f43">' + fmtPct(Math.min(0.95, e._healDecayBonus || 0)) + '</span>' +
+                        ' <span style="color:#7f8ba8">(每秒累加, 上限95%, 独立于抗治疗)</span>') +
                     row('灼烧', hasRobe ? '<span style="color:#ff9f43">有 (' + e.equip.robeCount + '件)</span>' : '无') +
                     '<div class="stat-section"><div class="sec-title">现有卡牌 (点击查看详情)</div><div class="stat-cards">' +
                         buildCardChipsHTML(getEntityCardLog(e)) + '</div></div>' +
@@ -10445,7 +10493,8 @@
             { key: 'damageMult', label: '伤害倍率' },
             { key: 'healMult', label: '治疗倍率' },
             { key: 'shieldMult', label: '护盾倍率' },
-            { key: 'healResist', label: '抗治疗(%)', pct: true }
+            { key: 'healResist', label: '抗治疗(%)', pct: true },
+            { key: 'healDecayBase', label: '每秒减疗(%)', pct: true }
         ];
         const TRAIN_TUNE_AI_FIELDS = [
             { key: 'aiRound', label: '模拟回合' },
@@ -10456,6 +10505,7 @@
             { key: 'growth.penPerRound', label: '穿透成长/回合' },
             { key: 'growth.redDefPerRound', label: '减伤防御/回合' },
             { key: 'growth.atkPerSecPerRound', label: '每秒物理攻击力/波' },
+            { key: 'growth.healDecayPerRound', label: '减疗成长(%)/波', pct: true },
             { key: 'aiDrawCount', label: 'AI每次抽卡个数', only: 'enemy' },
             { key: 'growth.drawEveryRounds', label: '抽卡成长: 每 X 回合', only: 'enemy' },
             { key: 'growth.drawAddPerStep', label: '抽卡成长: 每次 +Y 张', only: 'enemy' }
@@ -10554,9 +10604,11 @@
             html += '<div class="tt-sec">' + (trainTuneSide === 'enemy' ? 'AI 成长 (仅训练场靶子生效)' : '成长 (训练场按模拟回合结算)') + '</div><div class="tt-grid">';
             TRAIN_TUNE_AI_FIELDS.forEach(function (f) {
                 if (f.only && f.only !== trainTuneSide) return;
+                const raw = _tuneGet(t, f.key);
+                const val = f.pct ? raw * 100 : raw;
                 html += '<div class="tt-field"><span>' + f.label + '</span>' +
                     '<input type="text" inputmode="decimal" data-tune-key="' + f.key +
-                    '" value="' + _numStr(_tuneGet(t, f.key)) + '"></div>';
+                    '"' + (f.pct ? ' data-tune-pct="1"' : '') + ' value="' + _numStr(val) + '"></div>';
             });
             html += '</div>';
 
@@ -10809,6 +10861,7 @@
                     healMult: num(so.healMult, d.healMult),
                     shieldMult: num(so.shieldMult, d.shieldMult),
                     healResist: num(so.healResist, d.healResist),
+                    healDecayBase: Math.max(0, Math.min(0.95, num(so.healDecayBase, d.healDecayBase))),
                     weapons: {},
                     aiRound: Math.max(1, Math.round(num(so.aiRound, d.aiRound))),
                     aiDrawCount: Math.max(1, Math.min(10, Math.round(num(so.aiDrawCount, d.aiDrawCount)))),
@@ -10822,6 +10875,7 @@
                             ? ((side === 'enemy') ? 0.2 : 0.15)
                             : num(so.growth && so.growth.atkPerSecPerRound,
                                 (typeof so.atkPerSec === 'number' && so.atkPerSec !== 1) ? so.atkPerSec : _gd.atkPerSecPerRound),
+                        healDecayPerRound: Math.max(0, Math.min(0.95, num(so.growth && so.growth.healDecayPerRound, _gd.healDecayPerRound))),
                         atkPerRound: num(so.growth && so.growth.atkPerRound, _gd.atkPerRound),
                         dmgMultPerRound: _enemyDmgFix ? 0 : num(so.growth && so.growth.dmgMultPerRound, _gd.dmgMultPerRound),
                         defPerRound: num(so.growth && so.growth.defPerRound, _gd.defPerRound),
@@ -11293,7 +11347,10 @@
                     '新增至臻卡「净化之光」💠：每 15 秒净化自身 2 秒，立即清除并免疫所有负面效果，期间角色散发蓝光；多张叠加时长（上限 5 秒）',
                     '状态/增益图标改为左右分区显示：上区状态类、下区技能类；位置足够时保持原尺寸，区域占满后才缩小',
                     '训练场「数值设置」加入管理员密码，密码正确才可进入修改界面（本次会话内有效）',
-                    '数值设置一次性重置为默认值（存档、成就、触控布局不受影响）'
+                    '数值设置一次性重置为默认值（存档、成就、触控布局不受影响）',
+                    'Tab 属性面板与 Esc 暂停现在与 Caps 透明暂停一致：暂停期间所有冷却、增益、子弹与定时器时间全部冻结，恢复后无缝衔接',
+                    '吸血上限调整为 200%',
+                    '训练场新增「每秒减疗(%)」与「减疗成长(%)/波」：双方每秒累加，只减少对方的治疗与吸血回血（不减自己），上限 95%，属性面板同步显示当前值'
                 ]
             },
             {
@@ -12643,12 +12700,27 @@
             return Math.max(0, x + y * (z - 1));
         }
 
+        // 每秒减疗%: 与每秒物理攻击力同一公式 x + y*(z-1), 上限 95%
+        function healDecayValue(ent) {
+            const side = (ent && ent.isAI) ? 'enemy' : 'mine';
+            const t = (TRAIN_TUNE && TRAIN_TUNE[side]) ? TRAIN_TUNE[side] : null;
+            if (!t) return 0;
+            const x = t.healDecayBase || 0;
+            const y = (t.growth && t.growth.healDecayPerRound) || 0;
+            let z = 1;
+            if (gameState === 'training') z = Math.max(1, Math.round(t.aiRound || 1));
+            else if (gameState === 'pvp') z = Math.max(1, pvpRound || 1);
+            else z = Math.max(1, wave || 1);
+            return Math.max(0, Math.min(0.95, x + y * (z - 1)));
+        }
+
         // 每秒物理攻击力加成: 任何一方发生击杀时, 双方累计值都清零 (从零重新计时)
         function resetAtkPerSecBonus() {
             const now = Date.now();
             [player, ai, playerA, playerB].forEach(function (e) {
                 if (!e) return;
                 e._atkPerSecBonus = 0;
+                e._healDecayBonus = 0;
                 e._atkSecAt = now;
             });
         }
@@ -12844,6 +12916,8 @@
         }
 
         function gameLoop() {
+            // 统一虚拟时钟: Caps 透明暂停 / Esc 暂停菜单 / Tab 属性面板 都会冻结所有时间戳与定时器
+            _tpSyncClockPause();
             // 透明暂停: 完全冻结 —— 不推进任何状态, 也不重绘, 画面保持暂停前最后一帧
             if (_tpPaused) { requestAnimationFrame(gameLoop); return; }
             const frameStart = performance.now();
