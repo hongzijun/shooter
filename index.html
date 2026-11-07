@@ -4941,6 +4941,33 @@
             };
         }
 
+        // === 读档存活兜底 ===
+        // 自动存档可能发生在死亡过渡帧 (health=0 且重生/选卡流程尚未开始), 读档后这些实体不会再有重生机会,
+        // 而渲染会跳过 health<=0 的角色 -> 表现为"人物或 AI 偶尔消失"。统一做位置与血量兜底。
+        function _ensureAliveAfterLoad(p, isAI) {
+            if (!p) return;
+            if (!(p.maxHealth > 0) || !isFinite(p.maxHealth)) p.maxHealth = isAI ? 1000 : 500;
+            const right = !!isAI || !!p._isPlayerB;
+            const spawnX = right ? CONFIG.MAP_WIDTH / 2 + 380 : CONFIG.MAP_WIDTH / 2 - 320;
+            const spawnY = CONFIG.GROUND_Y - 146;
+            // 位置兜底: 越界/NaN (掉出地图、旧存档)
+            if (!isFinite(p.x) || !isFinite(p.y) || p.x < -100 || p.x > CONFIG.MAP_WIDTH + 100 || p.y < -1500 || p.y > CONFIG.GROUND_Y + 300) {
+                p.x = spawnX; p.y = spawnY; p.vx = 0; p.vy = 0; p.jumpCount = 0;
+            }
+            // 血量兜底: 存档时处于死亡状态 -> 直接满血复位 (不扣命数, 避免读档后永久消失)
+            if (!(p.health > 0) || !isFinite(p.health)) {
+                p.health = p.maxHealth;
+                p.lives = Math.max(1, p.lives || 1);
+                p.shield = 0;
+                p.vx = 0; p.vy = 0; p.jumpCount = 0;
+                p.isReloading = false; p.frozen = false;
+                p.burningStacks = 0; p.burnStacks = [];
+                p.dotDamage = null; p.slowEffect = null;
+                p.activeEffects = [];
+            }
+            if (p.health > p.maxHealth) p.health = p.maxHealth;
+        }
+
         // === 实体恢复: 逐字段写回 (缺字段保留构造函数默认值) ===
         function _applyEntity(p, d) {
             if (!p || !d) return;
@@ -5008,6 +5035,8 @@
                     });
                 });
             }
+            // 读档后统一兜底: 防止存档写在死亡/重生过渡帧导致角色消失
+            _ensureAliveAfterLoad(p, !!p.isAI);
         }
 
         // === 实时存档: 单人(playing)与双人(pvp)都保存, 由 gameLoop 每 300ms 调用 (>=3次/秒) ===
@@ -11361,7 +11390,8 @@
                     '吸血上限调整为 200%',
                     '训练场新增「每秒减疗(%)」与「减疗成长(%)/波」：双方每秒累加，只减少对方的治疗与吸血回血（不减自己），上限 95%，属性面板同步显示当前值',
                     '护盾显示移至除背景外的最上层，禁跳 🚫 标识不再被护盾光晕遮挡（单人/双人/训练场一致）',
-                    '卡牌与效果卡冷却恢复享受全部冷却缩减（装备/效果卡/按损失生命的动态加成），CDR 上限改为 60%；禁跳诅咒改为命中触发瞬间立即进入 10 秒冷却，冷却显示同步更新'
+                    '卡牌与效果卡冷却恢复享受全部冷却缩减（装备/效果卡/按损失生命的动态加成），CDR 上限改为 60%；禁跳诅咒改为命中触发瞬间立即进入 10 秒冷却，冷却显示同步更新',
+                    '修复从存档继续时偶尔出现人物或 AI 消失：读档时自动检测死亡/越界状态并复位到出生点满血（双人模式同样生效）'
                 ]
             },
             {
