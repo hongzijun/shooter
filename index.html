@@ -4158,10 +4158,10 @@
               apply(p) { const f = ensureFx(p); if (f.purify <= 0) f.purifyNextAt = Date.now() + 15000; f.purify++; } },
             { id: 'fx_cdrplus_e', name: '时间刻印', icon: '⏳', type: 'effect', rarity: 'epic', desc: '所有冷却型效果冷却额外 -10%（先乘 CDR 再乘本效果），可叠加，最多 -60%',
               apply(p) { const f = ensureFx(p); f.cdrPlus = Math.min(0.60, (f.cdrPlus || 0) + 0.10); } },
-            { id: 'fx_debuffext_e', name: '衰亡刻印', icon: '⏬', type: 'effect', rarity: 'epic', desc: '使对方所有负面效果持续时间 +50%，可叠加，最多 +200%',
-              apply(p) { const f = ensureFx(p); f.debuffExt = Math.min(2.0, (f.debuffExt || 0) + 0.50); } },
-            { id: 'fx_buffext_e', name: '恒久刻印', icon: '⏫', type: 'effect', rarity: 'epic', desc: '自身所有增益效果持续时间 +30%，可叠加，最多 +200%',
-              apply(p) { const f = ensureFx(p); f.buffExt = Math.min(2.0, (f.buffExt || 0) + 0.30); } }
+            { id: 'fx_debuffext_e', name: '衰亡刻印', icon: '⏬', type: 'effect', rarity: 'epic', desc: '使对方所有负面效果持续时间 +20%，可叠加，最多 +200%',
+              apply(p) { const f = ensureFx(p); f.debuffExt = Math.min(2.0, (f.debuffExt || 0) + 0.20); } },
+            { id: 'fx_buffext_e', name: '恒久刻印', icon: '⏫', type: 'effect', rarity: 'epic', desc: '自身所有增益效果持续时间 +20%，可叠加，最多 +200%',
+              apply(p) { const f = ensureFx(p); f.buffExt = Math.min(2.0, (f.buffExt || 0) + 0.20); } }
         ];
         CARDS.push(...EFFECT_CARDS);
 
@@ -11545,9 +11545,10 @@
                     '「崭新护甲」改为循环减伤：多张不再把 40% 直接相加，而是按 1-(1-40%)×叠加计算（1 张 40%、2 张 64%、3 张 78.4%…），不会再出现 3 张完全无伤害',
                     '新增装备卡「眩晕枷锁」💫：生命+100、物攻+20；每 10 秒（固定冷却，不受 CDR 影响）下一次攻击命中使敌人眩晕 2 秒，期间固定原地、无法跳跃/移动/开火且不受击退，头顶显示眩晕图标；多张不叠加',
                     '「眩晕枷锁」的 10 秒冷却改为固定时间，不再享受 CDR、时间刻印等任何冷却缩减',
+                    '「衰亡刻印」「恒久刻印」数值调整：负面 / 增益时长延长改为每张 +20%（上限仍为 +200%）',
                     '新增至臻卡「时间刻印」⏳：所有冷却型效果额外 -10%（先乘 CDR 再乘本效果），可叠加，最多 -60%',
-                    '新增至臻卡「衰亡刻印」⏬：使对方所有负面效果持续时间 +50%，可叠加，最多 +200%',
-                    '新增至臻卡「恒久刻印」⏫：自身所有增益效果持续时间 +30%，可叠加，最多 +200%',
+                    '新增至臻卡「衰亡刻印」⏬：使对方所有负面效果持续时间 +20%，可叠加，最多 +200%',
+                    '新增至臻卡「恒久刻印」⏫：自身所有增益效果持续时间 +20%，可叠加，最多 +200%',
                     '更新公告改为「最新条目置顶」：每次更新后打开公告即可看到最新内容，无需向下滚动'
                 ]
             },
