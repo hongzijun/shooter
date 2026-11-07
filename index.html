@@ -8477,15 +8477,13 @@
                     _abArr.forEach(function (it, i) { addCd('airbag_' + i, '安全气囊', 'airbag', it.lastAt || 0, (it.cdMs || 6000), it.close || 0); });
                 }
                 if (fx.immuneEvery9s > 0) {
-                    // 只显示一枚: 取「最快就绪」的那件; 就绪 remain=0(亮), 被打破后回到 9 秒倒计时
+                    // 逐件独立显示: 有几个相位臂甲就显示几个条目 (就绪 remain=0 亮, 被打破后各自 9 秒倒计时)
                     const _phArr = fxInst(ent, 'phasearm', fx.immuneEvery9s);
-                    let _phEnd = Infinity, _phTot = 0;
-                    for (let _i = 0; _i < _phArr.length; _i++) {
-                        const _it = _phArr[_i];
-                        const _end = _it.ready ? 0 : ((_it.lastAt || 0) + (_it.cdMs || 9000));
-                        if (_end < _phEnd) { _phEnd = _end; _phTot = (_it.cdMs || 9000); }
-                    }
-                    addCd('phase', '相位臂甲', 'phasearm', (_phEnd === Infinity ? 0 : _phEnd), _phTot || 9000);
+                    _phArr.forEach(function (it, i) {
+                        const _t = (it.cdMs || 9000);
+                        const _end = it.ready ? 0 : ((it.lastAt || 0) + _t);
+                        addCd('phase_' + i, '相位臂甲', 'phasearm', _end, _t);
+                    });
                 }
                 if (fx.panicShield > 0) {
                     const _wbArr = fxInst(ent, 'warpbag', fx.panicShield);
@@ -11712,7 +11710,8 @@
                     '选卡刷新次数由 3 次改为 10 次（单人 / 训练场 / PvP 双方各自独立 10 次）',
                     '净化之光基础冷却调整为 20 秒（多张仍每张 -0.5 秒，最低 12 秒）',
                     'PvE 新增里程碑自选：每过 X 波（X / Y 取自 AI 抽卡成长配置）可自选 Y×X/2 张卡牌，装备 / 效果均可，选择期间游戏暂停',
-                    '冷却缩减（CDR）上限由 60% 提升至 80%；「时间刻印」仍最多额外 -60%，两者乘算后最高约 92%'
+                    '冷却缩减（CDR）上限由 60% 提升至 80%；「时间刻印」仍最多额外 -60%，两者乘算后最高约 92%',
+                    '独立触发类装备改为逐件独立显示（如相位臂甲）：有几个就显示几个冷却条目，各自倒计时 / 就绪，不再合并成一条'
                 ]
             },
             {
