@@ -4927,6 +4927,7 @@
                 cdr: p.cdr, atkSpeed: p.atkSpeed, critRate: p.critRate, critDamageMult: p.critDamageMult,
                 equip: _clone(p.equip), cardPerks: _clone(p.cardPerks), fx: _clone(p.fx),
                 _trainDefRed: p._trainDefRed || 0, _atkPerSecBonus: p._atkPerSecBonus || 0,
+                _healDecayBonus: p._healDecayBonus || 0,
                 cardDamageMult: p.cardDamageMult, cardSpeedMult: p.cardSpeedMult,
                 cardReloadMult: p.cardReloadMult, cardBulletSpeedMult: p.cardBulletSpeedMult,
                 currentWeapon: p.currentWeapon, _lastRangedWeapon: p._lastRangedWeapon,
@@ -4992,7 +4993,9 @@
             p.critDamageMult = _num(d.critDamageMult, p.critDamageMult);
             p._trainDefRed = Math.max(0, _num(d._trainDefRed, 0));
             p._atkPerSecBonus = Math.max(0, _num(d._atkPerSecBonus, 0));
-            p._atkSecAt = 0;   // 每秒物攻计时器: 下一帧从当前时刻重新开始
+            // 每秒减疗累计: 读档后继续保留, 上限 95%
+            p._healDecayBonus = Math.max(0, Math.min(0.95, _num(d._healDecayBonus, 0)));
+            p._atkSecAt = 0;   // 每秒成长计时器: 下一帧从当前时刻重新开始 (之后仍按秒继续累加)
             p.cardDamageMult = _num(d.cardDamageMult, 1);
             p.cardSpeedMult = _num(d.cardSpeedMult, 1);
             p.cardReloadMult = _num(d.cardReloadMult, 1);
@@ -11396,7 +11399,8 @@
                     '护盾显示移至除背景外的最上层，禁跳 🚫 标识不再被护盾光晕遮挡（单人/双人/训练场一致）',
                     '卡牌与效果卡冷却恢复享受全部冷却缩减（装备/效果卡/按损失生命的动态加成），CDR 上限改为 60%；禁跳诅咒改为命中触发瞬间立即进入 10 秒冷却，冷却显示同步更新',
                     '修复从存档继续时偶尔出现人物或 AI 消失：读档时自动检测死亡/越界状态并复位到出生点满血（双人模式同样生效）',
-                    '修复「痛痛痛 / 痛痛痛痛」灼烧伤害异常偏高：多张卡牌时每层百分比被重复累加（3 张卡最高可达 27%/秒），现改为每层固定 1% / 1.8%，多张卡只提升可叠层数'
+                    '修复「痛痛痛 / 痛痛痛痛」灼烧伤害异常偏高：多张卡牌时每层百分比被重复累加（3 张卡最高可达 27%/秒），现改为每层固定 1% / 1.8%，多张卡只提升可叠层数',
+                    '修复「每秒减疗」退出重进后进度丢失：累计值已写入存档，读档后继续保留并按秒累加（每秒物理攻击力同样处理）'
                 ]
             },
             {
