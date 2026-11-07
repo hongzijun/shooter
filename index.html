@@ -3150,6 +3150,11 @@
                 id: 'resoncutter', name: '共振切割器', icon: '🔩', type: 'equip', rarity: 'purple',
                 desc: '法攻+20，物攻+20，攻速+15%；命中+5%攻速3秒叠5层，满层+10%移速；普攻附带10%物攻+10%法攻魔伤',
                 apply(p) { const eq = ensureEquipObj(p); const fx = ensureFx(p); eq.atkM += 20; eq.atk += 20; eq.atkSpeed += 0.15; fx.resoncutter = (fx.resoncutter || 0) + 1; }
+            },
+            {
+                id: 'stunlock', name: '眩晕枷锁', icon: '💫', type: 'equip', rarity: 'purple',
+                desc: '生命 +100，物攻 +20；每 10 秒（享受 CDR）下一次攻击命中使敌人眩晕 2 秒：固定原地、无法跳跃/移动/开火且不受击退；多张不叠加',
+                apply(p) { const eq = ensureEquipObj(p); p.maxHealth += 100; eq.maxHp += 100; p.health = Math.min(p.maxHealth, p.health + 100); eq.atk += 20; eq.stunlock = (eq.stunlock || 0) + 1; }
             }
         ];
 
@@ -3266,7 +3271,8 @@
                 hunterFx: 0, clubFx: 0, bandFx: 0, crossbowFx: 0,
                 robeCount: 0, bladeCount: 0, dartCount: 0,
                 // === 新增装备卡命中特效标记 (applyEquipOnHitList 消费) ===
-                quakeFx: 0, shellhammerFx: 0, photonFx: 0, voidknifeFx: 0, overaxeFx: 0
+                quakeFx: 0, shellhammerFx: 0, photonFx: 0, voidknifeFx: 0, overaxeFx: 0,
+                stunlock: 0
             };
             Object.keys(defaults).forEach(k => { if (p.equip[k] === undefined) p.equip[k] = defaults[k]; });
             return p.equip;
@@ -3298,13 +3304,14 @@
             // 碎星十字弓: 造成伤害使目标治疗 -40% (3秒, 不叠加仅刷新) —— 无独立伤害条目
             if (eq.crossbowFx > 0) {
                 const ex = (target.activeEffects || []).find(e => e.effect === 'healDown');
-                if (ex) ex.endTime = now + 3000;
-                else if (!fxIsPurifying(target)) target.activeEffects.push({ name: '🩹 治疗降低', effect: 'healDown', color: '#a29bfe', startTime: now, endTime: now + 3000, stackCount: 1 });
+                const _hdDur = fxDebuffDur(attacker, 3000);
+                if (ex) ex.endTime = Math.max(ex.endTime || 0, now + _hdDur);
+                else if (!fxIsPurifying(target)) target.activeEffects.push({ name: '🩹 治疗降低', effect: 'healDown', color: '#a29bfe', startTime: now, endTime: now + _hdDur, stackCount: 1 });
             }
             // 疾速飞镖: 普攻命中后 +7% 移速/层 (4秒, 最多 3 层) —— 仅玩家侧消费移速
             if (!attacker.isAI && eq.dartCount > 0) {
                 attacker.dartStacks = Math.min(3 * eq.dartCount, (attacker.dartStacks || 0) + 1);
-                attacker.dartSpeedEnd = now + 4000;
+                attacker.dartSpeedEnd = now + fxBuffDur(attacker, 4000);
             }
             // 制裁指环: 每 6 秒下次普攻附带 3 秒 30% 减速 + 目标伤害 -15% (AI 侧移速×0.7、输出×0.85)
             if (eq.bandFx > 0) {
@@ -3314,22 +3321,32 @@
                     _bandHit.cdMs = cdrMs(6000, attacker);
                     _bandHit.lastAt = now + _bandHit.cdMs;
                     const bex = (target.activeEffects || []).find(e => e.effect === 'bandSlow');
-                    if (bex) bex.endTime = now + 3000;
-                    else if (!fxIsPurifying(target)) target.activeEffects.push({ name: '⛓️ 制裁减速', effect: 'bandSlow', color: '#fd79a8', startTime: now, endTime: now + 3000, stackCount: 1 });
+                    const _bdDur = fxDebuffDur(attacker, 3000);
+                    if (bex) bex.endTime = Math.max(bex.endTime || 0, now + _bdDur);
+                    else if (!fxIsPurifying(target)) target.activeEffects.push({ name: '⛓️ 制裁减速', effect: 'bandSlow', color: '#fd79a8', startTime: now, endTime: now + _bdDur, stackCount: 1 });
                     showFloatingText('⛓️ 制裁!', '#fd79a8');
                 }
             }
             // === 新增装备特效: 撼地重斧 减疗 (与碎星同规则, 不叠加只刷新) ===
             if (eq.quakeFx > 0) {
                 const qx = (target.activeEffects || []).find(e => e.effect === 'healDown');
-                if (qx) qx.endTime = now + 3000;
-                else if (!fxIsPurifying(target)) target.activeEffects.push({ name: '🩹 治疗降低', effect: 'healDown', color: '#a29bfe', startTime: now, endTime: now + 3000, stackCount: 1 });
+                const _qDur = fxDebuffDur(attacker, 3000);
+                if (qx) qx.endTime = Math.max(qx.endTime || 0, now + _qDur);
+                else if (!fxIsPurifying(target)) target.activeEffects.push({ name: '🩹 治疗降低', effect: 'healDown', color: '#a29bfe', startTime: now, endTime: now + _qDur, stackCount: 1 });
             }
             // === 新增装备特效: 破壳锤 减物防 (6秒, 最多6层) ===
             if (eq.shellhammerFx > 0) {
                 const se = (target.activeEffects || []).find(e => e.effect === 'defDown');
-                if (se) { se.stackCount = Math.min(6, (se.stackCount || 1) + 1); se.endTime = now + 6000; }
-                else if (!fxIsPurifying(target)) target.activeEffects.push({ name: '🔨 破甲', effect: 'defDown', color: '#e17055', startTime: now, endTime: now + 6000, stackCount: 1 });
+                const _sdDur = fxDebuffDur(attacker, 6000);
+                if (se) { se.stackCount = Math.min(6, (se.stackCount || 1) + 1); se.endTime = Math.max(se.endTime || 0, now + _sdDur); }
+                else if (!fxIsPurifying(target)) target.activeEffects.push({ name: '🔨 破甲', effect: 'defDown', color: '#e17055', startTime: now, endTime: now + _sdDur, stackCount: 1 });
+            }
+            // 眩晕枷锁: 每 10 秒 (享受全部 CDR) 下一次命中使目标眩晕 2 秒; 多张不叠加, 共享唯一冷却
+            if (eq.stunlock > 0) {
+                if (now >= (attacker._stunReadyAt || 0)) {
+                    attacker._stunReadyAt = now + cdrMs(10000, attacker);   // 触发瞬间进入冷却
+                    fxApplyStun(attacker, target, 2000, now);
+                }
             }
             // === 新增装备特效: 猎空飞刀 目标每损失5%生命 +3物伤 ===
             if (eq.voidknifeFx > 0 && target.maxHealth > 0) {
@@ -3381,6 +3398,7 @@
                     highHpCrit: 0, highHpCritDmg: 0, highHpThresh: 0.8,
                     lowHpLifesteal: 0, lowHpAtkSpeed: 0, lowHpDef: 0,
                     dmgRedHighHp: 0, dmgRedHighHpThresh: 0.6,
+                    cdrPlus: 0, debuffExt: 0, buffExt: 0,
                     firstHitDmg: 0, every8sDmg: 0, rollMin: 1, rollMax: 1,
                     thorns: 0, thornsDefPct: 0, thornMaxHpPct: 0,
                     critShieldPct: 0, critHealPct: 0, critHealChance: 0,
@@ -3449,6 +3467,21 @@
             const o = fxOpponentOf(p);
             const v = (o && o._healDecayBonus) || 0;
             return Math.max(0, Math.min(0.95, v));
+        }
+        // 「时间刻印」: 所有冷却型效果额外 -10%/张 (上限 -60%), 在 CDR 之后再乘算
+        function fxCdrExtra(p) {
+            const v = (p && p.fx && p.fx.cdrPlus) || 0;
+            return Math.max(0, Math.min(0.60, v));
+        }
+        // 「衰亡刻印」: 施加者使对方负面效果时长 +50%/张 (上限 +200%)
+        function fxDebuffDur(src, baseMs) {
+            const v = (src && src.fx && src.fx.debuffExt) || 0;
+            return Math.round(Math.max(0, baseMs) * (1 + Math.max(0, Math.min(2, v))));
+        }
+        // 「恒久刻印」: 自身增益效果时长 +30%/张 (上限 +200%)
+        function fxBuffDur(p, baseMs) {
+            const v = (p && p.fx && p.fx.buffExt) || 0;
+            return Math.round(Math.max(0, baseMs) * (1 + Math.max(0, Math.min(2, v))));
         }
 
         // 抗治疗: 全局抗治疗(属性面板/训练场可改) + 临时减疗效果 (撼地重斧命中 3 秒 -40%)
@@ -3612,8 +3645,9 @@
                     const be = (tgt.activeEffects || []).find(e => e.effect === 'fxBurn');
                     // 每层百分比固定为单层值 (1% 或 1.8%), 多张卡只提升可叠层数, 不叠加每层比例
                     const unitPct = fx.burnUnitPct || fx.burnPct || 0.01;
-                    if (be) { be.stackCount = Math.min(fx.burnMaxStacks || 3, (be.stackCount || 1) + 1); be.endTime = now + 5000; be.pct = unitPct; }
-                    else if (!fxIsPurifying(tgt)) tgt.activeEffects.push({ name: '🔥 灼烧', effect: 'fxBurn', color: '#ff6b35', startTime: now, endTime: now + 5000, stackCount: 1, pct: unitPct, owner: att });
+                    const _bnDur = fxDebuffDur(att, 5000);
+                    if (be) { be.stackCount = Math.min(fx.burnMaxStacks || 3, (be.stackCount || 1) + 1); be.endTime = Math.max(be.endTime || 0, now + _bnDur); be.pct = unitPct; }
+                    else if (!fxIsPurifying(tgt)) tgt.activeEffects.push({ name: '🔥 灼烧', effect: 'fxBurn', color: '#ff6b35', startTime: now, endTime: now + _bnDur, stackCount: 1, pct: unitPct, owner: att });
                 }
                 // 吸血转化护盾
                 if (fx.lifestealToShield > 0) {
@@ -3686,6 +3720,31 @@
         function fxIsPurifying(p) {
             return !!(p && p.fx && p.fx.purifyUntil && Date.now() < p.fx.purifyUntil);
         }
+        // 眩晕: 固定原地, 不能跳跃/移动/开火, 不受击退 (负面 buff, 可被净化清除/免疫)
+        function fxIsStunned(p) {
+            if (!p) return false;
+            const now = Date.now();
+            return (p.activeEffects || []).some(function (e) { return e && e.effect === 'stun' && (e.endTime || 0) > now; });
+        }
+        // 施加眩晕; 时长受施加者「衰亡刻印」加成
+        function fxApplyStun(src, tgt, baseMs, now) {
+            if (!tgt || tgt.health <= 0) return 0;
+            now = now || Date.now();
+            if (fxIsPurifying(tgt)) { showFloatingText('💠 净化免疫', '#4f8eff'); return 0; }
+            const dur = fxDebuffDur(src, baseMs);
+            tgt._stunX = tgt.x; tgt._stunY = tgt.y;
+            tgt.activeEffects = tgt.activeEffects || [];
+            const old = tgt.activeEffects.find(function (e) { return e && e.effect === 'stun'; });
+            if (old) {
+                old.endTime = Math.max(old.endTime || 0, now + dur);
+                old.startTime = now;
+                old.duration = Math.max(dur, old.duration || dur);
+            } else {
+                tgt.activeEffects.push({ name: '💫 眩晕', effect: 'stun', color: '#f39c12', startTime: now, endTime: now + dur, duration: dur, stackCount: 1 });
+            }
+            showFloatingText('💫 眩晕 ' + (dur / 1000).toFixed(1) + 's', '#f39c12');
+            return dur;
+        }
 
         // 禁跳诅咒: 命中时检查唯一冷却; 触发后禁用目标跳跃 (2 + 0.3×张数, 上限4秒)
         function fxTryNoJump(att, tgt, now) {
@@ -3695,7 +3754,7 @@
             if (now < (fx.noJumpNextAt || 0)) return false;
             if (fxIsPurifying(tgt)) { fx.noJumpNextAt = now + 10000; return false; }   // 净化期间免疫, 但仍消耗本次冷却
             fx.noJumpNextAt = now + 10000;
-            const dur = Math.min(4000, 2000 + 300 * (fx.noJump - 1));
+            const dur = fxDebuffDur(att, Math.min(4000, 2000 + 300 * (fx.noJump - 1)));
             fx.noJumpUntil = now + dur;
             tgt.activeEffects = tgt.activeEffects || [];
             const old = tgt.activeEffects.find(function (e) { return e && e.effect === 'noJump'; });
@@ -3714,7 +3773,7 @@
         function fxPurifyTick(p, now) {
             const fx = p && p.fx;
             if (!fx || !(fx.purify > 0)) return;
-            const dur = Math.min(5000, 2000 + 300 * (fx.purify - 1));
+            const dur = fxBuffDur(p, Math.min(5000, 2000 + 300 * (fx.purify - 1)));
             if (now >= (fx.purifyNextAt || 0)) {
                 fx.purifyNextAt = now + 15000;
                 fx.purifyUntil = now + dur;
@@ -3822,9 +3881,9 @@
                     const _shAdded = Math.max(0, (p.shield || 0) - _shBefore);
                     if (_shAdded > 0) {
                         p.tempShieldLeft = (p.tempShieldLeft || 0) + _shAdded;
-                        p.tempShieldUntil = now + 4000;
+                        p.tempShieldUntil = now + fxBuffDur(p, 4000);
                     }
-                    p.panicSpeedEnd = now + 4000;
+                    p.panicSpeedEnd = now + fxBuffDur(p, 4000);
                 }
             }
             // 不战之愈: 8秒无伤后每2秒回6%
@@ -3891,8 +3950,8 @@
                     _boxHit.until = now + 2000;                  // 礼物盒持续 2 秒
                     _boxHit.cdMs = cdrMs(100000, p);              // 触发瞬间进入 100 秒冷却(锁定时长, 不按回合)
                     _boxHit.nextAt = now + _boxHit.cdMs;
-                    fx.boxBusyUntil = now + 2000;
-                    p.invincibleUntil = now + 2000;
+                    fx.boxBusyUntil = now + fxBuffDur(p, 2000);
+                    p.invincibleUntil = now + fxBuffDur(p, 2000);
                     showFloatingText('🎁 仔仔熊的礼物!', '#fd79a8');
                     let n = 0;
                     const timer = setInterval(() => {
@@ -3908,7 +3967,7 @@
                     _insHit2.cdMs = cdrMs(50000, p);       // 触发瞬间进入 50 秒冷却(锁定时长)
                     _insHit2.nextAt = now + _insHit2.cdMs;
                     _insHit2.lastAt = now;
-                    fx.insActiveUntil = now + 3000;        // 3 秒内减伤 70%
+                    fx.insActiveUntil = now + fxBuffDur(p, 3000);   // 3 秒内减伤 70% (受增益延长)
                     showFloatingText('📄 蛋生保险!', '#4f8eff');
                 }
             }
@@ -3920,7 +3979,7 @@
                     _enHit.until = now + 5000;                    // 回血持续 5 秒
                     _enHit.cdMs = cdrMs(50000, p);                // 触发瞬间进入 50 秒冷却(锁定时长)
                     _enHit.nextAt = now + _enHit.cdMs;
-                    fx.energyBusyUntil = now + 5000;
+                    fx.energyBusyUntil = now + fxBuffDur(p, 5000);
                     let n = 0;
                     const timer = setInterval(() => {
                         if (p.health <= 0 || n >= 10) { clearInterval(timer); return; }
@@ -3953,8 +4012,9 @@
                     if (foe && foe.health > 0) {
                         fxDamageFloat(foe, foe.takeDamage(40, p, false, 'magic', true), 'icearmor');
                         const ex = (foe.activeEffects || []).find(e => e.effect === 'iceSlow');
-                        if (ex) ex.endTime = now + 2000;
-                        else if (!fxIsPurifying(foe)) foe.activeEffects.push({ name: '❄️ 冰环减速', effect: 'iceSlow', color: '#74b9ff', startTime: now, endTime: now + 2000, stackCount: 1 });
+                        const _icDur = fxDebuffDur(p, 2000);
+                        if (ex) ex.endTime = Math.max(ex.endTime || 0, now + _icDur);
+                        else if (!fxIsPurifying(foe)) foe.activeEffects.push({ name: '❄️ 冰环减速', effect: 'iceSlow', color: '#74b9ff', startTime: now, endTime: now + _icDur, stackCount: 1 });
                     }
                 }
             }
@@ -4095,7 +4155,13 @@
             { id: 'fx_nojump_e', name: '禁跳诅咒', icon: '🚫', type: 'effect', rarity: 'epic', desc: '每10秒: 下次普攻命中使敌人禁用跳跃2秒; 每多一张+0.3秒(上限4秒); 唯一冷却, 不独立计时',
               apply(p) { const f = ensureFx(p); if (f.noJump <= 0) f.noJumpNextAt = Date.now() + 10000; f.noJump++; } },
             { id: 'fx_purify_e', name: '净化之光', icon: '💠', type: 'effect', rarity: 'epic', desc: '每15秒净化自身2秒; 每多一张+0.3秒(上限5秒); 净化期间清除并免疫所有负面效果, 散发蓝光',
-              apply(p) { const f = ensureFx(p); if (f.purify <= 0) f.purifyNextAt = Date.now() + 15000; f.purify++; } }
+              apply(p) { const f = ensureFx(p); if (f.purify <= 0) f.purifyNextAt = Date.now() + 15000; f.purify++; } },
+            { id: 'fx_cdrplus_e', name: '时间刻印', icon: '⏳', type: 'effect', rarity: 'epic', desc: '所有冷却型效果冷却额外 -10%（先乘 CDR 再乘本效果），可叠加，最多 -60%',
+              apply(p) { const f = ensureFx(p); f.cdrPlus = Math.min(0.60, (f.cdrPlus || 0) + 0.10); } },
+            { id: 'fx_debuffext_e', name: '衰亡刻印', icon: '⏬', type: 'effect', rarity: 'epic', desc: '使对方所有负面效果持续时间 +50%，可叠加，最多 +200%',
+              apply(p) { const f = ensureFx(p); f.debuffExt = Math.min(2.0, (f.debuffExt || 0) + 0.50); } },
+            { id: 'fx_buffext_e', name: '恒久刻印', icon: '⏫', type: 'effect', rarity: 'epic', desc: '自身所有增益效果持续时间 +30%，可叠加，最多 +200%',
+              apply(p) { const f = ensureFx(p); f.buffExt = Math.min(2.0, (f.buffExt || 0) + 0.30); } }
         ];
         CARDS.push(...EFFECT_CARDS);
 
@@ -4105,7 +4171,7 @@
             fx_doublechase_p: 'inst', fx_burst_p: 'inst',
             phasearm: 'inst', warpbag: 'inst', icearmor: 'inst', airbag: 'inst', band: 'inst',
             photonbow: 'inst', overaxe: 'inst',
-            crossbow: 'once', quakeaxe: 'once', shellhammer: 'once'
+            crossbow: 'once', quakeaxe: 'once', shellhammer: 'once', stunlock: 'once'
         };
 
 
@@ -5722,7 +5788,7 @@
             }
 
             shoot(accuracyOverride) {
-                if (this.frozen) return;
+                if (this.frozen || fxIsStunned(this)) return;   // 眩晕: 不能发射任何武器
                 const now = Date.now();
                 const w = this.weapon;
                 if (!w) return;
@@ -5851,7 +5917,7 @@
             }
 
             slashAttack() {
-                if (this.frozen) return;
+                if (this.frozen || fxIsStunned(this)) return;   // 眩晕: 不能挥刀
                 const now = Date.now();
                 const w = this.weapon;
                 if (!w || !w.isMelee) return;
@@ -5997,9 +6063,11 @@
                             if (fr && (fr.dmg + (fr.absorbed || 0)) > 0) showFloatingNumber(target.x, target.y - 72 - fi * 22, '-' + (fr.dmg + (fr.absorbed || 0)), DMG_COLORS.fx, { prefix: (fr.shield ? '🛡' : ''), iconId: fxList[fi].id === 'photon' ? 'photonbow' : fxList[fi].id, type: 'fx' });
                         }
 
-                        const kbForce = (w.knockbackMultiplier || 0.5) * 8;
-                        target.vx += (this.facingRight ? 1 : -1) * kbForce;
-                        target.vy -= Math.abs(kbForce) * 0.225;   // 垂直击退减少70% (0.75->0.225)
+                        if (!fxIsStunned(target)) {
+                            const kbForce = (w.knockbackMultiplier || 0.5) * 8;
+                            target.vx += (this.facingRight ? 1 : -1) * kbForce;
+                            target.vy -= Math.abs(kbForce) * 0.225;   // 垂直击退减少70% (0.75->0.225)
+                        }
 
                         const comboText = '⚔️x' + this.swordComboCount + '!';
                         const comboColor = this.swordComboCount >= 3 ? '#ffd700' : '#ffffff';
@@ -6016,9 +6084,11 @@
                             if (fr && (fr.dmg + (fr.absorbed || 0)) > 0) showFloatingNumber(target.x, target.y - 72 - fi * 22, '-' + (fr.dmg + (fr.absorbed || 0)), DMG_COLORS.fx, { prefix: (fr.shield ? '🛡' : ''), iconId: fxList[fi].id === 'photon' ? 'photonbow' : fxList[fi].id, type: 'fx' });
                         }
                         this._spawnHitSpark(target.x + (this.facingRight ? -15 : 15), target.y - 20);
-                        const kbForce = (w.knockbackMultiplier || 0.5) * 8;
-                        target.vx += (this.facingRight ? 1 : -1) * kbForce;
-                        target.vy -= Math.abs(kbForce) * 0.225;   // 垂直击退减少70% (0.75->0.225)
+                        if (!fxIsStunned(target)) {
+                            const kbForce = (w.knockbackMultiplier || 0.5) * 8;
+                            target.vx += (this.facingRight ? 1 : -1) * kbForce;
+                            target.vy -= Math.abs(kbForce) * 0.225;   // 垂直击退减少70% (0.75->0.225)
+                        }
 
                         const comboText = '⚔️x' + this.swordComboCount + '!';
                         const comboColor = this.swordComboCount >= 3 ? '#ffd700' : '#ffffff';
@@ -6297,7 +6367,7 @@
                 }
                 // 快速换弹卡: 换弹耗时按倍率缩短 (AI的cardReloadMult恒为1, 不受影响)
                 // CDR 冷却缩减 —— 换弹时长 ×(1-CDR), 上限 60%
-                if (Date.now() - this.reloadStart >= w.reloadTime * (this.cardReloadMult || 1) * (1 - this.getCdr())) {
+                if (Date.now() - this.reloadStart >= w.reloadTime * (this.cardReloadMult || 1) * (1 - this.getCdr()) * (1 - fxCdrExtra(this))) {
                     const need = w.maxAmmo - w.ammo;
                     const give = Math.min(need, w.reserve);
                     w.ammo += give;
@@ -6308,7 +6378,7 @@
                         if (this.fx.skillHeal > 0 || this.fx.skillHealPct > 0) {
                             fxHeal(this, this.fx.skillHeal + this.maxHealth * this.fx.skillHealPct, 'fx_skillheal_p');
                         }
-                        if (this.fx.skillSpeedBoost > 0) this.panicSpeedEnd = Date.now() + 4000;
+                        if (this.fx.skillSpeedBoost > 0) this.panicSpeedEnd = Date.now() + fxBuffDur(this, 4000);
                         if (this.fx.skillNextAtkPct > 0) this._skillNextAtk = this.fx.skillNextAtkPct;
                     }
                 }
@@ -6318,6 +6388,7 @@
                 const _njNow = Date.now();
                 // 负面状态「禁跳」: 期间无法跳跃 (玩家/AI/靶子全通用)
                 if ((this.activeEffects || []).some(function (e) { return e && e.effect === 'noJump' && (e.endTime || 0) > _njNow; })) return;
+                if (fxIsStunned(this)) return;   // 眩晕期间禁止跳跃
                 if (this.isAI) {
                     // 强制约束: 两次跳跃至少间隔 220ms, 防止同一帧/连帧被多处调用形成"多段跳"
                     const nowJump = performance.now();
@@ -6509,6 +6580,14 @@
                     this.vy = 0;
                     this.isOnGround = true;
                     this.jumpCount = 0;
+                }
+
+                // 眩晕: 固定在原地, 清空速度 (不能移动/跳跃/被击退)
+                if (fxIsStunned(this)) {
+                    if (typeof this._stunX === 'number') this.x = this._stunX;
+                    if (typeof this._stunY === 'number') this.y = this._stunY;
+                    this.vx = 0;
+                    this.vy = 0;
                 }
 
                 this.updateReload();
@@ -7219,7 +7298,7 @@
                     }
 
                     // 击退方向火花拖尾 (反弹/特效/额外附带伤害通道一律不施加击退; 训练场主伤害仍保留击退)
-                    if (attacker && !isReflect && !isFxPass && !noKnock) {
+                    if (attacker && !isReflect && !isFxPass && !noKnock && !fxIsStunned(this)) {
                         this._knockUntil = Date.now() + 400;
                         const kdx = this.x - attacker.x;
                         const kdy = this.y - attacker.y;
@@ -7371,9 +7450,10 @@
                         ai.aiDeathStreak = Math.max(0, ai.aiDeathStreak - 1);
                         if (ai.aiKillStreak >= 2) {
                             ai.damageBoost = true;
-                            ai.damageBoostEnd = Date.now() + 3000;
+                            const _kBd = fxBuffDur(ai, 3000);
+                            ai.damageBoostEnd = Date.now() + _kBd;
                             ai.damageMultiplier = 1.3;
-                            ai.activeEffects.push({ name: '🔥 连杀狂暴', effect: 'damage', color: '#ff3838', startTime: Date.now(), endTime: Date.now() + 3000, duration: 3000 });
+                            ai.activeEffects.push({ name: '🔥 连杀狂暴', effect: 'damage', color: '#ff3838', startTime: Date.now(), endTime: Date.now() + _kBd, duration: _kBd });
                         }
                     }
                 }
@@ -8020,6 +8100,7 @@
             fx_panic: { name: '应急加速', card: 'warpbag', positive: true },
             fx_tempshield: { name: '临时护盾', card: 'airbag', positive: true },
             noJump: { name: '禁跳', card: null, positive: false, emoji: '🚫' },
+            stun: { name: '眩晕', card: 'stunlock', positive: false, emoji: '💫' },
             purify: { name: '净化', card: null, positive: true, emoji: '💠' }
         };
 
@@ -8203,7 +8284,8 @@
         // CDR: 冷却类卡牌/效果的实际冷却与显示 = 基础时长 × (1 - 冷却缩减), 上限 60%
         function cdrMs(baseMs, ent) {
             const c = (ent && typeof ent.getCdr === 'function') ? ent.getCdr() : 0;
-            return baseMs * (1 - Math.max(0, Math.min(0.60, c)));   // CDR 上限 60%
+            // 先乘 CDR (上限 60%), 再乘「时间刻印」的额外缩减 (上限 60%)
+            return baseMs * (1 - Math.max(0, Math.min(0.60, c))) * (1 - fxCdrExtra(ent));
         }
 
         function collectStaticItems(ent) {
@@ -8218,7 +8300,7 @@
             };
             // 换弹 (含 快速换弹 倍率 + CDR 缩减, 与 updateReload 的判定公式一致)
             if (ent.isReloading && ent.weapon && typeof ent.weapon.reloadTime === 'number') {
-                const total = ent.weapon.reloadTime * (ent.cardReloadMult || 1) * (1 - (ent.getCdr ? ent.getCdr() : 0));
+                const total = ent.weapon.reloadTime * (ent.cardReloadMult || 1) * (1 - (ent.getCdr ? ent.getCdr() : 0)) * (1 - fxCdrExtra(ent));
                 addCd('reload', '换弹', null, (ent.reloadStart || now) + total, total);
             }
             if (fx) {
@@ -8304,6 +8386,12 @@
                 if (fx.purify > 0) {
                     const _pRemain = Math.max(0, (fx.purifyUntil || 0) > now ? 0 : ((fx.purifyNextAt || 0) - now));
                     out.push({ type: 'cd', key: 'purify', name: '净化', iconId: 'fx_purify_e', emoji: '💠', remain: _pRemain, total: 15000, badge: fx.purify });
+                }
+                // 眩晕枷锁 (装备卡): 每 10 秒 (享受 CDR) 下一次命中眩晕
+                if (ent.equip && ent.equip.stunlock > 0) {
+                    const _slTotal = cdrMs(10000, ent);
+                    const _slRemain = Math.max(0, (ent._stunReadyAt || 0) - now);
+                    out.push({ type: 'cd', key: 'stunlock', name: '眩晕枷锁', iconId: 'stunlock', emoji: '💫', remain: _slRemain, total: _slTotal, badge: ent.equip.stunlock });
                 }
                 // 被动已就绪 (不读秒)
                 if (fx.firstHitDmg > 0) out.push({ type: 'ready', key: 'opening', name: '盛大开场', iconId: 'fx_opening_e', ready: !fx.firstHitDone });
@@ -8588,7 +8676,9 @@
                 const x = e.x - camera.x, y = e.y - camera.y - 68;
                 if (e.shield > 0) e.drawShieldHeadUI(x, y);
                 const _now = Date.now();
-                if ((e.activeEffects || []).some(function (a) { return a && a.effect === 'noJump' && (a.endTime || 0) > _now; })) {
+                const _hasNj = (e.activeEffects || []).some(function (a) { return a && a.effect === 'noJump' && (a.endTime || 0) > _now; });
+                const _hasStun = fxIsStunned(e);
+                if (_hasNj) {
                     ctx.save();
                     ctx.font = '22px Arial';
                     ctx.textAlign = 'center';
@@ -8596,7 +8686,18 @@
                     ctx.fillStyle = '#ffffff';
                     ctx.shadowColor = '#000000';
                     ctx.shadowBlur = 5;
-                    ctx.fillText('🚫', x, y - 4);
+                    ctx.fillText('🚫', x - (_hasStun ? 13 : 0), y - 4);
+                    ctx.restore();
+                }
+                if (_hasStun) {
+                    ctx.save();
+                    ctx.font = '22px Arial';
+                    ctx.textAlign = 'center';
+                    ctx.textBaseline = 'middle';
+                    ctx.fillStyle = '#ffffff';
+                    ctx.shadowColor = '#000000';
+                    ctx.shadowBlur = 5;
+                    ctx.fillText('💫', x + (_hasNj ? 13 : 0), y - 4);
                     ctx.restore();
                 }
             });
@@ -8831,6 +8932,7 @@
                     if (e.equip.quakeFx > 0) eqLines.push('撼地重斧 ×' + e.equip.quakeFx + ' (命中使敌治疗-40%, 3秒)');
                     if (e.equip.shellhammerFx > 0) eqLines.push('破壳锤 ×' + e.equip.shellhammerFx + ' (命中减敌5物防, 最多6层)');
                     if (e.equip.voidknifeFx > 0) eqLines.push('猎空飞刀 ×' + e.equip.voidknifeFx + ' (目标每损失5%生命 普攻+3物伤)');
+                    if (e.equip.stunlock > 0) eqLines.push('眩晕枷锁 ×' + e.equip.stunlock + ' (每10秒下次命中眩晕2秒)');
                 }
 
                 // 效果卡加成 (blessing / 卡片特殊状态)
@@ -8856,6 +8958,9 @@
                     if (fx.vsLowDmg) permLines.push('目标生命低于 ' + fmtPct(fx.vsLowHpThresh || 0.4) + ' 时 +' + fmtPct(fx.vsLowDmg) + ' 伤害');
                     if (fx.vsHighDmg) permLines.push('目标生命高于 ' + fmtPct(fx.vsHighHpThresh || 0.7) + ' 时 +' + fmtPct(fx.vsHighDmg) + ' 伤害');
                     if (fx.dmgRedHighHp) permLines.push('自身生命高于 ' + fmtPct(fx.dmgRedHighHpThresh || 0.6) + ' 时减伤 ' + fmtPct(fxNewArmorReduction(fx)) + '（×' + fxNewArmorStacks(fx) + '）');
+                    if (fx.cdrPlus) permLines.push('所有冷却额外 -' + fmtPct(fxCdrExtra(e)) + '（CDR 之后乘算）');
+                    if (fx.debuffExt) permLines.push('对敌负面时长 +' + fmtPct(Math.min(2, fx.debuffExt)));
+                    if (fx.buffExt) permLines.push('自身增益时长 +' + fmtPct(Math.min(2, fx.buffExt)));
                     if (fx.lowHpDmg) permLines.push('低血增伤 (满值 +' + fmtPct(fx.lowHpDmg) + ')');
                     if (fx.crusher) permLines.push('对生命上限低于自己的目标增伤');
                     if (fx.auraEnemyDmgTaken) permLines.push('240px 内敌人受到伤害 +' + fmtPct(fx.auraEnemyDmgTaken));
@@ -8907,7 +9012,7 @@
                         : dbase + '+' + coef + '×' + atk + '=' + perHit;
                     const interval = (e.getFireInterval ? e.getFireInterval(ww) : 200) / 1000;
                     const reload = (ww.reloadTime != null)
-                        ? ww.reloadTime * (e.cardReloadMult || 1) * (1 - (e.getCdr ? e.getCdr() : 0)) / 1000 : 0;
+                        ? ww.reloadTime * (e.cardReloadMult || 1) * (1 - (e.getCdr ? e.getCdr() : 0)) * (1 - fxCdrExtra(e)) / 1000 : 0;
                     const cur = (e.currentWeapon === wk) ? ' <span style="color:#2ed573">★当前</span>' : '';
                     weaponLines.push('<div style="line-height:1.5;color:#cfe0ff">' + ww.name + cur + '：' +
                         (ww.isMelee ? '近战 ' : (pellets > 1 ? '每发 ' : '单发 ')) + dmgTxt +
@@ -8973,7 +9078,7 @@
                         ' / ×' + critMult.toFixed(2) + (eqCritMult > 0 ? eqNote('×' + baseCritMult.toFixed(2), '×' + eqCritMult.toFixed(2)) : '')) +
                     row('吸血', fmtPct(lifesteal) + (eqLS > 0 ? eqNote(fmtPct(baseLS), fmtPct(eqLS)) : '')) +
                     row('攻速', '+' + fmtPct(e.getAtkSpeed()) + (eqSpd > 0 ? eqNote(fmtPct(baseSpd), fmtPct(eqSpd)) : '')) +
-                    row('CDR', fmtPct(e.getCdr()) + (eqCdr > 0 ? eqNote(fmtPct(baseCdr), fmtPct(eqCdr)) + cdrCapNote : '')) +
+                    row('CDR', fmtPct(e.getCdr()) + (eqCdr > 0 ? eqNote(fmtPct(baseCdr), fmtPct(eqCdr)) + cdrCapNote : '') + (fxCdrExtra(e) > 0 ? '（时间刻印额外 -' + fmtPct(fxCdrExtra(e)) + '）' : '')) +
                     row('移速', '×' + spdMult.toFixed(2)) +
                     multRow('healMult', '治疗倍率') +
                     multRow('healResist', '抗治疗', true) +
@@ -9627,6 +9732,7 @@
 
         function knockback(entity, trapX, trapY, force) {
             if (!entity) return;
+            if (fxIsStunned(entity)) return;   // 眩晕不受击退影响
             const dx = entity.x - trapX;
             const dy = entity.y - trapY;
             const dist = Math.sqrt(dx * dx + dy * dy) || 1;
@@ -9943,9 +10049,11 @@
                         const hitDirX = t.x - b.x;
                         const hitDirY = t.y - b.y;
                         const hd = Math.max(1, Math.sqrt(hitDirX * hitDirX + hitDirY * hitDirY));
-                        t.vx += (hitDirX / hd) * knockPower * horizontalKbMult;
-                        t.vy = Math.min(t.vy - knockPower * 0.18 * verticalKbMult, -0.45); // 垂直击退减少70% (0.6->0.18, 下限 -1.5->-0.45)
-                        t.isOnGround = false;
+                        if (!fxIsStunned(t)) {
+                            t.vx += (hitDirX / hd) * knockPower * horizontalKbMult;
+                            t.vy = Math.min(t.vy - knockPower * 0.18 * verticalKbMult, -0.45); // 垂直击退减少70% (0.6->0.18, 下限 -1.5->-0.45)
+                            t.isOnGround = false;
+                        }
                         // === 弹射子弹卡: 命中AI后不销毁子弹, 重新指向AI继续飞行 ===
                         // 单体场景的合理形态: 子弹围绕同一目标连续弹射, 每张卡额外打击2次
                         if (b.owner === player && t.isAI && player.cardPerks && player.cardPerks.ricochet > 0) {
@@ -11434,7 +11542,11 @@
                     '训练场默认值调整：每秒减疗默认 3%（双方），每秒物理攻击力基础值改为 AI 5 / 人物 4；本次数值设置一次性重置为最新默认',
                     '修复狙击枪偶尔完全打不出子弹：其备弹原被设为 30（其它武器均为 9999），打空 36 发后无法换弹；现统一为充足备弹，并在读档时对玩家武器备弹做兜底',
                     '「每秒减疗」现在同样作用于护盾：产生护盾时按对方累计的减疗比例削减（上限 95%），与治疗、吸血规则一致；自身减疗不会影响自己获得的护盾',
-                    '「崭新护甲」改为循环减伤：多张不再把 40% 直接相加，而是按 1-(1-40%)×叠加计算（1 张 40%、2 张 64%、3 张 78.4%…），不会再出现 3 张完全无伤害'
+                    '「崭新护甲」改为循环减伤：多张不再把 40% 直接相加，而是按 1-(1-40%)×叠加计算（1 张 40%、2 张 64%、3 张 78.4%…），不会再出现 3 张完全无伤害',
+                    '新增装备卡「眩晕枷锁」💫：生命+100、物攻+20；每 10 秒（享受 CDR）下一次攻击命中使敌人眩晕 2 秒，期间固定原地、无法跳跃/移动/开火且不受击退，头顶显示眩晕图标；多张不叠加',
+                    '新增至臻卡「时间刻印」⏳：所有冷却型效果额外 -10%（先乘 CDR 再乘本效果），可叠加，最多 -60%',
+                    '新增至臻卡「衰亡刻印」⏬：使对方所有负面效果持续时间 +50%，可叠加，最多 +200%',
+                    '新增至臻卡「恒久刻印」⏫：自身所有增益效果持续时间 +30%，可叠加，最多 +200%'
                 ]
             },
             {
