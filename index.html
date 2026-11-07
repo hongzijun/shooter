@@ -11546,7 +11546,8 @@
                     '新增装备卡「眩晕枷锁」💫：生命+100、物攻+20；每 10 秒（享受 CDR）下一次攻击命中使敌人眩晕 2 秒，期间固定原地、无法跳跃/移动/开火且不受击退，头顶显示眩晕图标；多张不叠加',
                     '新增至臻卡「时间刻印」⏳：所有冷却型效果额外 -10%（先乘 CDR 再乘本效果），可叠加，最多 -60%',
                     '新增至臻卡「衰亡刻印」⏬：使对方所有负面效果持续时间 +50%，可叠加，最多 +200%',
-                    '新增至臻卡「恒久刻印」⏫：自身所有增益效果持续时间 +30%，可叠加，最多 +200%'
+                    '新增至臻卡「恒久刻印」⏫：自身所有增益效果持续时间 +30%，可叠加，最多 +200%',
+                    '更新公告改为「最新条目置顶」：每次更新后打开公告即可看到最新内容，无需向下滚动'
                 ]
             },
             {
@@ -11585,7 +11586,8 @@
             const box = document.getElementById('noticeContent');
             if (!box) return;
             box.innerHTML = UPDATE_LOG.map(function (g) {
-                const items = g.items.map(function (t) {
+                // 最新条目置顶: 同一日期分组内按更新时间倒序显示, 打开公告即可看到最新内容
+                const items = g.items.slice().reverse().map(function (t) {
                     return '<li style="margin-bottom:7px;">' + t + '</li>';
                 }).join('');
                 return '<div style="margin-bottom:18px;">' +
