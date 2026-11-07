@@ -5852,8 +5852,8 @@
                 if (this.fx && this.fx.cdrPerHpLost > 0 && this.maxHealth > 0) {
                     fxCdr += this.fx.cdrPerHpLost * (1 - this.health / this.maxHealth) * 100;
                 }
-                if (this.isAI) return Math.min(0.60, eqCdr + fxCdr);
-                return Math.min(0.60, (this.cdr || 0) + eqCdr + fxCdr);
+                if (this.isAI) return Math.min(0.80, eqCdr + fxCdr);
+                return Math.min(0.80, (this.cdr || 0) + eqCdr + fxCdr);
             }
             // 物理防御: AI 用 aiDef, 玩家用 defense; 叠加装备/效果/条件加成
             getDef() { return this.getDefP(); }
@@ -6530,7 +6530,7 @@
                     return;
                 }
                 // 快速换弹卡: 换弹耗时按倍率缩短 (AI的cardReloadMult恒为1, 不受影响)
-                // CDR 冷却缩减 —— 换弹时长 ×(1-CDR), 上限 60%
+                // CDR 冷却缩减 —— 换弹时长 ×(1-CDR), 上限 80%
                 if (Date.now() - this.reloadStart >= w.reloadTime * (this.cardReloadMult || 1) * (1 - this.getCdr()) * (1 - fxCdrExtra(this))) {
                     const need = w.maxAmmo - w.ammo;
                     const give = Math.min(need, w.reserve);
@@ -8445,11 +8445,11 @@
         //   五类语义 (未激活一律灰显):
         //   冷却型 cd|周期性触发|扇形倒计时, 亮=可触发, 灰=冷却中\n        //   层数型 stack|可叠加资源|右下角显示层数, 0层灰, 叠1层即亮\n        //   计数型 count|累计N次触发|显示 cur/total, 满层才亮\n        //   就绪型 ready|一次性/下次生效|就绪亮, 用掉灰\n        //   条件型 cond|条件满足才生效|条件满足亮, 否则灰
         // ============================================================
-        // CDR: 冷却类卡牌/效果的实际冷却与显示 = 基础时长 × (1 - 冷却缩减), 上限 60%
+        // CDR: 冷却类卡牌/效果的实际冷却与显示 = 基础时长 × (1 - 冷却缩减), 上限 80%
         function cdrMs(baseMs, ent) {
             const c = (ent && typeof ent.getCdr === 'function') ? ent.getCdr() : 0;
-            // 先乘 CDR (上限 60%), 再乘「时间刻印」的额外缩减 (上限 60%)
-            return baseMs * (1 - Math.max(0, Math.min(0.60, c))) * (1 - fxCdrExtra(ent));
+            // 先乘 CDR (上限 80%), 再乘「时间刻印」的额外缩减 (上限 60%)
+            return baseMs * (1 - Math.max(0, Math.min(0.80, c))) * (1 - fxCdrExtra(ent));
         }
 
         function collectStaticItems(ent) {
@@ -9054,7 +9054,7 @@
                 const basePenP = Math.max(0, penP - eqPenP);
                 const baseDmgNoEq = w ? Math.round((w.dmgBase != null ? w.dmgBase : w.damage) + baseAtk * atkCoef) : '—';
                 const eqNote = (b, eq) => ' <span style="color:#7f8ba8;font-size:12px">(' + b + ' + ' + eq + ')</span>';
-                const cdrCapNote = (eqCdr > 0 && (baseCdr + eqCdr) >= 0.60 - 1e-9) ? '，封顶 60%' : '';
+                const cdrCapNote = (eqCdr > 0 && (baseCdr + eqCdr) >= 0.80 - 1e-9) ? '，封顶 80%' : '';
 
                 // 移速 (实际速度倍率, 供参考)
                 const spdMult = isAI
@@ -11689,7 +11689,7 @@
             {
                 date: '2026-11-07',
                 items: [
-                    '装备与效果卡的冷却统一享受全部冷却缩减（装备卡 / 效果卡 / 按损失生命的动态加成），CDR 上限 60%，换弹同样受 CDR 影响',
+                    '装备与效果卡的冷却统一享受全部冷却缩减（装备卡 / 效果卡 / 按损失生命的动态加成），CDR 上限 80%，换弹同样受 CDR 影响',
                     'Tab 属性面板、Esc 暂停、Caps 透明暂停统一冻结所有时间戳；AI 获取卡牌过场、人物 / 双方抽卡、PvP 回合结算等待等所有暂停场景同样冻结，恢复后无缝衔接',
                     '训练场「数值设置」加入管理员密码（密码正确才能进入，本次会话有效）；旧版本数值一次性重置为默认，存档 / 成就 / 触控不受影响',
                     '吸血上限调整为 200%；「每秒减疗(%)」与「减疗成长(%)/波」：双方每秒累加，只减少对方的治疗、吸血与护盾获取（不减自己），上限 95%，属性面板同步显示，累计值写入存档',
@@ -11711,7 +11711,8 @@
                     '抽卡品质概率调整：效果卡抽到彩卡（至臻）概率 70%、紫卡 30%（装备卡仍固定紫色）',
                     '选卡刷新次数由 3 次改为 10 次（单人 / 训练场 / PvP 双方各自独立 10 次）',
                     '净化之光基础冷却调整为 20 秒（多张仍每张 -0.5 秒，最低 12 秒）',
-                    'PvE 新增里程碑自选：每过 X 波（X / Y 取自 AI 抽卡成长配置）可自选 Y×X/2 张卡牌，装备 / 效果均可，选择期间游戏暂停'
+                    'PvE 新增里程碑自选：每过 X 波（X / Y 取自 AI 抽卡成长配置）可自选 Y×X/2 张卡牌，装备 / 效果均可，选择期间游戏暂停',
+                    '冷却缩减（CDR）上限由 60% 提升至 80%；「时间刻印」仍最多额外 -60%，两者乘算后最高约 92%'
                 ]
             },
             {
