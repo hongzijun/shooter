@@ -2695,17 +2695,17 @@
                 moveSpeed: 3,
                 atk: isEnemy ? 40 : 50,
                 atkSpeed: 0,
-                atkPerSecBase: 1,      // x: 每秒物理攻击力基数 (基础属性面板)
+                atkPerSecBase: isEnemy ? 5 : 4,   // x: 每秒物理攻击力基数 (基础属性面板; AI 5 / 人物 4)
                 damageMult: 1,
                 healMult: 1,
                 shieldMult: 1,
                 healResist: 0,
-                healDecayBase: 0,     // x: 每秒减疗% 基数 (基础属性面板, 作用于对方回血)
+                healDecayBase: 0.03,  // x: 每秒减疗% 基数 (基础属性面板, 作用于对方回血; 默认每秒 3%)
                 weapons: weapons,
                 aiRound: 2,
                 aiDrawCount: 1,
                 growthVer: 1,
-                tuneVer: 5,
+                tuneVer: 6,
                 growth: isEnemy
                     ? { hpPerRound: 200, atkPerRound: 10, dmgMultPerRound: 0, defPerRound: 10, penPerRound: 5, redDefPerRound: 20, atkPerSecPerRound: 0.2, drawEveryRounds: 10, drawAddPerStep: 1, healDecayPerRound: 0 }
                     : { hpPerRound: 150, atkPerRound: 5, dmgMultPerRound: 0, defPerRound: 5, penPerRound: 3, redDefPerRound: 18, atkPerSecPerRound: 0.15, drawEveryRounds: 0, drawAddPerStep: 1, healDecayPerRound: 0 }
@@ -2742,9 +2742,11 @@
         let _tpClockStartReal = 0;
         let _tpPerfAccum = 0;
         let _tpPerfFrozenAt = 0;
-        // 统一同步: 任一暂停状态 (Caps 透明暂停 / Esc 暂停 / Tab 属性面板) 都冻结时间轴
+        // 统一同步: 任一暂停状态 (Caps 透明暂停 / Esc 暂停 / Tab 属性面板 /
+        //   选卡抽卡阶段 isDrafting / AI 获取卡牌过场 isAwardShowing / PvP 回合结算等待) 都冻结时间轴
         function _tpSyncClockPause() {
-            const frozen = _tpPaused || isPaused || statPanelOpen;
+            const frozen = _tpPaused || isPaused || statPanelOpen || isDrafting || isAwardShowing
+                || (gameState === 'pvp' && pvpPhase !== 'fight');
             if (frozen) {
                 if (!_tpClockPaused) {
                     _tpClockPaused = true;
@@ -10877,11 +10879,11 @@
             } catch (err) { data = null; }
             const def = { mine: _trainDefaultTune('mine'), enemy: _trainDefaultTune('enemy') };
             const num = function (v, d) { return (typeof v === 'number' && isFinite(v)) ? v : d; };
-            // v5 一次性重置: 把旧版本 (含之前手动改过的云端默认) 的数值设置全部恢复为默认值
+            // v6 一次性重置: 把旧版本 (含之前手动改过的云端默认) 的数值设置全部恢复为最新默认值
             const _hasTuneVer = !!(data && typeof data === 'object'
                 && data.mine && data.enemy
-                && Number(data.mine.tuneVer) >= 5
-                && Number(data.enemy.tuneVer) >= 5);
+                && Number(data.mine.tuneVer) >= 6
+                && Number(data.enemy.tuneVer) >= 6);
             if (!_hasTuneVer) {
                 TRAIN_TUNE.mine = _trainDefaultTune('mine');
                 TRAIN_TUNE.enemy = _trainDefaultTune('enemy');
@@ -10911,7 +10913,7 @@
                     aiRound: Math.max(1, Math.round(num(so.aiRound, d.aiRound))),
                     aiDrawCount: Math.max(1, Math.min(10, Math.round(num(so.aiDrawCount, d.aiDrawCount)))),
                     growthVer: 1,
-                    tuneVer: 5,
+                    tuneVer: 6,
                     growth: {
                         hpPerRound: num(so.growth && so.growth.hpPerRound, _gd.hpPerRound),
                         // 兼容旧存档: 老版本增量存在顶层 atkPerSec (1 为「无成长」基准, 其它值视为每波增量)
@@ -11401,7 +11403,9 @@
                     '修复从存档继续时偶尔出现人物或 AI 消失：读档时自动检测死亡/越界状态并复位到出生点满血（双人模式同样生效）',
                     '修复「痛痛痛 / 痛痛痛痛」灼烧伤害异常偏高：多张卡牌时每层百分比被重复累加（3 张卡最高可达 27%/秒），现改为每层固定 1% / 1.8%，多张卡只提升可叠层数',
                     '修复「每秒减疗」退出重进后进度丢失：累计值已写入存档，读档后继续保留并按秒累加（每秒物理攻击力同样处理）',
-                    '修复部分至臻卡牌图标品质不一致：暴击屏障 / 暴击重生 / 暴击专家等 17 张至臻卡改为至臻渐变底图，并补齐「禁跳诅咒」「净化之光」卡图；全部 92 张卡牌图标已逐一核对，紫色与至臻底图均与品质一致'
+                    '修复部分至臻卡牌图标品质不一致：暴击屏障 / 暴击重生 / 暴击专家等 17 张至臻卡改为至臻渐变底图，并补齐「禁跳诅咒」「净化之光」卡图；全部 92 张卡牌图标已逐一核对，紫色与至臻底图均与品质一致',
+                    '暂停时间戳扩展到所有暂停场景：AI 获取卡牌过场、人物 / 双方抽卡选卡阶段、PvP 回合结算等待期间，冷却与所有计时一律冻结，恢复后无缝衔接',
+                    '训练场默认值调整：每秒减疗默认 3%（双方），每秒物理攻击力基础值改为 AI 5 / 人物 4；本次数值设置一次性重置为最新默认'
                 ]
             },
             {
