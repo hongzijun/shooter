@@ -1566,7 +1566,7 @@
                     <button class="tp-btn" onclick="openTrainShop('cards','enemy')">🎴 装配卡牌</button>
                     <button class="tp-btn" id="tpGodEnemy" onclick="toggleTrainGod('enemy')">🛡 无敌: 关</button>
                     <button class="tp-btn" onclick="resetTrainEnemy()">↺ 重置靶位</button>
-                    <button class="tp-btn" onclick="openTrainTune()">⚙ 数值设置</button>
+                    <button class="tp-btn" onclick="askTrainTune()">⚙ 数值设置</button>
                 </div>
                 <button class="tp-shop" onclick="openTrainShop('shop')">🏪 装备 / 属性商店</button>
                 <button class="tp-shop" onclick="openStatPanelFromTrain()">📊 全属性面板</button>
@@ -2703,7 +2703,7 @@
                 aiRound: 2,
                 aiDrawCount: 1,
                 growthVer: 1,
-                tuneVer: 4,
+                tuneVer: 5,
                 growth: isEnemy
                     ? { hpPerRound: 200, atkPerRound: 10, dmgMultPerRound: 0, defPerRound: 10, penPerRound: 5, redDefPerRound: 20, atkPerSecPerRound: 0.2, drawEveryRounds: 10, drawAddPerStep: 1 }
                     : { hpPerRound: 150, atkPerRound: 5, dmgMultPerRound: 0, defPerRound: 5, penPerRound: 3, redDefPerRound: 18, atkPerSecPerRound: 0.15, drawEveryRounds: 0, drawAddPerStep: 1 }
@@ -3269,7 +3269,7 @@
             if (eq.crossbowFx > 0) {
                 const ex = (target.activeEffects || []).find(e => e.effect === 'healDown');
                 if (ex) ex.endTime = now + 3000;
-                else target.activeEffects.push({ name: '🩹 治疗降低', effect: 'healDown', color: '#a29bfe', startTime: now, endTime: now + 3000, stackCount: 1 });
+                else if (!fxIsPurifying(target)) target.activeEffects.push({ name: '🩹 治疗降低', effect: 'healDown', color: '#a29bfe', startTime: now, endTime: now + 3000, stackCount: 1 });
             }
             // 疾速飞镖: 普攻命中后 +7% 移速/层 (4秒, 最多 3 层) —— 仅玩家侧消费移速
             if (!attacker.isAI && eq.dartCount > 0) {
@@ -3285,7 +3285,7 @@
                     _bandHit.lastAt = now + _bandHit.cdMs;
                     const bex = (target.activeEffects || []).find(e => e.effect === 'bandSlow');
                     if (bex) bex.endTime = now + 3000;
-                    else target.activeEffects.push({ name: '⛓️ 制裁减速', effect: 'bandSlow', color: '#fd79a8', startTime: now, endTime: now + 3000, stackCount: 1 });
+                    else if (!fxIsPurifying(target)) target.activeEffects.push({ name: '⛓️ 制裁减速', effect: 'bandSlow', color: '#fd79a8', startTime: now, endTime: now + 3000, stackCount: 1 });
                     showFloatingText('⛓️ 制裁!', '#fd79a8');
                 }
             }
@@ -3293,13 +3293,13 @@
             if (eq.quakeFx > 0) {
                 const qx = (target.activeEffects || []).find(e => e.effect === 'healDown');
                 if (qx) qx.endTime = now + 3000;
-                else target.activeEffects.push({ name: '🩹 治疗降低', effect: 'healDown', color: '#a29bfe', startTime: now, endTime: now + 3000, stackCount: 1 });
+                else if (!fxIsPurifying(target)) target.activeEffects.push({ name: '🩹 治疗降低', effect: 'healDown', color: '#a29bfe', startTime: now, endTime: now + 3000, stackCount: 1 });
             }
             // === 新增装备特效: 破壳锤 减物防 (6秒, 最多6层) ===
             if (eq.shellhammerFx > 0) {
                 const se = (target.activeEffects || []).find(e => e.effect === 'defDown');
                 if (se) { se.stackCount = Math.min(6, (se.stackCount || 1) + 1); se.endTime = now + 6000; }
-                else target.activeEffects.push({ name: '🔨 破甲', effect: 'defDown', color: '#e17055', startTime: now, endTime: now + 6000, stackCount: 1 });
+                else if (!fxIsPurifying(target)) target.activeEffects.push({ name: '🔨 破甲', effect: 'defDown', color: '#e17055', startTime: now, endTime: now + 6000, stackCount: 1 });
             }
             // === 新增装备特效: 猎空飞刀 目标每损失5%生命 +3物伤 ===
             if (eq.voidknifeFx > 0 && target.maxHealth > 0) {
@@ -3366,6 +3366,7 @@
                     titanCombat: 0, titanBonus: 0, nearEnemyDefPct: 0, crusher: 0,
                     shieldDmgMult: 1, lifestealToShield: 0,
                     immuneEvery9s: 0, auraEnemyDmgTaken: 0,
+                    noJump: 0, noJumpNextAt: 0, purify: 0, purifyNextAt: 0, purifyUntil: 0,
                     skillHeal: 0, skillHealPct: 0, skillNextAtkPct: 0, skillSpeedBoost: 0,
                     doubleChase: 0, box: 0, overclock: 0, airbag: 0, resoncutter: 0, turbine: 0, iceLoss: 0,
                     // 运行时
@@ -3549,7 +3550,7 @@
                     const be = (tgt.activeEffects || []).find(e => e.effect === 'fxBurn');
                     const stacks = Math.min(fx.burnMaxStacks || 3, fx.burnPct / 0.01 * 1);
                     if (be) { be.stackCount = Math.min(fx.burnMaxStacks || 3, (be.stackCount || 1) + 1); be.endTime = now + 5000; be.pct = Math.max(be.pct || 0, fx.burnPct); }
-                    else tgt.activeEffects.push({ name: '🔥 灼烧', effect: 'fxBurn', color: '#ff6b35', startTime: now, endTime: now + 5000, stackCount: 1, pct: fx.burnPct, owner: att });
+                    else if (!fxIsPurifying(tgt)) tgt.activeEffects.push({ name: '🔥 灼烧', effect: 'fxBurn', color: '#ff6b35', startTime: now, endTime: now + 5000, stackCount: 1, pct: fx.burnPct, owner: att });
                 }
                 // 吸血转化护盾
                 if (fx.lifestealToShield > 0) {
@@ -3616,6 +3617,65 @@
         function srcPhase(interval) {
             return Date.now() - Math.random() * (interval || 5000);
         }
+        // === 负面效果清单 (净化免疫/清除判定) ===
+        const NEG_EFFECT_KEYS = { healDown: 1, bandSlow: 1, defDown: 1, fxBurn: 1, iceSlow: 1, vulnerable: 1, noJump: 1, slow: 1, burn: 1, frozen: 1, stun: 1, poison: 1 };
+        function fxEffectIsNegative(key) { return !!NEG_EFFECT_KEYS[key]; }
+        function fxIsPurifying(p) {
+            return !!(p && p.fx && p.fx.purifyUntil && Date.now() < p.fx.purifyUntil);
+        }
+
+        // 禁跳诅咒: 命中时检查唯一冷却; 触发后禁用目标跳跃 (2 + 0.3×张数, 上限4秒)
+        function fxTryNoJump(att, tgt, now) {
+            if (!att || !tgt || !att.fx) return false;
+            const fx = att.fx;
+            if (!(fx.noJump > 0)) return false;
+            if (now < (fx.noJumpNextAt || 0)) return false;
+            if (fxIsPurifying(tgt)) { fx.noJumpNextAt = now + 10000; return false; }   // 净化期间免疫, 但仍消耗本次冷却
+            fx.noJumpNextAt = now + 10000;
+            const dur = Math.min(4000, 2000 + 300 * (fx.noJump - 1));
+            fx.noJumpUntil = now + dur;
+            tgt.activeEffects = tgt.activeEffects || [];
+            const old = tgt.activeEffects.find(function (e) { return e && e.effect === 'noJump'; });
+            if (old) {
+                old.endTime = Math.max(old.endTime || 0, now + dur);
+                old.startTime = now;
+                old.duration = Math.max(dur, old.duration || dur);
+            } else {
+                tgt.activeEffects.push({ name: '🚫 禁跳', effect: 'noJump', color: '#e74c3c', startTime: now, endTime: now + dur, duration: dur, stackCount: 1 });
+            }
+            showFloatingText('🚫 禁跳 ' + (dur / 1000).toFixed(1) + 's', '#ff4757');
+            return true;
+        }
+
+        // 净化: 唯一 15 秒计时; 触发后清除并免疫所有负面, 持续 2 + 0.3×(张数-1) 秒 (上限5秒)
+        function fxPurifyTick(p, now) {
+            const fx = p && p.fx;
+            if (!fx || !(fx.purify > 0)) return;
+            const dur = Math.min(5000, 2000 + 300 * (fx.purify - 1));
+            if (now >= (fx.purifyNextAt || 0)) {
+                fx.purifyNextAt = now + 15000;
+                fx.purifyUntil = now + dur;
+                showFloatingText('💠 净化!', '#4f8eff');
+            }
+            const list = p.activeEffects || (p.activeEffects = []);
+            const pe = list.find(function (e) { return e && e.effect === 'purify'; });
+            if (now < (fx.purifyUntil || 0)) {
+                // 立即清除所有负面 activeEffects
+                p.activeEffects = list.filter(function (e) { return !fxEffectIsNegative(e && e.effect); });
+                // 清除负面字段 (减速/灼烧/冻结/持续伤害)
+                p.slowEffect = null;
+                p.burningStacks = 0;
+                p.burnStacks = [];
+                p.frozen = false;
+                p.dotDamage = null;
+                const keep = p.activeEffects.find(function (e) { return e && e.effect === 'purify'; });
+                if (keep) { keep.endTime = fx.purifyUntil; keep.startTime = fx.purifyUntil - dur; keep.duration = dur; }
+                else p.activeEffects.push({ name: '💠 净化', effect: 'purify', color: '#4f8eff', startTime: now, endTime: fx.purifyUntil, duration: dur, stackCount: 1 });
+            } else if (pe) {
+                p.activeEffects = list.filter(function (e) { return e !== pe; });
+            }
+        }
+
         // 每帧定时: 回复脉冲 / 定时护盾 / 状态类
         function fxTick(p, now) {
             if (!p || !p.fx || p.health <= 0) return;
@@ -3746,6 +3806,7 @@
         // 每帧效果结算: 定时回复/护盾 + 灼烧 + 低血触发 (仔仔熊/备用能源/冰心)
         function fxEffectsTick(p, now) {
             if (!p || p.health <= 0) return;
+            fxPurifyTick(p, now);
             fxTick(p, now);
             // === 灼烧 (痛痛痛/痛痛痛痛): 每秒按目标最大生命扣血, 层数叠加 ===
             const be = (p.activeEffects || []).find(e => e.effect === 'fxBurn');
@@ -3827,7 +3888,7 @@
                         fxDamageFloat(foe, foe.takeDamage(40, p, false, 'magic', true), 'icearmor');
                         const ex = (foe.activeEffects || []).find(e => e.effect === 'iceSlow');
                         if (ex) ex.endTime = now + 2000;
-                        else foe.activeEffects.push({ name: '❄️ 冰环减速', effect: 'iceSlow', color: '#74b9ff', startTime: now, endTime: now + 2000, stackCount: 1 });
+                        else if (!fxIsPurifying(foe)) foe.activeEffects.push({ name: '❄️ 冰环减速', effect: 'iceSlow', color: '#74b9ff', startTime: now, endTime: now + 2000, stackCount: 1 });
                     }
                 }
             }
@@ -3964,7 +4025,11 @@
             { id: 'fx_newarmor_e', name: '崭新护甲', icon: '🛡️', type: 'effect', rarity: 'epic', desc: '生命>60%时受到的伤害降低40%',
               apply(p) { const f = ensureFx(p); f.dmgRedHighHp += 0.40; f.dmgRedHighHpThresh = 0.6; } },
             { id: 'fx_turnshield_e', name: '准备充分', icon: '🔰', type: 'effect', rarity: 'epic', desc: '回合开始时获得最大生命35%的护盾',
-              apply(p) { ensureFx(p).turnShieldPct += 0.35; } }
+              apply(p) { ensureFx(p).turnShieldPct += 0.35; } },
+            { id: 'fx_nojump_e', name: '禁跳诅咒', icon: '🚫', type: 'effect', rarity: 'epic', desc: '每10秒: 下次普攻命中使敌人禁用跳跃2秒; 每多一张+0.3秒(上限4秒); 唯一冷却, 不独立计时',
+              apply(p) { const f = ensureFx(p); if (f.noJump <= 0) f.noJumpNextAt = Date.now() + 10000; f.noJump++; } },
+            { id: 'fx_purify_e', name: '净化之光', icon: '💠', type: 'effect', rarity: 'epic', desc: '每15秒净化自身2秒; 每多一张+0.3秒(上限5秒); 净化期间清除并免疫所有负面效果, 散发蓝光',
+              apply(p) { const f = ensureFx(p); if (f.purify <= 0) f.purifyNextAt = Date.now() + 15000; f.purify++; } }
         ];
         CARDS.push(...EFFECT_CARDS);
 
@@ -6141,6 +6206,9 @@
             }
 
             jump() {
+                const _njNow = Date.now();
+                // 负面状态「禁跳」: 期间无法跳跃 (玩家/AI/靶子全通用)
+                if ((this.activeEffects || []).some(function (e) { return e && e.effect === 'noJump' && (e.endTime || 0) > _njNow; })) return;
                 if (this.isAI) {
                     // 强制约束: 两次跳跃至少间隔 220ms, 防止同一帧/连帧被多处调用形成"多段跳"
                     const nowJump = performance.now();
@@ -6686,6 +6754,11 @@
 
             applyEffect(effect) {
                 const now = Date.now();
+                // 净化期间不接受负面效果
+                if (effect && fxEffectIsNegative(effect.effect) && fxIsPurifying(this)) {
+                    showFloatingText('💠 净化免疫', '#4f8eff');
+                    return;
+                }
 
                 switch (effect.effect) {
                     case 'speed':
@@ -7615,6 +7688,32 @@
                 ctx.shadowBlur = 0;
                 ctx.restore();
 
+                // === 净化状态: 角色散发蓝色的光 ===
+                if (this.fx && this.fx.purifyUntil && Date.now() < this.fx.purifyUntil) {
+                    ctx.save();
+                    const _pGlow = 0.5 + Math.sin(Date.now() / 150) * 0.25;
+                    ctx.strokeStyle = 'rgba(79,142,255,' + _pGlow.toFixed(2) + ')';
+                    ctx.shadowColor = '#4f8eff';
+                    ctx.shadowBlur = 26;
+                    ctx.lineWidth = 3;
+                    ctx.beginPath();
+                    ctx.ellipse(sx, sy - 4, 30, 47, 0, 0, Math.PI * 2);
+                    ctx.stroke();
+                    ctx.restore();
+                }
+                // === 负面状态「禁跳」: 头顶显示禁止 emoji ===
+                if ((this.activeEffects || []).some(function (e) { return e && e.effect === 'noJump' && (e.endTime || 0) > Date.now(); })) {
+                    ctx.save();
+                    ctx.font = '22px Arial';
+                    ctx.textAlign = 'center';
+                    ctx.textBaseline = 'middle';
+                    ctx.fillStyle = '#ffffff';
+                    ctx.shadowColor = '#000000';
+                    ctx.shadowBlur = 5;
+                    ctx.fillText('🚫', sx, sy - 72);
+                    ctx.restore();
+                }
+
                 if (this.burningStacks > 0 && this.health > 0) {
                     const cx = sx + this.width / 2;
                     const cy = sy + this.height / 2;
@@ -7823,7 +7922,9 @@
             crit_dmg_buff: { name: '暴击伤害', card: null, positive: true },
             crit_chance_buff: { name: '暴击几率', card: 'fx_critexpert_e', positive: true },
             fx_panic: { name: '应急加速', card: 'warpbag', positive: true },
-            fx_tempshield: { name: '临时护盾', card: 'airbag', positive: true }
+            fx_tempshield: { name: '临时护盾', card: 'airbag', positive: true },
+            noJump: { name: '禁跳', card: null, positive: false, emoji: '🚫' },
+            purify: { name: '净化', card: null, positive: true, emoji: '💠' }
         };
 
         const _cardImgCache = Object.create(null);
@@ -7847,7 +7948,7 @@
                 if (!groups[key]) {
                     const d = EFFECT_VIS_DEFS[key] || {};
                     // 单条进度条 + 层数数字: pct 取最紧迫(最短)的那条, stacks 取最大层数
-                    groups[key] = { key: key, name: d.name || key, card: d.card || null, positive: d.positive !== false, pct: -1, stacks: 1 };
+                    groups[key] = { key: key, name: d.name || key, card: d.card || null, positive: d.positive !== false, emoji: d.emoji || null, pct: -1, stacks: 1 };
                 }
                 return groups[key];
             };
@@ -7940,6 +8041,13 @@
                 const img = getCardImageEl(g.card);
                 if (img) {
                     ctx.drawImage(img, iconX, cy - ICON / 2, ICON, ICON);
+                } else if (g.emoji) {
+                    ctx.font = 'bold ' + ICON + 'px Arial';
+                    ctx.textAlign = 'center';
+                    ctx.textBaseline = 'middle';
+                    ctx.fillStyle = 'rgba(' + base[0] + ',' + base[1] + ',' + base[2] + ',0.95)';
+                    ctx.fillText(g.emoji, iconX + ICON / 2, cy + 1);
+                    ctx.textAlign = isRight ? 'right' : 'left';
                 } else {
                     ctx.fillStyle = 'rgba(' + base[0] + ',' + base[1] + ',' + base[2] + ',0.85)';
                     ctx.fillRect(iconX, cy - ICON / 2, ICON, ICON);
@@ -7996,10 +8104,9 @@
         //   五类语义 (未激活一律灰显):
         //   冷却型 cd|周期性触发|扇形倒计时, 亮=可触发, 灰=冷却中\n        //   层数型 stack|可叠加资源|右下角显示层数, 0层灰, 叠1层即亮\n        //   计数型 count|累计N次触发|显示 cur/total, 满层才亮\n        //   就绪型 ready|一次性/下次生效|就绪亮, 用掉灰\n        //   条件型 cond|条件满足才生效|条件满足亮, 否则灰
         // ============================================================
-        // CDR: 冷却类卡牌的实际冷却与显示 = 基础时长 × (1 - 冷却缩减), 上限 75%
+        // CDR 仅减少换弹时间: 所有装备/效果卡冷却固定为基础时长, 不再享受冷却缩减
         function cdrMs(baseMs, ent) {
-            const c = (ent && typeof ent.getCdr === 'function') ? ent.getCdr() : 0;
-            return baseMs * (1 - Math.max(0, Math.min(1, c)));
+            return baseMs;
         }
 
         function collectStaticItems(ent) {
@@ -8091,6 +8198,15 @@
                 if (fx.turbine > 0) { const _n = fx.turbine || 1; out.push({ type: 'stack', key: 'turbine', name: '智械涡轮', iconId: 'turbine', stacks: Math.min(fx.turbineStacks || 0, 3) * _n, total: 3 * _n }); }
                 if (fx.resoncutter > 0) { const _n = fx.resoncutter || 1; out.push({ type: 'stack', key: 'reson', name: '共振切割', iconId: 'resoncutter', stacks: Math.max(0, Math.min(fx.resonStacks || 0, 5)) * _n, total: 5 * _n }); }
                 if (fx.overclock > 0) { const _n = fx.overclock || 1; out.push({ type: 'stack', key: 'overclock', name: '超频过载', iconId: 'fx_overclock_e', stacks: Math.min(fx.overclockStacks || 0, 20 * _n), total: 20 * _n }); }
+                // 新卡: 禁跳 (负面触发, 唯一冷却) / 净化 (自身正面, 唯一冷却)
+                if (fx.noJump > 0) {
+                    const _njRemain = Math.max(0, (fx.noJumpUntil || 0) > now ? 0 : ((fx.noJumpNextAt || 0) - now));
+                    out.push({ type: 'cd', key: 'noJump', name: '禁跳', iconId: 'fx_nojump_e', emoji: '🚫', remain: _njRemain, total: 10000, badge: fx.noJump });
+                }
+                if (fx.purify > 0) {
+                    const _pRemain = Math.max(0, (fx.purifyUntil || 0) > now ? 0 : ((fx.purifyNextAt || 0) - now));
+                    out.push({ type: 'cd', key: 'purify', name: '净化', iconId: 'fx_purify_e', emoji: '💠', remain: _pRemain, total: 15000, badge: fx.purify });
+                }
                 // 被动已就绪 (不读秒)
                 if (fx.firstHitDmg > 0) out.push({ type: 'ready', key: 'opening', name: '盛大开场', iconId: 'fx_opening_e', ready: !fx.firstHitDone });
                 if (fx.skillNextAtkPct > 0) out.push({ type: 'ready', key: 'kinetic', name: '动能铁臂', iconId: 'kineticarm', ready: (ent._skillNextAtk || 0) > 0 });
@@ -8269,6 +8385,14 @@
                 if (img) {
                     ctx.globalAlpha = isActive ? 1 : 0.35;
                     ctx.drawImage(img, x + 2, y + 2, S - 4, S - 4);
+                    ctx.globalAlpha = 1;
+                } else if (it.emoji) {
+                    ctx.globalAlpha = isActive ? 1 : 0.4;
+                    ctx.font = 'bold ' + Math.round(S * 0.62) + 'px Arial';
+                    ctx.textAlign = 'center';
+                    ctx.textBaseline = 'middle';
+                    ctx.fillStyle = '#ffffff';
+                    ctx.fillText(it.emoji, cx, cy);
                     ctx.globalAlpha = 1;
                 } else {
                     ctx.fillStyle = isActive
@@ -9190,6 +9314,7 @@
 
         function applyBurning(entity, stacks) {
             if (!entity) return;
+            if (fxIsPurifying(entity)) return;   // 净化期间不接负面
             const now = Date.now();
             const duration = 750;
             for (let i = 0; i < stacks; i++) {
@@ -9397,7 +9522,7 @@
                 existing.stackCount = Math.min(10, (existing.stackCount || 1) + stacks);
                 existing.stacks = existing.stackCount;
                 showFloatingText('易伤×' + existing.stackCount, '#9b59b6');
-            } else {
+            } else if (!fxIsPurifying(entity)) {
                 entity.activeEffects.push({
                     name: '易伤',
                     effect: 'vulnerable',
@@ -9602,7 +9727,7 @@
                         createHitParticles(b.x, b.y, b.color, hitAngle);
 
                         // === Task 4: 特殊弹药效果 ===
-                        if (b.specialType === 'fire') {
+                        if (b.specialType === 'fire' && !fxIsPurifying(t)) {
                             for (let i = 0; i < 3; i++) {
                                 if (t.burnStacks.length < 5) {
                                     t.burnStacks.push({ endTime: Date.now() + 4000 });
@@ -9611,7 +9736,7 @@
                             }
                             createParticles(t.x, t.y - 20, '#ff6b35', 15);
                         }
-                        if (b.specialType === 'ice') {
+                        if (b.specialType === 'ice' && !fxIsPurifying(t)) {
                             t.frozen = true;
                             t.frozenEnd = Date.now() + 100;
                             createParticles(t.x, t.y - 20, '#74b9ff', 15);
@@ -9620,6 +9745,8 @@
                             // AP弹：直接扣HP，跳过护盾（在takeDamage中处理）
                         }
 
+                        // === 新卡: 禁跳诅咒 —— 仅子弹命中敌人时触发 (唯一10秒冷却) ===
+                        if (b.owner) fxTryNoJump(b.owner, t, Date.now());
                         let damageToApply = b.isCrit ? b.finalDamage : b.damage;
                         if (b.owner && b.owner.isAI && b.owner.aiDamageMult) damageToApply = Math.round(damageToApply * b.owner.aiDamageMult);
                         // === Task 4: 制裁指环 debuff —— 被减速方的输出 ×0.85 (持续 3 秒, 双方通用) ===
@@ -10349,6 +10476,37 @@
             t[key] = val;
         }
 
+        // === 训练场数值设置: 密码保护 (本次会话记住, 刷新后需重新输入) ===
+        let _trainTuneUnlocked = false;
+        function askTrainTune() {
+            if (_trainTuneUnlocked) { openTrainTune(); return; }
+            const box = document.getElementById('trainPwd');
+            if (!box) { openTrainTune(); return; }
+            const err = document.getElementById('trainPwdErr');
+            if (err) err.textContent = '';
+            const inp = document.getElementById('trainPwdInput');
+            if (inp) inp.value = '';
+            box.style.display = 'flex';
+            if (inp) setTimeout(function () { try { inp.focus(); } catch (e) { } }, 60);
+        }
+        function closeTrainPwd() {
+            const box = document.getElementById('trainPwd');
+            if (box) box.style.display = 'none';
+        }
+        function submitTrainPwd() {
+            const inp = document.getElementById('trainPwdInput');
+            const v = inp ? String(inp.value || '').trim() : '';
+            if (v === 'hong.2673558') {
+                _trainTuneUnlocked = true;
+                closeTrainPwd();
+                openTrainTune();
+                return;
+            }
+            const err = document.getElementById('trainPwdErr');
+            if (err) err.textContent = '密码错误, 请重试';
+            if (inp) { inp.value = ''; try { inp.focus(); } catch (e) { } }
+        }
+
         function openTrainTune() {
             if (gameState !== 'training') return;
             const el = document.getElementById('trainTune');
@@ -10621,14 +10779,15 @@
             } catch (err) { data = null; }
             const def = { mine: _trainDefaultTune('mine'), enemy: _trainDefaultTune('enemy') };
             const num = function (v, d) { return (typeof v === 'number' && isFinite(v)) ? v : d; };
-            // 旧存档无 tuneVer>=2: 直接重置为新默认, 避免旧 localStorage 掩盖新默认值
+            // v5 一次性重置: 把旧版本 (含之前手动改过的云端默认) 的数值设置全部恢复为默认值
             const _hasTuneVer = !!(data && typeof data === 'object'
                 && data.mine && data.enemy
-                && Number(data.mine.tuneVer) >= 2
-                && Number(data.enemy.tuneVer) >= 2);
+                && Number(data.mine.tuneVer) >= 5
+                && Number(data.enemy.tuneVer) >= 5);
             if (!_hasTuneVer) {
                 TRAIN_TUNE.mine = _trainDefaultTune('mine');
                 TRAIN_TUNE.enemy = _trainDefaultTune('enemy');
+                saveTrainTune();   // 写回默认, 避免每次启动重复重置
                 return;
             }
             ['mine', 'enemy'].forEach(function (side) {
@@ -10653,7 +10812,7 @@
                     aiRound: Math.max(1, Math.round(num(so.aiRound, d.aiRound))),
                     aiDrawCount: Math.max(1, Math.min(10, Math.round(num(so.aiDrawCount, d.aiDrawCount)))),
                     growthVer: 1,
-                    tuneVer: 4,
+                    tuneVer: 5,
                     growth: {
                         hpPerRound: num(so.growth && so.growth.hpPerRound, _gd.hpPerRound),
                         // 兼容旧存档: 老版本增量存在顶层 atkPerSec (1 为「无成长」基准, 其它值视为每波增量)
@@ -11482,7 +11641,7 @@
                 if (_aiAwardTimer) { clearTimeout(_aiAwardTimer); _aiAwardTimer = null; }
                 ['pauseMenu', 'victoryPanel', 'pvpGameOver', 'draftOverlay', 'settingsPanel',
                     'buffGuidePanel', 'statPanel', 'startChoice', 'pvpPanelA', 'pvpPanelB',
-                    'livesInfo', 'trainingDebug', 'aiEquipAward'].forEach(id => {
+                    'livesInfo', 'trainingDebug', 'aiEquipAward', 'trainPwd'].forEach(id => {
                         const el = document.getElementById(id);
                         if (el) el.style.display = 'none';
                     });
@@ -13002,7 +13161,21 @@
         </div>
     </div>
 
-    <!-- 开始游戏询问: 重新开始 / 继续游戏 (有实时存档时"继续游戏"可点) -->
+    <!-- 训练场数值设置密码 -->
+    <div id="trainPwd" style="position:fixed;top:0;left:0;width:100%;height:100%;background:rgba(0,0,0,0.65);z-index:10002;display:none;align-items:center;justify-content:center;">
+        <div style="background:linear-gradient(135deg,#1a1a2e,#16213e);border-radius:16px;padding:28px 34px;border:2px solid #4f8eff;min-width:320px;text-align:center;">
+            <div style="font-size:34px;margin-bottom:6px;">🔒</div>
+            <h2 style="color:#4f8eff;font-size:20px;margin:0 0 14px;">数值设置需要密码</h2>
+            <input id="trainPwdInput" type="password" autocomplete="off" placeholder="输入密码" style="width:100%;box-sizing:border-box;padding:10px 12px;border-radius:8px;border:1px solid #4f8eff;background:#0d1117;color:#fff;font-size:15px;outline:none;" onkeydown="if(event.key==='Enter')submitTrainPwd()">
+            <div id="trainPwdErr" style="color:#ff6b6b;font-size:12px;height:16px;margin-top:6px;"></div>
+            <div style="display:flex;gap:10px;justify-content:center;margin-top:6px;">
+                <button onclick="submitTrainPwd()" style="background:linear-gradient(45deg,#2ed573,#1e90ff);border:none;color:white;padding:10px 26px;border-radius:8px;font-size:14px;cursor:pointer;font-weight:bold;">确认</button>
+                <button onclick="closeTrainPwd()" style="background:#636e72;border:none;color:white;padding:10px 22px;border-radius:8px;font-size:14px;cursor:pointer;">取消</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- 开始游戏询问: 重新开始 / 选择最近存档 -->
     <div id="startChoice" style="position:fixed;top:0;left:0;width:100%;height:100%;background:rgba(0,0,0,0.65);z-index:10001;display:none;align-items:center;justify-content:center;">
         <div style="background:linear-gradient(135deg,#1a1a2e,#16213e);border-radius:20px;padding:36px 44px;border:2px solid #4f8eff;text-align:center;min-width:340px;">
             <div style="font-size:42px;margin-bottom:8px;">🎮</div>
