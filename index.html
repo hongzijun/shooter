@@ -2667,7 +2667,7 @@
             rifle: { name: '步枪', sps: 8, dmgBase: 20, atkCoef: 0.25, damage: 45, fireRate: 125, ammo: 32, maxAmmo: 32, reserve: 9999, reloadTime: 1300, speed: 24, spread: 0.042, color: '#4f8eff', knockbackMultiplier: 1.0 },
             shotgun: { name: '霰弹枪', sps: 1.4, dmgBase: 20, atkCoef: 0.3, damage: 50, fireRate: 714, ammo: 10, maxAmmo: 10, reserve: 9999, reloadTime: 1800, speed: 18, spread: 0.24, pellets: 6, color: '#ff6b35', knockbackMultiplier: 1.8, closeRangeBonus: true },
             smg: { name: '冲锋枪', sps: 12, dmgBase: 3, atkCoef: 0.04, fxMult: 1, damage: 7, fireRate: 83, ammo: 45, maxAmmo: 45, reserve: 9999, reloadTime: 1100, speed: 19, spread: 0.095, color: '#a29bfe', knockbackMultiplier: 0.7 },
-            sniper: { name: '狙击枪', sps: 1.1, dmgBase: 80, atkCoef: 0.9, damage: 170, fireRate: 909, ammo: 6, maxAmmo: 6, reserve: 30, reloadTime: 2800, speed: 34, spread: 0.006, color: '#2ed573', knockbackMultiplier: 2.0 },
+            sniper: { name: '狙击枪', sps: 1.1, dmgBase: 80, atkCoef: 0.9, damage: 170, fireRate: 909, ammo: 6, maxAmmo: 6, reserve: 9999, reloadTime: 2800, speed: 34, spread: 0.006, color: '#2ed573', knockbackMultiplier: 2.0 },
             sword: { name: '⚔️ 战刃', sps: 1.8, dmgBase: 80, atkCoef: 0.3, fxMult: 1.5, damage: 110, fireRate: 556, chargeFullMs: 3000, attackRange: 95, maxCombo: 5, color: '#e0e0e0', knockbackMultiplier: 1.5, isMelee: true, ammo: Infinity, maxAmmo: Infinity }
         };
 
@@ -5042,6 +5042,10 @@
                     ['ammo', 'reserve', 'maxAmmo', 'damage', 'name', 'fireRate', 'reloadTime', 'fxMult', 'isMelee'].forEach(f => {
                         if (s[f] !== undefined) w[f] = s[f];
                     });
+                    // 玩家武器备弹兜底: 旧存档可能残留狙击枪的 30 发备弹, 读档后补回默认备弹
+                    if (!p.isAI && WEAPONS[k] && WEAPONS[k].reserve !== undefined && !(w.reserve >= WEAPONS[k].reserve)) {
+                        w.reserve = WEAPONS[k].reserve;
+                    }
                 });
             }
             // 读档后统一兜底: 防止存档写在死亡/重生过渡帧导致角色消失
@@ -5726,7 +5730,14 @@
 
                 // Task 2.2/2.3: 射速节流公式化 —— 间隔(ms) = 1000/(基准发/秒 × (1+攻速%)), 攻速含装备加成
                 if (this.isReloading || now - this.lastShot < this.getFireInterval(w) || w.ammo <= 0) {
-                    if (w.ammo <= 0 && !this.isReloading) this.reload();
+                    if (w.ammo <= 0 && !this.isReloading) {
+                        // 兜底: 玩家备弹耗尽(旧存档/异常)时补回该武器默认备弹, 避免狙击枪永久无法换弹开火
+                        if (!this.isAI && !(w.reserve > 0)) {
+                            const _baseW = WEAPONS[this.currentWeapon];
+                            w.reserve = (_baseW && _baseW.reserve > 0) ? _baseW.reserve : 9999;
+                        }
+                        this.reload();
+                    }
                     return;
                 }
 
@@ -11405,7 +11416,8 @@
                     '修复「每秒减疗」退出重进后进度丢失：累计值已写入存档，读档后继续保留并按秒累加（每秒物理攻击力同样处理）',
                     '修复部分至臻卡牌图标品质不一致：暴击屏障 / 暴击重生 / 暴击专家等 17 张至臻卡改为至臻渐变底图，并补齐「禁跳诅咒」「净化之光」卡图；全部 92 张卡牌图标已逐一核对，紫色与至臻底图均与品质一致',
                     '暂停时间戳扩展到所有暂停场景：AI 获取卡牌过场、人物 / 双方抽卡选卡阶段、PvP 回合结算等待期间，冷却与所有计时一律冻结，恢复后无缝衔接',
-                    '训练场默认值调整：每秒减疗默认 3%（双方），每秒物理攻击力基础值改为 AI 5 / 人物 4；本次数值设置一次性重置为最新默认'
+                    '训练场默认值调整：每秒减疗默认 3%（双方），每秒物理攻击力基础值改为 AI 5 / 人物 4；本次数值设置一次性重置为最新默认',
+                    '修复狙击枪偶尔完全打不出子弹：其备弹原被设为 30（其它武器均为 9999），打空 36 发后无法换弹；现统一为充足备弹，并在读档时对玩家武器备弹做兜底'
                 ]
             },
             {
