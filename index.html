@@ -4566,7 +4566,9 @@
             if (cleared <= 0 || cleared % X !== 0) return null;
             if (_freePickWaveDone === cleared) return null;
             _freePickWaveDone = cleared;
-            return { wave: cleared, count: Math.max(1, Math.round(Y * X / 2)) };
+            // 自选数量 = X × Y × (已通关波次 / X) ÷ 2 = Y × 波次 ÷ 2
+            const count = Math.min(CARDS.length, Math.max(1, Math.round(X * Y * (cleared / X) / 2)));
+            return { wave: cleared, count: count };
         }
 
         function openFreePick(count, clearedWave) {
@@ -11709,7 +11711,7 @@
                     '抽卡品质概率调整：效果卡抽到彩卡（至臻）概率 70%、紫卡 30%（装备卡仍固定紫色）',
                     '选卡刷新次数由 3 次改为 10 次（单人 / 训练场 / PvP 双方各自独立 10 次）',
                     '净化之光基础冷却调整为 20 秒（多张仍每张 -0.5 秒，最低 12 秒）',
-                    'PvE 新增里程碑自选：每过 X 波（X / Y 取自 AI 抽卡成长配置）可自选 Y×X/2 张卡牌，装备 / 效果均可，选择期间游戏暂停',
+                    'PvE 新增里程碑自选：每过 X 波（X / Y 取自 AI 抽卡成长配置）可自选 X×Y×(已通关波次/X)÷2 张卡牌（即 Y×波次÷2），装备 / 效果均可，选择期间游戏暂停',
                     '冷却缩减（CDR）上限由 60% 提升至 80%；「时间刻印」仍最多额外 -60%，两者乘算后最高约 92%',
                     '独立触发类装备改为逐件独立显示（如相位臂甲）：有几个就显示几个冷却条目，各自倒计时 / 就绪，不再合并成一条'
                 ]
