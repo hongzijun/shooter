@@ -5565,8 +5565,8 @@
                 if (this.fx && this.fx.cdrPerHpLost > 0 && this.maxHealth > 0) {
                     fxCdr += this.fx.cdrPerHpLost * (1 - this.health / this.maxHealth) * 100;
                 }
-                if (this.isAI) return Math.min(0.75, eqCdr + fxCdr);
-                return Math.min(0.75, (this.cdr || 0) + eqCdr + fxCdr);
+                if (this.isAI) return Math.min(0.60, eqCdr + fxCdr);
+                return Math.min(0.60, (this.cdr || 0) + eqCdr + fxCdr);
             }
             // 物理防御: AI 用 aiDef, 玩家用 defense; 叠加装备/效果/条件加成
             getDef() { return this.getDefP(); }
@@ -6232,7 +6232,7 @@
                     return;
                 }
                 // 快速换弹卡: 换弹耗时按倍率缩短 (AI的cardReloadMult恒为1, 不受影响)
-                // Task 2.3: CDR 冷却缩减 —— 换弹时长 ×(1-CDR), 上限 75% (AI 的 getCdr 恒 0)
+                // CDR 冷却缩减 —— 换弹时长 ×(1-CDR), 上限 60%
                 if (Date.now() - this.reloadStart >= w.reloadTime * (this.cardReloadMult || 1) * (1 - this.getCdr())) {
                     const need = w.maxAmmo - w.ammo;
                     const give = Math.min(need, w.reserve);
@@ -8136,9 +8136,10 @@
         //   五类语义 (未激活一律灰显):
         //   冷却型 cd|周期性触发|扇形倒计时, 亮=可触发, 灰=冷却中\n        //   层数型 stack|可叠加资源|右下角显示层数, 0层灰, 叠1层即亮\n        //   计数型 count|累计N次触发|显示 cur/total, 满层才亮\n        //   就绪型 ready|一次性/下次生效|就绪亮, 用掉灰\n        //   条件型 cond|条件满足才生效|条件满足亮, 否则灰
         // ============================================================
-        // CDR 仅减少换弹时间: 所有装备/效果卡冷却固定为基础时长, 不再享受冷却缩减
+        // CDR: 冷却类卡牌/效果的实际冷却与显示 = 基础时长 × (1 - 冷却缩减), 上限 60%
         function cdrMs(baseMs, ent) {
-            return baseMs;
+            const c = (ent && typeof ent.getCdr === 'function') ? ent.getCdr() : 0;
+            return baseMs * (1 - Math.max(0, Math.min(0.60, c)));   // CDR 上限 60%
         }
 
         function collectStaticItems(ent) {
@@ -8232,7 +8233,8 @@
                 if (fx.overclock > 0) { const _n = fx.overclock || 1; out.push({ type: 'stack', key: 'overclock', name: '超频过载', iconId: 'fx_overclock_e', stacks: Math.min(fx.overclockStacks || 0, 20 * _n), total: 20 * _n }); }
                 // 新卡: 禁跳 (负面触发, 唯一冷却) / 净化 (自身正面, 唯一冷却)
                 if (fx.noJump > 0) {
-                    const _njRemain = Math.max(0, (fx.noJumpUntil || 0) > now ? 0 : ((fx.noJumpNextAt || 0) - now));
+                    // 禁跳: 触发瞬间即进入 10 秒冷却, 冷却中始终显示剩余时间 (不再显示为"就绪")
+                    const _njRemain = Math.max(0, (fx.noJumpNextAt || 0) - now);
                     out.push({ type: 'cd', key: 'noJump', name: '禁跳', iconId: 'fx_nojump_e', emoji: '🚫', remain: _njRemain, total: 10000, badge: fx.noJump });
                 }
                 if (fx.purify > 0) {
@@ -8721,7 +8723,7 @@
                 const basePenP = Math.max(0, penP - eqPenP);
                 const baseDmgNoEq = w ? Math.round((w.dmgBase != null ? w.dmgBase : w.damage) + baseAtk * atkCoef) : '—';
                 const eqNote = (b, eq) => ' <span style="color:#7f8ba8;font-size:12px">(' + b + ' + ' + eq + ')</span>';
-                const cdrCapNote = (eqCdr > 0 && (baseCdr + eqCdr) > 0.75) ? '，封顶 75%' : '';
+                const cdrCapNote = (eqCdr > 0 && (baseCdr + eqCdr) >= 0.60 - 1e-9) ? '，封顶 60%' : '';
 
                 // 移速 (实际速度倍率, 供参考)
                 const spdMult = isAI
@@ -11358,7 +11360,8 @@
                     'Tab 属性面板与 Esc 暂停现在与 Caps 透明暂停一致：暂停期间所有冷却、增益、子弹与定时器时间全部冻结，恢复后无缝衔接',
                     '吸血上限调整为 200%',
                     '训练场新增「每秒减疗(%)」与「减疗成长(%)/波」：双方每秒累加，只减少对方的治疗与吸血回血（不减自己），上限 95%，属性面板同步显示当前值',
-                    '护盾显示移至除背景外的最上层，禁跳 🚫 标识不再被护盾光晕遮挡（单人/双人/训练场一致）'
+                    '护盾显示移至除背景外的最上层，禁跳 🚫 标识不再被护盾光晕遮挡（单人/双人/训练场一致）',
+                    '卡牌与效果卡冷却恢复享受全部冷却缩减（装备/效果卡/按损失生命的动态加成），CDR 上限改为 60%；禁跳诅咒改为命中触发瞬间立即进入 10 秒冷却，冷却显示同步更新'
                 ]
             },
             {
