@@ -300,6 +300,31 @@
         .draft-btn:disabled { opacity: 0.35; cursor: not-allowed; }
         .draft-hint { font-size: 13px; color: #999; margin-top: 10px; }
 
+        /* === PvE 里程碑奖励: 自选卡牌覆盖层 === */
+        #freePickOverlay {
+            position: fixed; inset: 0; z-index: 10000;
+            background: rgba(4, 6, 14, 0.86);
+            backdrop-filter: blur(10px);
+            display: none; flex-direction: column;
+            padding: 18px 22px; gap: 10px; pointer-events: auto;
+        }
+        #freePickOverlay .fp-head { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
+        #freePickTitle { color: #ffd700; font-size: 18px; font-weight: bold; letter-spacing: 1px; text-shadow: 0 2px 10px rgba(0,0,0,0.8); }
+        #freePickCount { color: #8fd3ff; font-size: 14px; font-weight: bold; }
+        #freePickGrid { flex: 1; min-height: 0; overflow-y: auto; display: grid; grid-template-columns: repeat(auto-fill, minmax(128px, 1fr)); gap: 8px; padding: 4px 2px 10px; }
+        .free-card { background: linear-gradient(160deg, rgba(24,26,44,0.96), rgba(10,12,24,0.96)); border: 2px solid #a29bfe; border-radius: 10px; padding: 6px 5px; text-align: center; cursor: pointer; transition: transform 0.12s ease, box-shadow 0.12s ease; }
+        .free-card:hover { transform: translateY(-2px); box-shadow: 0 0 12px rgba(120,170,255,0.35); }
+        .free-card.sel { outline: 2px solid #ffd166; box-shadow: 0 0 14px rgba(255,209,102,0.65); background: rgba(255,209,102,0.14); }
+        .free-card-img { width: 44px; height: 44px; border-radius: 8px; object-fit: cover; display: block; margin: 0 auto; }
+        #freePickOverlay .draft-card-icon { font-size: 30px; margin-top: 4px; }
+        .free-card-name { color: #fff; font-size: 12px; font-weight: bold; margin-top: 4px; line-height: 1.2; }
+        .free-card-meta { font-size: 10px; margin-top: 2px; }
+        .free-card-owned { font-size: 10px; color: #7f8ba8; min-height: 12px; }
+        #freePickOverlay .fp-foot { display: flex; align-items: center; justify-content: center; gap: 16px; }
+        #freePickConfirmBtn { background: linear-gradient(135deg,#2ed573,#1faa53); border: none; color: #fff; padding: 10px 26px; border-radius: 10px; font-size: 15px; font-weight: bold; cursor: pointer; }
+        #freePickConfirmBtn:disabled { filter: grayscale(0.65); opacity: 0.55; cursor: not-allowed; }
+        #freePickOverlay .fp-hint { color: #999; font-size: 12px; text-align: center; }
+
         /* === Task 6: Tab 全属性面板 (fixed 居中大面板, 默认 hidden, 游戏中按 Tab 打开) === */
         #statPanel {
             position: fixed;
@@ -1651,6 +1676,19 @@
                     <button id="draftConfirmBtn" class="draft-btn" style="background:linear-gradient(135deg,#2ed573,#1faa53);" disabled>✔ 确定</button>
                 </div>
                 <div class="draft-hint">点击卡牌或按 1 / 2 / 3 选中 · 按空格或点「确定」选择该卡</div>
+            </div>
+
+            <!-- === PvE 里程碑奖励: 每过 X 波自选 Y×X/2 张卡牌 === -->
+            <div id="freePickOverlay">
+                <div class="fp-head">
+                    <div id="freePickTitle">里程碑奖励</div>
+                    <div id="freePickCount">已选 0 / 0</div>
+                </div>
+                <div id="freePickGrid"></div>
+                <div class="fp-foot">
+                    <button id="freePickConfirmBtn" disabled>✔ 确认选择</button>
+                </div>
+                <div class="fp-hint">装备卡 / 效果卡均可选择 · 选满指定张数后确认 · 选择期间游戏暂停</div>
             </div>
 
             <!-- === AI 每回合装备获取动画 (抽卡结束后的过场, JS 控制显示/隐去) === -->
@@ -3781,7 +3819,7 @@
             // 上限: 净化 5 秒 / 冷却 12 秒
             const _pn = Math.max(1, Math.round(fx.purify));
             const _pDurBase = Math.min(5000, 2000 + 500 * (_pn - 1));
-            const _pCd = Math.max(12000, 15000 - 500 * (_pn - 1));
+            const _pCd = Math.max(12000, 20000 - 500 * (_pn - 1));
             const dur = fxBuffDur(p, _pDurBase);
             if (now >= (fx.purifyNextAt || 0)) {
                 fx.purifyNextAt = now + _pCd;
@@ -4163,8 +4201,8 @@
               apply(p) { ensureFx(p).turnShieldPct += 0.35; } },
             { id: 'fx_nojump_e', name: '禁跳诅咒', icon: '🚫', type: 'effect', rarity: 'epic', desc: '每10秒: 下次普攻命中使敌人禁用跳跃2秒; 每多一张+0.3秒(上限4秒); 唯一冷却, 不独立计时',
               apply(p) { const f = ensureFx(p); if (f.noJump <= 0) f.noJumpNextAt = Date.now() + 10000; f.noJump++; } },
-            { id: 'fx_purify_e', name: '净化之光', icon: '💠', type: 'effect', rarity: 'epic', desc: '每15秒净化自身2秒; 每多一张净化时长+0.5秒、冷却-0.5秒; 上限净化5秒/冷却12秒; 净化期间清除并免疫所有负面效果, 散发蓝光',
-              apply(p) { const f = ensureFx(p); if (f.purify <= 0) f.purifyNextAt = Date.now() + 15000; f.purify++; } },
+            { id: 'fx_purify_e', name: '净化之光', icon: '💠', type: 'effect', rarity: 'epic', desc: '每20秒净化自身2秒; 每多一张净化时长+0.5秒、冷却-0.5秒; 上限净化5秒/冷却12秒; 净化期间清除并免疫所有负面效果, 散发蓝光',
+              apply(p) { const f = ensureFx(p); if (f.purify <= 0) f.purifyNextAt = Date.now() + 20000; f.purify++; } },
             { id: 'fx_cdrplus_e', name: '时间刻印', icon: '⏳', type: 'effect', rarity: 'epic', desc: '所有冷却型效果冷却额外 -10%（先乘 CDR 再乘本效果），可叠加，最多 -60%',
               apply(p) { const f = ensureFx(p); f.cdrPlus = Math.min(0.60, (f.cdrPlus || 0) + 0.10); } },
             { id: 'fx_debuffext_e', name: '衰亡刻印', icon: '⏬', type: 'effect', rarity: 'epic', desc: '使对方所有负面效果持续时间 +20%，可叠加，最多 +200%',
@@ -4480,6 +4518,14 @@
             draftSelectedIdx = -1;
             const overlay = document.getElementById('draftOverlay');
             if (overlay) overlay.style.display = 'none';
+            // PvE 里程碑: 每过 X 波 (X/Y 取自 AI 抽卡成长配置) 可自选 Y×X/2 张卡
+            const _fp = freePickMilestone();
+            if (_fp) { openFreePick(_fp.count, _fp.wave); return; }
+            completeDraftRespawn();
+        }
+
+        // 选卡结束后的统一收尾: 弹药大师补弹 + AI 重生 + 回合结算
+        function completeDraftRespawn() {
             // 弹药大师: 每波开始 (每次选卡后) 补满玩家所有武器弹药 (reserve 保持不动, 玩家备弹9999不愁)
             if (player && player.cardPerks && player.cardPerks.ammoMaster > 0) {
                 Object.keys(player.weapons).forEach(k => {
@@ -4502,6 +4548,109 @@
             }, 800);
         }
 
+        // === PvE 里程碑奖励: 每过 X 波赠送自选 Y×X/2 张卡 (X/Y 与 AI 抽卡成长配置共用) ===
+        let _freePickWaveDone = -1;   // 已发放里程碑的关卡数 (避免同波重复)
+        let _freePickOpen = false;
+        let _freePickNeed = 0;
+        let _freePickSel = [];
+
+        function freePickMilestone() {
+            if (gameState !== 'playing' || draftRespawnKind !== 'wave') return null;
+            const t = (typeof TRAIN_TUNE !== 'undefined' && TRAIN_TUNE && TRAIN_TUNE.enemy) ? TRAIN_TUNE.enemy : null;
+            const g = (t && t.growth) ? t.growth : null;
+            if (!g) return null;
+            const X = Math.max(0, Math.round(g.drawEveryRounds || 0));
+            const Y = Math.max(0, Math.round(g.drawAddPerStep || 0));
+            if (X <= 0 || Y <= 0) return null;
+            const cleared = Math.max(0, (wave || 1) - 1);
+            if (cleared <= 0 || cleared % X !== 0) return null;
+            if (_freePickWaveDone === cleared) return null;
+            _freePickWaveDone = cleared;
+            return { wave: cleared, count: Math.max(1, Math.round(Y * X / 2)) };
+        }
+
+        function openFreePick(count, clearedWave) {
+            const ov = document.getElementById('freePickOverlay');
+            const grid = document.getElementById('freePickGrid');
+            if (!ov || !grid) { completeDraftRespawn(); return; }
+            _freePickNeed = count;
+            _freePickSel = [];
+            _freePickOpen = true;
+            isDrafting = true;          // 冻结游戏与所有时间戳
+            const title = document.getElementById('freePickTitle');
+            if (title) title.textContent = '第 ' + clearedWave + ' 波里程碑奖励 · 自选 ' + count + ' 张卡牌';
+            renderFreePickGrid();
+            updateFreePickCount();
+            ov.style.display = 'flex';
+            GameAudio.play('reload');
+        }
+
+        function renderFreePickGrid() {
+            const grid = document.getElementById('freePickGrid');
+            if (!grid) return;
+            const log = getEntityCardLog(player);
+            const owned = {};
+            (log || []).forEach(function (x) { if (x && x.id) owned[x.id] = (owned[x.id] || 0) + 1; });
+            grid.innerHTML = CARDS.map(function (c) {
+                const ri = DRAFT_RARITY_INFO[c.rarity] || DRAFT_RARITY_INFO.purple;
+                const isSel = _freePickSel.indexOf(c.id) >= 0;
+                const ct = (c.type === 'equip') ? '装备' : '效果';
+                return '<div class="free-card' + (isSel ? ' sel' : '') + '" data-fp-id="' + c.id + '" style="border-color:' + ri.color + ';">' +
+                    cardIconHTML(c, 'free-card-img') +
+                    '<div class="free-card-name">' + c.name + '</div>' +
+                    '<div class="free-card-meta" style="color:' + ri.color + ';">' + ct + ' · ' + ri.name + '</div>' +
+                    '<div class="free-card-owned">' + (owned[c.id] ? ('已拥有 ×' + owned[c.id]) : '&nbsp;') + '</div>' +
+                    '</div>';
+            }).join('');
+        }
+
+        function updateFreePickCount() {
+            const cnt = document.getElementById('freePickCount');
+            const btn = document.getElementById('freePickConfirmBtn');
+            if (cnt) cnt.textContent = '已选 ' + _freePickSel.length + ' / ' + _freePickNeed;
+            if (btn) btn.disabled = (_freePickSel.length !== _freePickNeed);
+        }
+
+        function toggleFreePick(id) {
+            if (!_freePickOpen || !id) return;
+            const i = _freePickSel.indexOf(id);
+            if (i >= 0) _freePickSel.splice(i, 1);
+            else if (_freePickSel.length < _freePickNeed) _freePickSel.push(id);
+            renderFreePickGrid();
+            updateFreePickCount();
+        }
+
+        function confirmFreePick() {
+            if (!_freePickOpen || _freePickSel.length !== _freePickNeed) return;
+            const picked = _freePickSel.slice();
+            _freePickOpen = false;
+            _freePickSel = [];
+            const ov = document.getElementById('freePickOverlay');
+            if (ov) ov.style.display = 'none';
+            if (player) {
+                player.cardLog = player.cardLog || [];
+                picked.forEach(function (id) {
+                    const card = CARDS.find(function (c) { return c.id === id; });
+                    if (!card) return;
+                    try { card.apply(player); } catch (err) { console.warn('[里程碑自选] 应用失败:', id, err); }
+                    player.cardLog.push({ id: card.id, name: card.name, icon: card.icon });
+                    selectedCards.push({ id: card.id, name: card.name, icon: card.icon });
+                });
+            }
+            isDrafting = false;
+            if (typeof updateUI === 'function') updateUI();
+            showFloatingText('🎁 里程碑奖励: 已获得 ' + picked.length + ' 张卡牌', '#ffd700');
+            completeDraftRespawn();
+        }
+
+        // 里程碑自选点击 (捕获阶段, 与普通选卡互不干扰)
+        document.addEventListener('click', function (e) {
+            if (!_freePickOpen || !e || !e.target) return;
+            const item = e.target.closest ? e.target.closest('[data-fp-id]') : null;
+            if (item) { toggleFreePick(item.getAttribute('data-fp-id')); return; }
+            if (e.target.id === 'freePickConfirmBtn') { confirmFreePick(); return; }
+        }, true);
+
         // 鼠标点击统一委托 (捕获阶段): 卡牌/刷新/确定按钮
         // 用捕获阶段 (true) 绑定在 document 上, 优先于任何第三方脚本的冒泡阶段拦截/stopPropagation,
         // 解决"预览环境透明层吞掉点击导致卡牌/按钮全部无反应"的问题 (键盘 keydown 不受影响故一直有效)
@@ -4521,6 +4670,12 @@
         function resetDraftState() {
             isDrafting = false;
             draftCount = 0;
+            _freePickWaveDone = -1;
+            _freePickOpen = false;
+            _freePickNeed = 0;
+            _freePickSel = [];
+            const _fpOv = document.getElementById('freePickOverlay');
+            if (_fpOv) _fpOv.style.display = 'none';
             draftRoundSeq = 0;
             roundDraftType = 'equip';
             roundDraftRarity = 'purple';
@@ -8394,7 +8549,7 @@
                 }
                 if (fx.purify > 0) {
                     const _pRemain = Math.max(0, (fx.purifyUntil || 0) > now ? 0 : ((fx.purifyNextAt || 0) - now));
-                    const _pTotal = Math.max(12000, 15000 - 500 * (Math.max(1, Math.round(fx.purify)) - 1));
+                    const _pTotal = Math.max(12000, 20000 - 500 * (Math.max(1, Math.round(fx.purify)) - 1));
                     out.push({ type: 'cd', key: 'purify', name: '净化', iconId: 'fx_purify_e', emoji: '💠', remain: _pRemain, total: _pTotal, badge: fx.purify, badgeMax: 7 });
                 }
                 // 眩晕枷锁 (装备卡): 每 10 秒 (享受 CDR) 下一次命中眩晕
@@ -11546,7 +11701,7 @@
                     '修复部分至臻卡牌图标品质不一致：暴击屏障 / 暴击重生 / 暴击专家等 17 张至臻卡改为至臻渐变底图，并补齐「禁跳诅咒」「净化之光」卡图；全部 92 张卡牌图标已逐张核对',
                     '「崭新护甲」改为循环减伤：1 张 40%、2 张 64%、3 张 78.4%…（按 1-(1-40%)×叠加计算），不会再出现多张完全无伤害',
                     '新增至臻卡「禁跳诅咒」🚫：每 10 秒，下一次子弹命中使敌人 2 秒内无法跳跃；多张只叠加时长（每张 +0.3 秒，上限 4 秒），全队共享唯一冷却，触发即进入 10 秒冷却',
-                    '新增至臻卡「净化之光」💠：基础净化 2 秒 / 冷却 15 秒；每多一张净化时长 +0.5 秒、冷却 -0.5 秒；上限净化 5 秒 / 冷却 12 秒；净化期间清除并免疫所有负面效果，散发蓝光',
+                    '新增至臻卡「净化之光」💠：基础净化 2 秒 / 冷却 20 秒；每多一张净化时长 +0.5 秒、冷却 -0.5 秒；上限净化 5 秒 / 冷却 12 秒；净化期间清除并免疫所有负面效果，散发蓝光',
                     '新增至臻卡「时间刻印」⏳：所有冷却型效果额外 -10%（先乘 CDR 再乘本效果），可叠加，最多 -60%',
                     '新增至臻卡「衰亡刻印」⏬：使对方所有负面效果持续时间 +20%，可叠加，最多 +200%',
                     '新增至臻卡「恒久刻印」⏫：自身所有增益效果持续时间 +20%，可叠加，最多 +200%',
@@ -11554,7 +11709,9 @@
                     '效果栏冷却角标上限同步：净化 ×N/7、眩晕枷锁 ×N/5、禁跳诅咒 ×N/8；冷却总时长按张数动态计算',
                     '更新公告改为「最新条目置顶」：每次更新后打开公告即可看到最新内容，无需向下滚动',
                     '抽卡品质概率调整：效果卡抽到彩卡（至臻）概率 70%、紫卡 30%（装备卡仍固定紫色）',
-                    '选卡刷新次数由 3 次改为 10 次（单人 / 训练场 / PvP 双方各自独立 10 次）'
+                    '选卡刷新次数由 3 次改为 10 次（单人 / 训练场 / PvP 双方各自独立 10 次）',
+                    '净化之光基础冷却调整为 20 秒（多张仍每张 -0.5 秒，最低 12 秒）',
+                    'PvE 新增里程碑自选：每过 X 波（X / Y 取自 AI 抽卡成长配置）可自选 Y×X/2 张卡牌，装备 / 效果均可，选择期间游戏暂停'
                 ]
             },
             {
