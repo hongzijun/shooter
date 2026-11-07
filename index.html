@@ -1791,6 +1791,7 @@
             <button id="btnPvP" onclick="askStartPvP()" style="background:linear-gradient(135deg,#6c5ce7,#a29bfe);border:none;color:white;padding:14px 40px;border-radius:10px;font-size:18px;cursor:pointer;margin:10px;font-weight:bold;">⚔️ 双人对战</button>
             <button class="btn" id="btnTraining" onclick="startTraining()" style="background:linear-gradient(45deg,#2ed573,#1abc9c);">训练场</button>
             <button class="btn" id="openSettingsBtn" onclick="toggleSettings()" style="background:linear-gradient(45deg,#4f8eff,#74b9ff);margin-top:8px;">📖 说明</button>
+            <button class="btn" id="openNoticeBtn" onclick="toggleNotice()" style="background:linear-gradient(45deg,#ffd700,#ff9f43);margin-top:8px;color:#1a1a2e;">📢 更新公告</button>
             <button class="btn touch-only" id="btnTouchSettings" onclick="openTouchSettings()" style="background:linear-gradient(45deg,#6c5ce7,#a29bfe);margin-top:8px;">🎮 按键设置</button>
         </div>
 
@@ -11282,6 +11283,73 @@
             panel.innerHTML = html || '<span style="color:#555;font-size:12px;text-align:center;padding:8px;">无状态效果</span>';
         }
 
+        // === 更新公告: 每次对话完成后在 UPDATE_LOG 顶部追加一条 (日期 + 分点内容) ===
+        const UPDATE_LOG = [
+            {
+                date: '2026-11-07',
+                items: [
+                    '装备与效果卡的冷却不再享受 CDR 缩减，CDR 现在只缩短换弹时间（面板冷却显示同步）',
+                    '新增至臻卡「禁跳诅咒」🚫：每 10 秒，下一次子弹命中使敌人 2 秒内无法跳跃；多张只叠加时长（每张 +0.3 秒，上限 4 秒），全队共享唯一冷却',
+                    '新增至臻卡「净化之光」💠：每 15 秒净化自身 2 秒，立即清除并免疫所有负面效果，期间角色散发蓝光；多张叠加时长（上限 5 秒）',
+                    '状态/增益图标改为左右分区显示：上区状态类、下区技能类；位置足够时保持原尺寸，区域占满后才缩小',
+                    '训练场「数值设置」加入管理员密码，密码正确才可进入修改界面（本次会话内有效）',
+                    '数值设置一次性重置为默认值（存档、成就、触控布局不受影响）'
+                ]
+            },
+            {
+                date: '2026-11-06',
+                items: [
+                    '新增多存档功能：保留最近 20 局，可选择任意一局继续，每条存档可单独删除',
+                    '双人模式也支持存档，且与单人存档完全独立、互不混排',
+                    '修复按键设置中拖动按键会把已调整的大小重置为默认的问题',
+                    '吸血取消 100% 上限；冲锋枪的装备特效伤害调整为与其他枪械一致（100%）',
+                    '护盾相关结算统一：有盾/无盾时伤害、治疗、吸血、反弹等表现保持一致',
+                    '训练场新增「AI 抽卡成长」：每 X 回合每回合多抽 Y 张卡（默认 10 / 1）；AI 成长伤害倍率默认归零'
+                ]
+            },
+            {
+                date: '2026-11-05',
+                items: [
+                    '修复暴击被重复乘算（子弹与近战统一只结算一次）；移除 AI 的隐藏伤害倍率',
+                    '修复属性面板中同一把武器的射速显示错误（改为按武器自身基准计算）',
+                    '超频过载改版：普攻命中叠层，每层 +10 物攻，最多 20 层，不再提供攻速',
+                    '非电脑端新增「属性」按键；按键大小按每个按键独立设置'
+                ]
+            },
+            {
+                date: '2026-11-04 及更早',
+                items: [
+                    '修复双人模式抽卡结束后有一方消失的问题',
+                    '按键设置界面改为全屏，位置与大小预览实时同步',
+                    '重写游戏内说明书：新手引导、模式选择、操作说明、卡牌与成长',
+                    '伤害飘字优化：0.15 秒内即时合并，物理总伤害置顶、特效总伤害次层',
+                    '训练场默认数值与成长参数按新方案整体调整'
+                ]
+            }
+        ];
+
+        function renderNotice() {
+            const box = document.getElementById('noticeContent');
+            if (!box) return;
+            box.innerHTML = UPDATE_LOG.map(function (g) {
+                const items = g.items.map(function (t) {
+                    return '<li style="margin-bottom:7px;">' + t + '</li>';
+                }).join('');
+                return '<div style="margin-bottom:18px;">' +
+                    '<div style="color:#ffd700;font-weight:bold;font-size:15px;margin-bottom:7px;">' + g.date + '</div>' +
+                    '<ul style="margin:0;padding-left:20px;color:#c9d6ea;">' + items + '</ul>' +
+                    '</div>';
+            }).join('');
+        }
+
+        function toggleNotice() {
+            const box = document.getElementById('noticePanel');
+            if (!box) return;
+            if (box.style.display === 'flex') { box.style.display = 'none'; return; }
+            renderNotice();
+            box.style.display = 'flex';
+        }
+
         function toggleSettings() {
             const panel = document.getElementById('settingsPanel');
             if (!panel) return;
@@ -13187,6 +13255,16 @@
                 <div id="saveSlotList" style="display:flex;flex-direction:column;gap:8px;max-height:42vh;overflow-y:auto;padding-right:2px;"></div>
                 <button id="startChoiceContinueBtn" onclick="continueGame()" style="display:none;background:linear-gradient(45deg,#6c5ce7,#a29bfe);border:none;color:white;padding:15px 40px;border-radius:10px;font-size:17px;cursor:pointer;font-weight:bold;">📂 继续游戏</button>
             </div>
+        </div>
+    </div>
+
+    <div id="noticePanel" style="position:fixed;top:0;left:0;width:100%;height:100%;background:rgba(0,0,0,0.55);z-index:10000;display:none;align-items:center;justify-content:center;padding:20px;">
+        <div style="max-width:640px;width:100%;max-height:82vh;display:flex;flex-direction:column;background:rgba(20,20,30,0.98);border-radius:16px;border:1px solid rgba(255,215,0,0.35);">
+            <div style="display:flex;justify-content:space-between;align-items:center;padding:18px 22px;border-bottom:1px solid rgba(255,255,255,0.08);">
+                <h2 style="color:#ffd700;margin:0;font-size:20px;">📢 更新公告</h2>
+                <button onclick="toggleNotice()" style="background:#e74c3c;border:none;color:white;padding:8px 16px;border-radius:8px;cursor:pointer;font-size:14px;">关闭</button>
+            </div>
+            <div id="noticeContent" style="padding:18px 22px;overflow-y:auto;color:#dfe6f3;font-size:14px;line-height:1.7;"></div>
         </div>
     </div>
 
