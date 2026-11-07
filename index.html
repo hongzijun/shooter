@@ -3549,13 +3549,26 @@
             return m;
         }
 
+        // 崭新护甲: 每张卡独立 40% 减伤; 多张按 循环叠加 1-(1-40%)^n 计算,
+        // 禁止把多张的 40% 直接相加 (3 张 = 120% 会导致完全无伤害)
+        const NEW_ARMOR_PER = 0.40;
+        function fxNewArmorStacks(fx) {
+            const v = (fx && fx.dmgRedHighHp) || 0;
+            if (!(v > 0)) return 0;
+            return Math.max(1, Math.round(v / NEW_ARMOR_PER));
+        }
+        function fxNewArmorReduction(fx) {
+            const n = fxNewArmorStacks(fx);
+            return n > 0 ? 1 - Math.pow(1 - NEW_ARMOR_PER, n) : 0;
+        }
+
         // 受伤系数 (受击者视角): 高血减伤 / 保险 / 防御光环
         function fxDamageTaken(self) {
             if (!self || !self.fx) return 1;
             const fx = self.fx;
             let m = 1 + (fx.dmgTakenPct || 0);
             const r = self.maxHealth > 0 ? self.health / self.maxHealth : 1;
-            if (fx.dmgRedHighHp > 0 && r > (fx.dmgRedHighHpThresh || 0.6)) m *= Math.max(0, 1 - fx.dmgRedHighHp);
+            if (fx.dmgRedHighHp > 0 && r > (fx.dmgRedHighHpThresh || 0.6)) m *= Math.max(0, 1 - fxNewArmorReduction(fx));
             // 蛋生保险: 低血触发后 3 秒内受到的伤害降低 70%
             if (fx.insurance > 0 && Date.now() < (fx.insActiveUntil || 0)) m *= 0.30;
             return m;
@@ -4075,7 +4088,7 @@
               apply(p) { const f = ensureFx(p); f.atkSpeed -= 0.50; f.dmgPct += 1.40; } },
             { id: 'fx_highhp_e', name: '优势', icon: '👑', type: 'effect', rarity: 'epic', desc: '生命>70%时暴击+55%、暴伤+55%',
               apply(p) { const f = ensureFx(p); f.highHpCrit += 0.55; f.highHpCritDmg += 0.55; f.highHpThresh = 0.7; } },
-            { id: 'fx_newarmor_e', name: '崭新护甲', icon: '🛡️', type: 'effect', rarity: 'epic', desc: '生命>60%时受到的伤害降低40%',
+            { id: 'fx_newarmor_e', name: '崭新护甲', icon: '🛡️', type: 'effect', rarity: 'epic', desc: '生命>60%时受到的伤害降低40%；多张按循环叠加（40% → 64% → 78.4%…），不会叠加到无伤害',
               apply(p) { const f = ensureFx(p); f.dmgRedHighHp += 0.40; f.dmgRedHighHpThresh = 0.6; } },
             { id: 'fx_turnshield_e', name: '准备充分', icon: '🔰', type: 'effect', rarity: 'epic', desc: '回合开始时获得最大生命35%的护盾',
               apply(p) { ensureFx(p).turnShieldPct += 0.35; } },
@@ -8842,7 +8855,7 @@
                     if (fx.rollMin < 1 || fx.rollMax > 1) permLines.push('伤害浮动 ×' + fx.rollMin.toFixed(2) + ' ~ ×' + fx.rollMax.toFixed(2));
                     if (fx.vsLowDmg) permLines.push('目标生命低于 ' + fmtPct(fx.vsLowHpThresh || 0.4) + ' 时 +' + fmtPct(fx.vsLowDmg) + ' 伤害');
                     if (fx.vsHighDmg) permLines.push('目标生命高于 ' + fmtPct(fx.vsHighHpThresh || 0.7) + ' 时 +' + fmtPct(fx.vsHighDmg) + ' 伤害');
-                    if (fx.dmgRedHighHp) permLines.push('自身生命高于 ' + fmtPct(fx.dmgRedHighHpThresh || 0.6) + ' 时减伤 ' + fmtPct(fx.dmgRedHighHp));
+                    if (fx.dmgRedHighHp) permLines.push('自身生命高于 ' + fmtPct(fx.dmgRedHighHpThresh || 0.6) + ' 时减伤 ' + fmtPct(fxNewArmorReduction(fx)) + '（×' + fxNewArmorStacks(fx) + '）');
                     if (fx.lowHpDmg) permLines.push('低血增伤 (满值 +' + fmtPct(fx.lowHpDmg) + ')');
                     if (fx.crusher) permLines.push('对生命上限低于自己的目标增伤');
                     if (fx.auraEnemyDmgTaken) permLines.push('240px 内敌人受到伤害 +' + fmtPct(fx.auraEnemyDmgTaken));
@@ -11420,7 +11433,8 @@
                     '暂停时间戳扩展到所有暂停场景：AI 获取卡牌过场、人物 / 双方抽卡选卡阶段、PvP 回合结算等待期间，冷却与所有计时一律冻结，恢复后无缝衔接',
                     '训练场默认值调整：每秒减疗默认 3%（双方），每秒物理攻击力基础值改为 AI 5 / 人物 4；本次数值设置一次性重置为最新默认',
                     '修复狙击枪偶尔完全打不出子弹：其备弹原被设为 30（其它武器均为 9999），打空 36 发后无法换弹；现统一为充足备弹，并在读档时对玩家武器备弹做兜底',
-                    '「每秒减疗」现在同样作用于护盾：产生护盾时按对方累计的减疗比例削减（上限 95%），与治疗、吸血规则一致；自身减疗不会影响自己获得的护盾'
+                    '「每秒减疗」现在同样作用于护盾：产生护盾时按对方累计的减疗比例削减（上限 95%），与治疗、吸血规则一致；自身减疗不会影响自己获得的护盾',
+                    '「崭新护甲」改为循环减伤：多张不再把 40% 直接相加，而是按 1-(1-40%)×叠加计算（1 张 40%、2 张 64%、3 张 78.4%…），不会再出现 3 张完全无伤害'
                 ]
             },
             {
