@@ -3593,9 +3593,10 @@
                 // 灼烧 (痛痛痛): 每秒 % 目标最大生命, 5秒, 最多3层
                 if (fx.burnPct > 0) {
                     const be = (tgt.activeEffects || []).find(e => e.effect === 'fxBurn');
-                    const stacks = Math.min(fx.burnMaxStacks || 3, fx.burnPct / 0.01 * 1);
-                    if (be) { be.stackCount = Math.min(fx.burnMaxStacks || 3, (be.stackCount || 1) + 1); be.endTime = now + 5000; be.pct = Math.max(be.pct || 0, fx.burnPct); }
-                    else if (!fxIsPurifying(tgt)) tgt.activeEffects.push({ name: '🔥 灼烧', effect: 'fxBurn', color: '#ff6b35', startTime: now, endTime: now + 5000, stackCount: 1, pct: fx.burnPct, owner: att });
+                    // 每层百分比固定为单层值 (1% 或 1.8%), 多张卡只提升可叠层数, 不叠加每层比例
+                    const unitPct = fx.burnUnitPct || fx.burnPct || 0.01;
+                    if (be) { be.stackCount = Math.min(fx.burnMaxStacks || 3, (be.stackCount || 1) + 1); be.endTime = now + 5000; be.pct = unitPct; }
+                    else if (!fxIsPurifying(tgt)) tgt.activeEffects.push({ name: '🔥 灼烧', effect: 'fxBurn', color: '#ff6b35', startTime: now, endTime: now + 5000, stackCount: 1, pct: unitPct, owner: att });
                 }
                 // 吸血转化护盾
                 if (fx.lifestealToShield > 0) {
@@ -3857,7 +3858,10 @@
             const be = (p.activeEffects || []).find(e => e.effect === 'fxBurn');
             if (be && now < (be.endTime || 0) && now - (be.lastTick || 0) >= 1000) {
                 be.lastTick = now;
-                const burnDmg = Math.round(p.maxHealth * (be.pct || 0.01) * (be.stackCount || 1));
+                const _fxb = p.fx || {};
+                const _unitPct = (_fxb.burnUnitPct > 0) ? _fxb.burnUnitPct : 0.018;
+                const _burnPct = Math.min(Math.max(0.001, be.pct || _unitPct), _unitPct);
+                const burnDmg = Math.round(p.maxHealth * _burnPct * Math.min(be.stackCount || 1, _fxb.burnMaxStacks || 3));
                 if (burnDmg > 0) fxDamageFloat(p, p.takeDamage(burnDmg, be.owner || null, false, 'magic', true), 'fx_burn_p');
             }
             const fx = p.fx;
@@ -3999,7 +4003,7 @@
             { id: 'fx_doublechase_p', name: '双重追击', icon: '⚔️', type: 'effect', rarity: 'purple', desc: '每8秒强化下次普攻并追加一次普攻',
               apply(p) { const f = ensureFx(p); f.doubleChase = (f.doubleChase || 0) + 1; fxInst(p, 'fx_doublechase_p', f.doubleChase); } },
             { id: 'fx_burn_p', name: '痛痛痛', icon: '🔥', type: 'effect', rarity: 'purple', desc: '普攻灼烧敌人：每秒1%目标最大生命，持续5秒，可叠3层',
-              apply(p) { const f = ensureFx(p); f.burnPct += 0.01; f.burnStacks = (f.burnStacks || 0) + 1; f.burnMaxStacks = 3 * f.burnStacks; } },
+              apply(p) { const f = ensureFx(p); f.burnUnitPct = Math.max(f.burnUnitPct || 0, 0.01); f.burnPct = f.burnUnitPct; f.burnStacks = (f.burnStacks || 0) + 1; f.burnMaxStacks = 3 * f.burnStacks; } },
             { id: 'fx_burst_p', name: '一击脱离', icon: '💨', type: 'effect', rarity: 'purple', desc: '每8秒下一次造成的伤害提高35%',
               apply(p) { const f = ensureFx(p); f.every8sDmg += 0.35; f.every8sStacks = (f.every8sStacks || 0) + 1; fxInst(p, 'fx_burst_p', f.every8sStacks); } },
             { id: 'fx_highhp_p', name: '优势', icon: '👑', type: 'effect', rarity: 'purple', desc: '生命>80%时暴击+40%、暴伤+40%',
@@ -4060,7 +4064,7 @@
             { id: 'fx_challenger_e', name: '挑战者', icon: '🏆', type: 'effect', rarity: 'epic', desc: '对生命>70%的敌人造成额外35%伤害',
               apply(p) { const f = ensureFx(p); f.vsHighDmg += 0.35; f.vsHighHpThresh = 0.7; } },
             { id: 'fx_burn_e', name: '痛痛痛痛', icon: '🔥', type: 'effect', rarity: 'epic', desc: '普攻灼烧敌人：每秒1.8%目标最大生命，持续5秒，可叠3层',
-              apply(p) { const f = ensureFx(p); f.burnPct += 0.018; f.burnStacks = (f.burnStacks || 0) + 1; f.burnMaxStacks = 3 * f.burnStacks; } },
+              apply(p) { const f = ensureFx(p); f.burnUnitPct = Math.max(f.burnUnitPct || 0, 0.018); f.burnPct = f.burnUnitPct; f.burnStacks = (f.burnStacks || 0) + 1; f.burnMaxStacks = 3 * f.burnStacks; } },
             { id: 'fx_legend_e', name: '唯我独尊', icon: '👑', type: 'effect', rarity: 'epic', desc: '参与12次击杀后获得：50物法攻、15%全能吸血、10%移速、500生命',
               apply(p) { const f = ensureFx(p); f.legend = (f.legend || 0) + 1; } },
             { id: 'fx_heavyhit_e', name: '蓄力重击', icon: '🔨', type: 'effect', rarity: 'epic', desc: '攻速-50%，但普攻伤害提高140%',
@@ -11391,7 +11395,8 @@
                     '训练场新增「每秒减疗(%)」与「减疗成长(%)/波」：双方每秒累加，只减少对方的治疗与吸血回血（不减自己），上限 95%，属性面板同步显示当前值',
                     '护盾显示移至除背景外的最上层，禁跳 🚫 标识不再被护盾光晕遮挡（单人/双人/训练场一致）',
                     '卡牌与效果卡冷却恢复享受全部冷却缩减（装备/效果卡/按损失生命的动态加成），CDR 上限改为 60%；禁跳诅咒改为命中触发瞬间立即进入 10 秒冷却，冷却显示同步更新',
-                    '修复从存档继续时偶尔出现人物或 AI 消失：读档时自动检测死亡/越界状态并复位到出生点满血（双人模式同样生效）'
+                    '修复从存档继续时偶尔出现人物或 AI 消失：读档时自动检测死亡/越界状态并复位到出生点满血（双人模式同样生效）',
+                    '修复「痛痛痛 / 痛痛痛痛」灼烧伤害异常偏高：多张卡牌时每层百分比被重复累加（3 张卡最高可达 27%/秒），现改为每层固定 1% / 1.8%，多张卡只提升可叠层数'
                 ]
             },
             {
