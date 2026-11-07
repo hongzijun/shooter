@@ -8390,18 +8390,18 @@
                 if (fx.noJump > 0) {
                     // 禁跳: 触发瞬间即进入 10 秒冷却, 冷却中始终显示剩余时间 (不再显示为"就绪")
                     const _njRemain = Math.max(0, (fx.noJumpNextAt || 0) - now);
-                    out.push({ type: 'cd', key: 'noJump', name: '禁跳', iconId: 'fx_nojump_e', emoji: '🚫', remain: _njRemain, total: 10000, badge: fx.noJump });
+                    out.push({ type: 'cd', key: 'noJump', name: '禁跳', iconId: 'fx_nojump_e', emoji: '🚫', remain: _njRemain, total: 10000, badge: fx.noJump, badgeMax: 8 });
                 }
                 if (fx.purify > 0) {
                     const _pRemain = Math.max(0, (fx.purifyUntil || 0) > now ? 0 : ((fx.purifyNextAt || 0) - now));
                     const _pTotal = Math.max(12000, 15000 - 500 * (Math.max(1, Math.round(fx.purify)) - 1));
-                    out.push({ type: 'cd', key: 'purify', name: '净化', iconId: 'fx_purify_e', emoji: '💠', remain: _pRemain, total: _pTotal, badge: fx.purify });
+                    out.push({ type: 'cd', key: 'purify', name: '净化', iconId: 'fx_purify_e', emoji: '💠', remain: _pRemain, total: _pTotal, badge: fx.purify, badgeMax: 7 });
                 }
                 // 眩晕枷锁 (装备卡): 每 10 秒 (享受 CDR) 下一次命中眩晕
                 if (ent.equip && ent.equip.stunlock > 0) {
                     const _slTotal = Math.max(13000, 15000 - 500 * (Math.min(5, Math.max(1, Math.round(ent.equip.stunlock))) - 1));
                     const _slRemain = Math.max(0, (ent._stunReadyAt || 0) - now);
-                    out.push({ type: 'cd', key: 'stunlock', name: '眩晕枷锁', iconId: 'stunlock', emoji: '💫', remain: _slRemain, total: _slTotal, badge: ent.equip.stunlock });
+                    out.push({ type: 'cd', key: 'stunlock', name: '眩晕枷锁', iconId: 'stunlock', emoji: '💫', remain: _slRemain, total: _slTotal, badge: ent.equip.stunlock, badgeMax: 5 });
                 }
                 // 被动已就绪 (不读秒)
                 if (fx.firstHitDmg > 0) out.push({ type: 'ready', key: 'opening', name: '盛大开场', iconId: 'fx_opening_e', ready: !fx.firstHitDone });
@@ -8662,7 +8662,8 @@
                 } else if (it.type === 'cond') {
                     if (it.total) badge(Math.min(it.total, it.cur || 0) + '/' + it.total, 12, '#ffd166');
                 } else if (isCd && it.badge > 0) {
-                    badge(it.badge + '/3', 12, '#ffd166');
+                    const _bMax = it.badgeMax || 3;
+                    badge(Math.min(it.badge, _bMax) + '/' + _bMax, 12, '#ffd166');
                 }
 
                 // 名称 (图标下方; 极端拥挤时省略名称行)
@@ -11559,6 +11560,7 @@
                     '「净化之光」调整为成长型：基础净化 2 秒 / 冷却 15 秒，每多一张净化时长 +0.5 秒、冷却 -0.5 秒，上限净化 5 秒 / 冷却 12 秒',
                     '「眩晕枷锁」改为可叠加：基础眩晕 2 秒 / 冷却 15 秒，每多一张眩晕 +0.3 秒、冷却 -0.5 秒，最多按 5 张结算（最高 3.2 秒 / 最低 13 秒）',
                     '「眩晕枷锁」冷却调整：基础冷却由 10 秒改为 15 秒，5 张时最低 13 秒；眩晕时长不变（2 秒起，最高 3.2 秒）',
+                    '效果栏冷却角标上限同步：净化 ×N/7、眩晕枷锁 ×N/5、禁跳诅咒 ×N/8（此前统一显示 /3）',
                     '新增至臻卡「时间刻印」⏳：所有冷却型效果额外 -10%（先乘 CDR 再乘本效果），可叠加，最多 -60%',
                     '新增至臻卡「衰亡刻印」⏬：使对方所有负面效果持续时间 +20%，可叠加，最多 +200%',
                     '新增至臻卡「恒久刻印」⏫：自身所有增益效果持续时间 +20%，可叠加，最多 +200%',
