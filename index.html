@@ -3153,7 +3153,7 @@
             },
             {
                 id: 'stunlock', name: '眩晕枷锁', icon: '💫', type: 'equip', rarity: 'purple',
-                desc: '生命 +100，物攻 +20；每 10 秒（固定冷却，不受 CDR 影响）下一次攻击命中使敌人眩晕 2 秒：固定原地、无法跳跃/移动/开火且不受击退；多张不叠加',
+                desc: '生命 +100，物攻 +20；每 10 秒（固定冷却，不受 CDR 影响）下一次攻击命中使敌人眩晕 2 秒：固定原地、无法跳跃/移动/开火且不受击退；每多一张眩晕 +0.3 秒、冷却 -0.5 秒，最多按 5 张结算（最高 3.2 秒 / 最低 8 秒）',
                 apply(p) { const eq = ensureEquipObj(p); p.maxHealth += 100; eq.maxHp += 100; p.health = Math.min(p.maxHealth, p.health + 100); eq.atk += 20; eq.stunlock = (eq.stunlock || 0) + 1; }
             }
         ];
@@ -3344,8 +3344,12 @@
             // 眩晕枷锁: 每 10 秒 (享受全部 CDR) 下一次命中使目标眩晕 2 秒; 多张不叠加, 共享唯一冷却
             if (eq.stunlock > 0) {
                 if (now >= (attacker._stunReadyAt || 0)) {
-                    attacker._stunReadyAt = now + 10000;   // 触发瞬间进入冷却 (固定 10 秒, 不享受 CDR / 时间刻印)
-                    fxApplyStun(attacker, target, 2000, now);
+                    // 基础 2 秒 / 10 秒; 每多一张眩晕 +0.3 秒、冷却 -0.5 秒; 最多按 5 张结算 (固定冷却, 不吃 CDR)
+                    const _sn = Math.min(5, Math.max(1, Math.round(eq.stunlock)));
+                    const _stunDur = 2000 + 300 * (_sn - 1);
+                    const _stunCd = Math.max(8000, 10000 - 500 * (_sn - 1));
+                    attacker._stunReadyAt = now + _stunCd;
+                    fxApplyStun(attacker, target, _stunDur, now);
                 }
             }
             // === 新增装备特效: 猎空飞刀 目标每损失5%生命 +3物伤 ===
@@ -3773,9 +3777,14 @@
         function fxPurifyTick(p, now) {
             const fx = p && p.fx;
             if (!fx || !(fx.purify > 0)) return;
-            const dur = fxBuffDur(p, Math.min(5000, 2000 + 300 * (fx.purify - 1)));
+            // 净化之光: 基础 2 秒 / 15 秒冷却; 每多一张 时长 +0.5 秒、冷却 -0.5 秒
+            // 上限: 净化 5 秒 / 冷却 12 秒
+            const _pn = Math.max(1, Math.round(fx.purify));
+            const _pDurBase = Math.min(5000, 2000 + 500 * (_pn - 1));
+            const _pCd = Math.max(12000, 15000 - 500 * (_pn - 1));
+            const dur = fxBuffDur(p, _pDurBase);
             if (now >= (fx.purifyNextAt || 0)) {
-                fx.purifyNextAt = now + 15000;
+                fx.purifyNextAt = now + _pCd;
                 fx.purifyUntil = now + dur;
                 showFloatingText('💠 净化!', '#4f8eff');
             }
@@ -4154,7 +4163,7 @@
               apply(p) { ensureFx(p).turnShieldPct += 0.35; } },
             { id: 'fx_nojump_e', name: '禁跳诅咒', icon: '🚫', type: 'effect', rarity: 'epic', desc: '每10秒: 下次普攻命中使敌人禁用跳跃2秒; 每多一张+0.3秒(上限4秒); 唯一冷却, 不独立计时',
               apply(p) { const f = ensureFx(p); if (f.noJump <= 0) f.noJumpNextAt = Date.now() + 10000; f.noJump++; } },
-            { id: 'fx_purify_e', name: '净化之光', icon: '💠', type: 'effect', rarity: 'epic', desc: '每15秒净化自身2秒; 每多一张+0.3秒(上限5秒); 净化期间清除并免疫所有负面效果, 散发蓝光',
+            { id: 'fx_purify_e', name: '净化之光', icon: '💠', type: 'effect', rarity: 'epic', desc: '每15秒净化自身2秒; 每多一张净化时长+0.5秒、冷却-0.5秒; 上限净化5秒/冷却12秒; 净化期间清除并免疫所有负面效果, 散发蓝光',
               apply(p) { const f = ensureFx(p); if (f.purify <= 0) f.purifyNextAt = Date.now() + 15000; f.purify++; } },
             { id: 'fx_cdrplus_e', name: '时间刻印', icon: '⏳', type: 'effect', rarity: 'epic', desc: '所有冷却型效果冷却额外 -10%（先乘 CDR 再乘本效果），可叠加，最多 -60%',
               apply(p) { const f = ensureFx(p); f.cdrPlus = Math.min(0.60, (f.cdrPlus || 0) + 0.10); } },
@@ -4171,7 +4180,7 @@
             fx_doublechase_p: 'inst', fx_burst_p: 'inst',
             phasearm: 'inst', warpbag: 'inst', icearmor: 'inst', airbag: 'inst', band: 'inst',
             photonbow: 'inst', overaxe: 'inst',
-            crossbow: 'once', quakeaxe: 'once', shellhammer: 'once', stunlock: 'once'
+            crossbow: 'once', quakeaxe: 'once', shellhammer: 'once'
         };
 
 
@@ -8385,11 +8394,12 @@
                 }
                 if (fx.purify > 0) {
                     const _pRemain = Math.max(0, (fx.purifyUntil || 0) > now ? 0 : ((fx.purifyNextAt || 0) - now));
-                    out.push({ type: 'cd', key: 'purify', name: '净化', iconId: 'fx_purify_e', emoji: '💠', remain: _pRemain, total: 15000, badge: fx.purify });
+                    const _pTotal = Math.max(12000, 15000 - 500 * (Math.max(1, Math.round(fx.purify)) - 1));
+                    out.push({ type: 'cd', key: 'purify', name: '净化', iconId: 'fx_purify_e', emoji: '💠', remain: _pRemain, total: _pTotal, badge: fx.purify });
                 }
                 // 眩晕枷锁 (装备卡): 每 10 秒 (享受 CDR) 下一次命中眩晕
                 if (ent.equip && ent.equip.stunlock > 0) {
-                    const _slTotal = 10000;
+                    const _slTotal = Math.max(8000, 10000 - 500 * (Math.min(5, Math.max(1, Math.round(ent.equip.stunlock))) - 1));
                     const _slRemain = Math.max(0, (ent._stunReadyAt || 0) - now);
                     out.push({ type: 'cd', key: 'stunlock', name: '眩晕枷锁', iconId: 'stunlock', emoji: '💫', remain: _slRemain, total: _slTotal, badge: ent.equip.stunlock });
                 }
@@ -11525,7 +11535,7 @@
                 items: [
                     '装备与效果卡的冷却不再享受 CDR 缩减，CDR 现在只缩短换弹时间（面板冷却显示同步）',
                     '新增至臻卡「禁跳诅咒」🚫：每 10 秒，下一次子弹命中使敌人 2 秒内无法跳跃；多张只叠加时长（每张 +0.3 秒，上限 4 秒），全队共享唯一冷却',
-                    '新增至臻卡「净化之光」💠：每 15 秒净化自身 2 秒，立即清除并免疫所有负面效果，期间角色散发蓝光；多张叠加时长（上限 5 秒）',
+                    '新增至臻卡「净化之光」💠：每 15 秒净化自身 2 秒，立即清除并免疫所有负面效果，期间角色散发蓝光；每多一张净化时长 +0.5 秒、冷却 -0.5 秒，上限净化 5 秒 / 冷却 12 秒',
                     '状态/增益图标改为左右分区显示：上区状态类、下区技能类；位置足够时保持原尺寸，区域占满后才缩小',
                     '训练场「数值设置」加入管理员密码，密码正确才可进入修改界面（本次会话内有效）',
                     '数值设置一次性重置为默认值（存档、成就、触控布局不受影响）',
@@ -11543,9 +11553,11 @@
                     '修复狙击枪偶尔完全打不出子弹：其备弹原被设为 30（其它武器均为 9999），打空 36 发后无法换弹；现统一为充足备弹，并在读档时对玩家武器备弹做兜底',
                     '「每秒减疗」现在同样作用于护盾：产生护盾时按对方累计的减疗比例削减（上限 95%），与治疗、吸血规则一致；自身减疗不会影响自己获得的护盾',
                     '「崭新护甲」改为循环减伤：多张不再把 40% 直接相加，而是按 1-(1-40%)×叠加计算（1 张 40%、2 张 64%、3 张 78.4%…），不会再出现 3 张完全无伤害',
-                    '新增装备卡「眩晕枷锁」💫：生命+100、物攻+20；每 10 秒（固定冷却，不受 CDR 影响）下一次攻击命中使敌人眩晕 2 秒，期间固定原地、无法跳跃/移动/开火且不受击退，头顶显示眩晕图标；多张不叠加',
+                    '新增装备卡「眩晕枷锁」💫：生命+100、物攻+20；每 10 秒（固定冷却，不受 CDR 影响）下一次攻击命中使敌人眩晕 2 秒，期间固定原地、无法跳跃/移动/开火且不受击退；每多一张眩晕 +0.3 秒、冷却 -0.5 秒，最多按 5 张结算（最高 3.2 秒 / 最低 8 秒）',
                     '「眩晕枷锁」的 10 秒冷却改为固定时间，不再享受 CDR、时间刻印等任何冷却缩减',
                     '「衰亡刻印」「恒久刻印」数值调整：负面 / 增益时长延长改为每张 +20%（上限仍为 +200%）',
+                    '「净化之光」调整为成长型：基础净化 2 秒 / 冷却 15 秒，每多一张净化时长 +0.5 秒、冷却 -0.5 秒，上限净化 5 秒 / 冷却 12 秒',
+                    '「眩晕枷锁」改为可叠加：基础眩晕 2 秒 / 冷却 10 秒，每多一张眩晕 +0.3 秒、冷却 -0.5 秒，最多按 5 张结算（最高 3.2 秒 / 最低 8 秒）',
                     '新增至臻卡「时间刻印」⏳：所有冷却型效果额外 -10%（先乘 CDR 再乘本效果），可叠加，最多 -60%',
                     '新增至臻卡「衰亡刻印」⏬：使对方所有负面效果持续时间 +20%，可叠加，最多 +200%',
                     '新增至臻卡「恒久刻印」⏫：自身所有增益效果持续时间 +20%，可叠加，最多 +200%',
