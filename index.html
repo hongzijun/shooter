@@ -7748,19 +7748,6 @@
                     ctx.stroke();
                     ctx.restore();
                 }
-                // === 负面状态「禁跳」: 头顶显示禁止 emoji ===
-                if ((this.activeEffects || []).some(function (e) { return e && e.effect === 'noJump' && (e.endTime || 0) > Date.now(); })) {
-                    ctx.save();
-                    ctx.font = '22px Arial';
-                    ctx.textAlign = 'center';
-                    ctx.textBaseline = 'middle';
-                    ctx.fillStyle = '#ffffff';
-                    ctx.shadowColor = '#000000';
-                    ctx.shadowBlur = 5;
-                    ctx.fillText('🚫', sx, sy - 72);
-                    ctx.restore();
-                }
-
                 if (this.burningStacks > 0 && this.health > 0) {
                     const cx = sx + this.width / 2;
                     const cy = sy + this.height / 2;
@@ -7838,6 +7825,47 @@
                 ctx.restore();
             }
 
+            // 护盾显示: 独立于头顶血条, 放到整帧最上层绘制 (不会被禁跳等标识遮挡)
+            drawShieldHeadUI(x, y) {
+                if (!(this.shield > 0)) return;
+                const barWidth = 105, spH = 4, spGap = 6;
+                const shBase = Math.max(1, this.maxHealth);
+                const layers = Math.min(5, Math.max(1, Math.ceil(this.shield / shBase)));
+                const topY = y - 9 - (layers - 1) * spGap;
+                ctx.fillStyle = 'rgba(0,0,0,0.8)';
+                ctx.fillRect(x - barWidth / 2 - 2, topY - 2, barWidth + 4, (layers - 1) * spGap + spH + 4);
+                for (let li = 0; li < layers; li++) {
+                    const remain = this.shield - li * shBase;
+                    const pct = Math.max(0, Math.min(1, remain / shBase));
+                    if (pct <= 0) continue;
+                    const ly = y - 9 - li * spGap;
+                    ctx.fillStyle = '#4f8eff';
+                    ctx.fillRect(x - barWidth / 2, ly, barWidth * pct, spH);
+                    ctx.strokeStyle = 'rgba(120,170,255,0.75)';
+                    ctx.lineWidth = 1;
+                    ctx.strokeRect(x - barWidth / 2, ly, barWidth, spH);
+                }
+                ctx.font = 'bold 11px Arial';
+                ctx.textAlign = 'center';
+                ctx.textBaseline = 'alphabetic';
+                ctx.fillStyle = '#4f8eff';
+                ctx.fillText(String(Math.ceil(this.shield)), x + 40, y - 13);
+                const now = Date.now();
+                const shieldGlow = 0.5 + Math.sin(now / 200) * 0.3;
+                ctx.shadowColor = '#4f8eff';
+                ctx.shadowBlur = 10 * shieldGlow;
+                ctx.strokeStyle = `rgba(79, 142, 255, ${0.5 + shieldGlow * 0.5})`;
+                ctx.lineWidth = 2;
+                ctx.beginPath();
+                if (typeof ctx.roundRect === 'function') {
+                    ctx.roundRect(x - barWidth / 2 - 2, y - 11, barWidth + 4, 8, 3);
+                } else {
+                    this._roundRect(ctx, x - barWidth / 2 - 2, y - 11, barWidth + 4, 8, 3);
+                }
+                ctx.stroke();
+                ctx.shadowBlur = 0;
+            }
+
             drawHeadUI(x, y) {
                 const barWidth = 105;
                 const barHeight = 6;
@@ -7857,36 +7885,10 @@
                 ctx.lineWidth = 0.8;
                 ctx.strokeRect(x - barWidth / 2, y, barWidth, barHeight);
 
-                if (this.shield > 0) {
-                    // 护盾条: 满格 = 最大生命; 超出后向上叠加新条 (最多 5 层)
-                    const shBase = Math.max(1, this.maxHealth);
-                    const layers = Math.min(5, Math.max(1, Math.ceil(this.shield / shBase)));
-                    const spH = 4, spGap = 6;
-                    const topY = y - 9 - (layers - 1) * spGap;
-                    ctx.fillStyle = 'rgba(0,0,0,0.8)';
-                    ctx.fillRect(x - barWidth / 2 - 2, topY - 2, barWidth + 4, (layers - 1) * spGap + spH + 4);
-                    for (let li = 0; li < layers; li++) {
-                        const remain = this.shield - li * shBase;
-                        const pct = Math.max(0, Math.min(1, remain / shBase));
-                        if (pct <= 0) continue;
-                        const ly = y - 9 - li * spGap;
-                        ctx.fillStyle = '#4f8eff';
-                        ctx.fillRect(x - barWidth / 2, ly, barWidth * pct, spH);
-                        ctx.strokeStyle = 'rgba(120,170,255,0.75)';
-                        ctx.lineWidth = 1;
-                        ctx.strokeRect(x - barWidth / 2, ly, barWidth, spH);
-                    }
-                }
-
                 ctx.font = 'bold 11px Arial';
                 ctx.textAlign = 'center';
                 ctx.fillStyle = '#fff';
                 ctx.fillText(`${Math.ceil(this.health)}`, x, y - 13);
-
-                if (this.shield > 0) {
-                    ctx.fillStyle = '#4f8eff';
-                    ctx.fillText(`${Math.ceil(this.shield)}`, x + 40, y - 13);
-                }
 
                 if (this.lives < this.maxLives) {
                     ctx.font = '11px Arial';
@@ -7896,23 +7898,6 @@
                     ctx.fillText(hearts, x - ctx.measureText(lostHearts).width / 2, y + 18);
                     ctx.fillStyle = '#333';
                     ctx.fillText(lostHearts, x + ctx.measureText(hearts).width / 2 - ctx.measureText(lostHearts).width / 2, y + 18);
-                }
-
-                if (this.shield > 0) {
-                    const now = Date.now();
-                    const shieldGlow = 0.5 + Math.sin(now / 200) * 0.3;
-                    ctx.shadowColor = '#4f8eff';
-                    ctx.shadowBlur = 10 * shieldGlow;
-                    ctx.strokeStyle = `rgba(79, 142, 255, ${0.5 + shieldGlow * 0.5})`;
-                    ctx.lineWidth = 2;
-                    ctx.beginPath();
-                    if (typeof ctx.roundRect === 'function') {
-                        ctx.roundRect(x - barWidth / 2 - 2, y - 11, barWidth + 4, 8, 3);
-                    } else {
-                        this._roundRect(ctx, x - barWidth / 2 - 2, y - 11, barWidth + 4, 8, 3);
-                    }
-                    ctx.stroke();
-                    ctx.shadowBlur = 0;
                 }
 
                 if (this.burningStacks > 0) {
@@ -8527,6 +8512,28 @@
                                 : 'rgba(200,214,238,0.90)'));
                     ctx.fillText(it.name, cx, y + S + 1, S + 14);
                 }
+        }
+
+        // 护盾显示放到除背景外的最后一层 (在实体/子弹/粒子之后), 禁跳标识再画在其上
+        function drawShieldOverlays() {
+            const list = (gameState === 'pvp') ? [playerA, playerB] : [player, ai];
+            list.forEach(function (e) {
+                if (!e || e.health <= 0) return;
+                const x = e.x - camera.x, y = e.y - camera.y - 68;
+                if (e.shield > 0) e.drawShieldHeadUI(x, y);
+                const _now = Date.now();
+                if ((e.activeEffects || []).some(function (a) { return a && a.effect === 'noJump' && (a.endTime || 0) > _now; })) {
+                    ctx.save();
+                    ctx.font = '22px Arial';
+                    ctx.textAlign = 'center';
+                    ctx.textBaseline = 'middle';
+                    ctx.fillStyle = '#ffffff';
+                    ctx.shadowColor = '#000000';
+                    ctx.shadowBlur = 5;
+                    ctx.fillText('🚫', x, y - 4);
+                    ctx.restore();
+                }
+            });
         }
 
         function drawStaticZones() {
@@ -11350,7 +11357,8 @@
                     '数值设置一次性重置为默认值（存档、成就、触控布局不受影响）',
                     'Tab 属性面板与 Esc 暂停现在与 Caps 透明暂停一致：暂停期间所有冷却、增益、子弹与定时器时间全部冻结，恢复后无缝衔接',
                     '吸血上限调整为 200%',
-                    '训练场新增「每秒减疗(%)」与「减疗成长(%)/波」：双方每秒累加，只减少对方的治疗与吸血回血（不减自己），上限 95%，属性面板同步显示当前值'
+                    '训练场新增「每秒减疗(%)」与「减疗成长(%)/波」：双方每秒累加，只减少对方的治疗与吸血回血（不减自己），上限 95%，属性面板同步显示当前值',
+                    '护盾显示移至除背景外的最上层，禁跳 🚫 标识不再被护盾光晕遮挡（单人/双人/训练场一致）'
                 ]
             },
             {
@@ -12998,6 +13006,7 @@
                         drawPlayerComboNumber(ctx, ai, ai.x - camera.x, ai.y - camera.y);
                         if (gameState === 'training') drawTrainDamagePanel(ctx, ai, ai.x - camera.x, ai.y - camera.y);
                     }
+                    drawShieldOverlays();
                     restoreCameraZoomTransform();
                     if (shakeApplied) { try { ctx.restore(); } catch (e) { } shakeApplied = false; }
 
@@ -13080,6 +13089,7 @@
                     drawBullets(); drawParticles();
                     if (playerA && playerA.health > 0) { playerA.draw(); drawPlayerComboNumber(ctx, playerA, playerA.x - camera.x, playerA.y - camera.y); }
                     if (playerB && playerB.health > 0) { playerB.draw(); drawPlayerComboNumber(ctx, playerB, playerB.x - camera.x, playerB.y - camera.y); }
+                    drawShieldOverlays();
                     restoreCameraZoomTransform();
                     if (shakeApplied) { try { ctx.restore(); } catch (e) { } shakeApplied = false; }
 
@@ -13155,6 +13165,7 @@
                     if (player) player.draw();
                     if (ai) ai.draw();
                     if (ai) drawTrainDamagePanel(ctx, ai, ai.x - camera.x, ai.y - camera.y);
+                    drawShieldOverlays();
                     restoreCameraZoomTransform();
                     if (shakeApplied) { try { ctx.restore(); } catch (e) { } shakeApplied = false; }
 
