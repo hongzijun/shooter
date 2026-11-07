@@ -1647,7 +1647,7 @@
                 <div id="draftTitle"></div>
                 <div id="draftCards"></div>
                 <div id="draftActions" style="display:flex; gap:18px; margin-top:26px; align-items:center;">
-                    <button id="draftRefreshBtn" class="draft-btn" style="background:linear-gradient(135deg,#4f8eff,#2d6cdf);">🔄 刷新 (剩余 3 次)</button>
+                    <button id="draftRefreshBtn" class="draft-btn" style="background:linear-gradient(135deg,#4f8eff,#2d6cdf);">🔄 刷新 (剩余 10 次)</button>
                     <button id="draftConfirmBtn" class="draft-btn" style="background:linear-gradient(135deg,#2ed573,#1faa53);" disabled>✔ 确定</button>
                 </div>
                 <div class="draft-hint">点击卡牌或按 1 / 2 / 3 选中 · 按空格或点「确定」选择该卡</div>
@@ -2877,7 +2877,7 @@
         let selectedCards = [];      // 已选卡牌 [{id,name,icon}], 用于HUD卡牌栏叠加显示 xN
         let currentDraftPicks = [];  // 本次选卡界面展示的3张卡
         let draftSelectedIdx = -1;   // 当前选中的卡槽 (-1=未选, 0/1/2 对应 1/2/3 号卡)
-        let draftRefreshLeft = 0;    // 本次选卡剩余刷新次数 (每次打开重置为3)
+        let draftRefreshLeft = 0;    // 本次选卡剩余刷新次数 (每次打开重置为10)
         // Task 5: 已回退 draftRespawnKind/kind 参数 —— 单命死亡统一自动重生, 仅波次胜利弹选卡
 
         // === Task 6: Tab 全属性面板状态 ===
@@ -4215,7 +4215,7 @@
             if (roundDraftType === 'equip') {
                 pool = CARDS.filter(c => c.type === 'equip');
             } else {
-                // 本回合品质已锁定: 3 张候选 + 3 次刷新全部来自同一品质
+                // 本回合品质已锁定: 3 张候选 + 每次刷新都来自同一品质 (每回合最多刷新 10 次)
                 pool = CARDS.filter(c => isEffectCard(c) && c.rarity === roundDraftRarity);
                 if (!pool.length) pool = CARDS.filter(isEffectCard); // 兜底: 该品质暂无卡
             }
@@ -4384,13 +4384,13 @@
             titleEl.innerHTML = titleText +
                 `<span style="display:block;font-size:14px;color:#aaa;margin-top:8px;">${rName} · ${ctName}</span>`;
             draftSelectedIdx = -1;   // 重置选中
-            draftRefreshLeft = 3;    // 每次选卡 3 次刷新机会
+            draftRefreshLeft = 10;   // 每次选卡 10 次刷新机会
             renderDraftCards();
             overlay.style.display = 'flex'; // 注意: 默认 display:none, 显示时切为 flex
             GameAudio.play('reload'); // 选卡提示音
         }
 
-        // === 选卡交互: 点击卡牌或按 1/2/3 选中 → 空格或「确定」按钮确认 → 刷新最多3次 ===
+        // === 选卡交互: 点击卡牌或按 1/2/3 选中 → 空格或「确定」按钮确认 → 刷新最多10次 ===
         function renderDraftCards() {
             const cardsEl = document.getElementById('draftCards');
             const refreshBtn = document.getElementById('draftRefreshBtn');
@@ -4430,7 +4430,7 @@
         function refreshDraft() {
             if (!isDrafting || draftRefreshLeft <= 0) return;
             draftRefreshLeft--;
-            // PvP 回合抽卡: 刷新次数按方独立记账 (红方pvpRefreshA / 蓝方pvpRefreshB, 每方3次)
+            // PvP 回合抽卡: 刷新次数按方独立记账 (红方pvpRefreshA / 蓝方pvpRefreshB, 每方10次)
             if (gameState === 'pvp' && pvpPhase === 'draft') {
                 if (pvpDraftSide === 'A') pvpRefreshA = draftRefreshLeft;
                 else pvpRefreshB = draftRefreshLeft;
@@ -4538,11 +4538,11 @@
         // pvpRound: 当前回合数 (首回合=1, 由 startPvP 初始化; 之后每回合由 startPvpRound 递增)
         // pvpPhase: 'fight'=回合进行中 | 'roundEnd'=回合结束冻结2秒 | 'draft'=双方轮流抽卡
         // pvpDraftSide: 当前抽卡方 ('A'红方先抽 / 'B'蓝方后抽)
-        // pvpRefreshA/B: 双方各自的抽卡刷新次数 (每方独立3次)
+        // pvpRefreshA/B: 双方各自的抽卡刷新次数 (每方独立10次)
         let pvpRound = 1;
         let pvpPhase = 'fight';
         let pvpDraftSide = 'A';
-        let pvpRefreshA = 3, pvpRefreshB = 3;
+        let pvpRefreshA = 10, pvpRefreshB = 10;
 
         let timeScale = 1.0;
 
@@ -5263,7 +5263,7 @@
                 pvpScoreA = _num(pv.scoreA, 0); pvpScoreB = _num(pv.scoreB, 0);
                 pvpRound = _num(pv.round, 1);
                 // 抽卡中断时存档: 直接回到战斗阶段 (避免恢复后卡在选卡界面)
-                pvpPhase = 'fight'; pvpDraftSide = 'A'; pvpRefreshA = 3; pvpRefreshB = 3;
+                pvpPhase = 'fight'; pvpDraftSide = 'A'; pvpRefreshA = 10; pvpRefreshB = 10;
 
                 bullets = []; particles = [];
                 timeScale = 1.0;
@@ -11553,7 +11553,8 @@
                     '新增装备卡「眩晕枷锁」💫：生命 +100、物攻 +20；基础眩晕 2 秒 / 冷却 15 秒（固定冷却，不受 CDR 影响）；每多一张眩晕 +0.3 秒、冷却 -0.5 秒，最多按 5 张结算（最高 3.2 秒 / 最低 13 秒）；眩晕期间固定原地、无法跳跃 / 移动 / 开火且不受击退，头顶显示 💫',
                     '效果栏冷却角标上限同步：净化 ×N/7、眩晕枷锁 ×N/5、禁跳诅咒 ×N/8；冷却总时长按张数动态计算',
                     '更新公告改为「最新条目置顶」：每次更新后打开公告即可看到最新内容，无需向下滚动',
-                    '抽卡品质概率调整：效果卡抽到彩卡（至臻）概率 70%、紫卡 30%（装备卡仍固定紫色）'
+                    '抽卡品质概率调整：效果卡抽到彩卡（至臻）概率 70%、紫卡 30%（装备卡仍固定紫色）',
+                    '选卡刷新次数由 3 次改为 10 次（单人 / 训练场 / PvP 双方各自独立 10 次）'
                 ]
             },
             {
@@ -12003,7 +12004,7 @@
             score = 0; kills = 0; combo = 0; maxCombo = 0; wave = 1; killStreak = 0; lastKillTime = 0;
             pvpLivesA = 2; pvpLivesB = 2; pvpScoreA = 0; pvpScoreB = 0;
             // 无限回合制状态初始化: 首回合=1 (不成长), 红方先抽, 双方刷新次数各3次
-            pvpRound = 1; pvpPhase = 'fight'; pvpDraftSide = 'A'; pvpRefreshA = 3; pvpRefreshB = 3;
+            pvpRound = 1; pvpPhase = 'fight'; pvpDraftSide = 'A'; pvpRefreshA = 10; pvpRefreshB = 10;
             bullets = []; particles = [];
             timeScale = 1.0;
             screenShake = { x: 0, y: 0, intensity: 0, duration: 0, color: '' };
