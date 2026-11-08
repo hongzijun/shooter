@@ -6043,6 +6043,8 @@
                 const aiDamageMultiplier = 1.0;   // AI 基础伤害系数: 取消 0.6 折扣, 与玩家一致
                 const baseDamage = Math.round(actualDamage * (this.damageBoost ? this.damageMultiplier : 1) * aiDamageMultiplier);
 
+                // 齐射编号: 同一次开火的多颗弹丸共用一个编号 (崎岖外壳按「每次攻击」只触发一次)
+                const volleyId = ((this._volleySeq = (this._volleySeq || 0) + 1));
                 for (let i = 0; i < pellets; i++) {
                     const weaponSpread = (Math.random() - 0.5) * spreadAmt;
                     const accuracySpread = (Math.random() - 0.5) * aimWobble;
@@ -6073,7 +6075,8 @@
                         trailPositions: [],
                         specialType: specialType,
                         knockbackMult: kbMult,
-                        fxMult: w.fxMult || 1   // Task 4: 特效伤害乘数 (冲锋枪×0.6/刀剑×1.5/其余×1)
+                        fxMult: w.fxMult || 1,   // Task 4: 特效伤害乘数 (冲锋枪×0.6/刀剑×1.5/其余×1)
+                        volleyId: volleyId       // 齐射编号 (同一次开火的弹丸相同)
                     };
                     bullets.push(bulletData);
                 }
@@ -7236,7 +7239,7 @@
             // 'true' = 真伤: 无视物理/法术减伤, 飘字白色
             // isBulletHit: 本次伤害是否来自子弹命中 (反弹马甲仅在此条件下触发)
             // Task 飘字规范: 返回 { dmg: 最终伤害, shield: 是否被护盾吸收过 } 供特效调用方取值 (旧调用点忽略返回值)
-            takeDamage(dmg, attacker, isCrit, damageType, isFxPass, isReflect, isBulletHit, noKnock) {
+            takeDamage(dmg, attacker, isCrit, damageType, isFxPass, isReflect, isBulletHit, noKnock, srcBullet) {
                 if (this.invincible) return;   // 无敌模式(godMode)不在此拦截: 伤害数字/秒伤/击退照常, 仅不扣血
                 if (this.health <= 0) return;
 
@@ -7378,12 +7381,20 @@
                         }
                     }
                     // 崎岖外壳 (普攻你的敌人受到 20%物防 伤害)
+                    // 触发口径: 只认普攻 (子弹命中 / 近战物理), 特效伤害(isFxPass)、灼烧等魔法伤害、环境/持续伤害一律不触发
+                    // 频率: 同一次开火的多颗弹丸(霰弹枪)共用 volleyId, 只反弹一次; 每次近战挥击也只反弹一次
                     if (this.fx.thornsDefPct > 0) {
-                        const _b2 = Math.round((this.getDefP ? this.getDefP() : 0) * this.fx.thornsDefPct);
-                        if (_b2 > 0) {
-                            const _t2 = attacker.takeDamage(_b2, this, false, 'true', true, true);
-                            const _s2 = _t2 ? (_t2.dmg + (_t2.absorbed || 0)) : 0;   // 含被护盾吸收部分
-                            if (_s2 > 0) showFloatingNumber(attacker.x, attacker.y - 50, '-' + _s2, DMG_COLORS.true, { iconId: 'fx_shell_e', prefix: (_t2 && _t2.shield ? '🛡↩' : '↩'), type: 'fx' });
+                        const _basicAtk = isBulletHit || ((damageType === 'phys' || damageType == null) && !isFxPass);
+                        const _volley = (isBulletHit && srcBullet) ? (srcBullet.volleyId || 0) : 0;
+                        const _dup = _volley > 0 && this._shellVolley === _volley && this._shellVolleyOwner === attacker;
+                        if (_basicAtk && !_dup) {
+                            if (_volley > 0) { this._shellVolley = _volley; this._shellVolleyOwner = attacker; }
+                            const _b2 = Math.round((this.getDefP ? this.getDefP() : 0) * this.fx.thornsDefPct);
+                            if (_b2 > 0) {
+                                const _t2 = attacker.takeDamage(_b2, this, false, 'true', true, true);
+                                const _s2 = _t2 ? (_t2.dmg + (_t2.absorbed || 0)) : 0;   // 含被护盾吸收部分
+                                if (_s2 > 0) showFloatingNumber(attacker.x, attacker.y - 50, '-' + _s2, DMG_COLORS.true, { iconId: 'fx_shell_e', prefix: (_t2 && _t2.shield ? '🛡↩' : '↩'), type: 'fx' });
+                            }
                         }
                     }
                     // 反弹马甲: 当且仅当对方子弹命中己方时触发; 造成物理伤害, 飘字带装备卡图来源
@@ -10175,7 +10186,7 @@
                         const fxExtra = fxList.reduce((s, f) => s + f.dmg, 0);
 
                         // 暴击飘字由 takeDamage 内部按规范统一弹出 (✦暴击黄), 此处不再重复调用 triggerCritVisuals
-                        t.takeDamage(damageToApply, b.owner, b.isCrit, 'phys', false, false, true);
+                        t.takeDamage(damageToApply, b.owner, b.isCrit, 'phys', false, false, true, undefined, b);
                         for (let fi = 0; fi < fxList.length; fi++) {
                             // 基础飘字 y-50, 特效条目从 y-72 起, 多条递增 22px (y-72/-94/-116) 避免完全重叠
                             const fr = t.takeDamage(fxList[fi].dmg, b.owner, false, 'phys', true);
@@ -11713,7 +11724,8 @@
                     '净化之光基础冷却调整为 20 秒（多张仍每张 -0.5 秒，最低 12 秒）',
                     'PvE 新增里程碑自选：每过 X 波（X / Y 取自 AI 抽卡成长配置）可自选 X×Y×(已通关波次/X)÷2 张卡牌（即 Y×波次÷2），装备 / 效果均可，选择期间游戏暂停',
                     '冷却缩减（CDR）上限由 60% 提升至 80%；「时间刻印」仍最多额外 -60%，两者乘算后最高约 92%',
-                    '独立触发类装备改为逐件独立显示（如相位臂甲）：有几个就显示几个冷却条目，各自倒计时 / 就绪，不再合并成一条'
+                    '独立触发类装备改为逐件独立显示（如相位臂甲）：有几个就显示几个冷却条目，各自倒计时 / 就绪，不再合并成一条',
+                    '修复「崎岖外壳」错误触发：只对普攻（子弹 / 近战）生效，特效伤害、灼烧等魔法伤害与环境伤害不再触发；霰弹枪同一次开火只反弹一次，同类攻击不会重复结算'
                 ]
             },
             {
