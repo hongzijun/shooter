@@ -5089,12 +5089,14 @@
         const SAVE_SLOT_LIMIT = 20;                    // 存档数量上限 (模式各 20)
         const SAVE_TOTAL_CHARS_MAX = 1500000;          // 所有存档 JSON 总字符上限 (localStorage 配额保护)
         let _runId = null;     // 当前这局存档的 id (自动存档写入同一槽)
+        let _runName = null;   // 当前这局的自定义名称 (空 = 默认「类型 + 波次」)
 
         function _newRunId() {
             return 'r' + Date.now().toString(36) + '_' + Math.random().toString(36).slice(2, 6);
         }
         function _beginNewRun() {
             _runId = _newRunId();
+            _runName = null;
             return _runId;
         }
         function _readSaveIndex() {
@@ -5135,8 +5137,12 @@
         // 写入/更新索引摘要 (size = 该存档 JSON 字符数, 用于配额保护)
         function _saveSummary(id, data, size) {
             try {
+                let idx = _readSaveIndex();
+                const pos = idx.findIndex(function (s) { return s.id === id; });
+                const prevName = (pos >= 0 && idx[pos].name) ? idx[pos].name : '';
                 const entry = {
                     id: id,
+                    name: data.name || prevName,
                     t: data.t || Date.now(),
                     state: data.state,
                     wave: data.wave || 1,
@@ -5148,8 +5154,6 @@
                     maxHp: data.player ? Math.round(data.player.maxHealth || 0) : 0,
                     size: (typeof size === 'number' && isFinite(size)) ? size : null
                 };
-                let idx = _readSaveIndex();
-                const pos = idx.findIndex(function (s) { return s.id === id; });
                 if (pos >= 0) idx[pos] = entry; else idx.push(entry);
                 idx.sort(function (a, b) { return (b.t || 0) - (a.t || 0); });
                 _trimSaveIndex(idx, id);
@@ -5335,6 +5339,7 @@
                 const data = {
                     v: SAVE_VERSION,
                     t: Date.now(),
+                    name: _runName || '',
                     state: gameState,
                     score: score, kills: kills, combo: combo, maxCombo: maxCombo, wave: wave,
                     killStreak: killStreak, maxKillStreak: maxKillStreak,
@@ -5491,6 +5496,8 @@
                 return;
             }
             _runId = String(id);
+            const _idxEntry = _readSaveIndex().find(function (s) { return s.id === _runId; });
+            _runName = (data.name || (_idxEntry && _idxEntry.name) || '') || null;
             if (data.state === 'pvp') loadPvpSave(data);
             else loadSingleSave(data);
         }
@@ -5512,7 +5519,7 @@
                 const idx = _readSaveIndex().filter(function (s) { return s.id !== sid; });
                 localStorage.setItem(SAVE_INDEX_KEY, JSON.stringify(idx));
                 localStorage.removeItem(getSaveSlotKey(sid));
-                if (_runId === sid) _runId = null;
+                if (_runId === sid) { _runId = null; _runName = null; }
             } catch (e) { }
             renderSaveSlotList(_startChoiceMode);
             _refreshStartChoiceHint();
@@ -5534,16 +5541,77 @@
                 const detail = isPvp ? ('第 ' + (s.pvpRound || 1) + ' 回合') : ('第 ' + (s.wave || 1) + ' 波');
                 const extra = isPvp ? ('比分 ' + (s.score || 0)) : ((s.score || 0) + ' 分');
                 const sid = String(s.id);
+                const nm = _escSaveName(s.name || '');
+                const mainSpan = nm
+                    ? '<span style="display:flex;flex-direction:column;gap:2px;min-width:0;">' +
+                      '<span style="white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">📝 ' + nm + '</span>' +
+                      '<span style="color:#9ad0ff;font-size:11px;white-space:nowrap;">' + (isPvp ? '🔵' : '🎯') + ' ' + kind + ' · ' + detail + '</span>' +
+                      '</span>'
+                    : '<span>' + (isPvp ? '🔵' : '🎯') + ' ' + kind + ' · ' + detail + '</span>';
                 return '<div style="display:flex;gap:6px;align-items:stretch;">' +
                     '<button onclick="loadSaveById(\'' + sid + '\')" ' +
-                    'style="flex:1;display:flex;justify-content:space-between;align-items:center;gap:12px;padding:10px 14px;border-radius:10px;border:1px solid rgba(79,142,255,0.45);background:linear-gradient(45deg,rgba(108,92,231,0.35),rgba(41,128,185,0.35));color:#fff;font-size:13px;cursor:pointer;text-align:left;">' +
-                    '<span>' + (isPvp ? '🔵' : '🎯') + ' ' + kind + ' · ' + detail + '</span>' +
+                    'style="flex:1;display:flex;justify-content:space-between;align-items:center;gap:12px;padding:10px 14px;border-radius:10px;border:1px solid rgba(79,142,255,0.45);background:linear-gradient(45deg,rgba(108,92,231,0.35),rgba(41,128,185,0.35));color:#fff;font-size:13px;cursor:pointer;text-align:left;min-width:0;">' +
+                    mainSpan +
                     '<span style="color:#9ad0ff;font-size:12px;white-space:nowrap;">' + extra + ' · ' + _fmtSaveTime(s.t) + '</span>' +
                     '</button>' +
+                    '<button onclick="renameSaveById(\'' + sid + '\')" title="重命名该存档" aria-label="重命名该存档" ' +
+                    'style="flex:0 0 42px;width:42px;border-radius:10px;border:1px solid rgba(255,213,79,0.5);background:rgba(255,193,7,0.18);color:#ffd54f;font-size:15px;cursor:pointer;">✏</button>' +
                     '<button onclick="deleteSaveById(\'' + sid + '\')" title="删除该存档" aria-label="删除该存档" ' +
                     'style="flex:0 0 42px;width:42px;border-radius:10px;border:1px solid rgba(255,92,92,0.5);background:rgba(231,76,60,0.22);color:#ff8a80;font-size:15px;cursor:pointer;">🗑</button>' +
                     '</div>';
             }).join('');
+        }
+
+        // === 存档自定义命名 ===
+        let _renamingSaveId = null;
+        function _escSaveName(v) {
+            return String(v).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;').replace(/'/g, '&#39;');
+        }
+        // 直接把名称写入存档数据 (开始界面改名时游戏未运行, autoSaveGame 不生效)
+        function _writeSaveName(id, name) {
+            try {
+                const raw = localStorage.getItem(getSaveSlotKey(id));
+                if (!raw) return;
+                const d = JSON.parse(raw);
+                if (!d) return;
+                if (name) d.name = name; else delete d.name;
+                localStorage.setItem(getSaveSlotKey(id), JSON.stringify(d));
+            } catch (e) { }
+        }
+        function renameSaveById(id) {
+            const sid = String(id);
+            const ent = _readSaveIndex().find(function (s) { return s.id === sid; });
+            if (!ent) { showFloatingText('❌ 该存档已失效', '#ff4757'); return; }
+            _renamingSaveId = sid;
+            const panel = document.getElementById('saveRenamePanel');
+            const input = document.getElementById('saveRenameInput');
+            if (input) input.value = ent.name || '';
+            if (panel) panel.style.display = 'flex';
+            if (input) setTimeout(function () { input.focus(); input.select(); }, 30);
+        }
+        function closeSaveRename() {
+            _renamingSaveId = null;
+            const panel = document.getElementById('saveRenamePanel');
+            if (panel) panel.style.display = 'none';
+        }
+        function confirmSaveRename() {
+            const sid = _renamingSaveId;
+            if (!sid) { closeSaveRename(); return; }
+            const input = document.getElementById('saveRenameInput');
+            let name = input ? String(input.value || '').trim() : '';
+            if (name.length > 24) name = name.slice(0, 24);
+            try {
+                const idx = _readSaveIndex();
+                const pos = idx.findIndex(function (s) { return s.id === sid; });
+                if (pos >= 0) {
+                    if (name) idx[pos].name = name; else delete idx[pos].name;
+                    localStorage.setItem(SAVE_INDEX_KEY, JSON.stringify(idx));
+                    _writeSaveName(sid, name);
+                    if (_runId === sid) _runName = name || null;
+                }
+            } catch (e) { }
+            closeSaveRename();
+            renderSaveSlotList(_startChoiceMode);
         }
 
         // === 开始询问弹窗: 按模式独立显示各自存档 (单人 playing / 双人 pvp) ===
@@ -11757,7 +11825,8 @@
                     'PvE 里程碑自选卡牌支持重复选择：左键点击同一张可多次累加（角标显示已选张数），右键减少一张，选满后确认发放',
                     '「恒久刻印」「衰亡刻印」「时间刻印」的加成不受卡牌张数上限影响，一律在卡牌上限值之后再乘算：眩晕枷锁按 5 张封顶 3.2 秒 → 衰亡刻印满级 9.6 秒；净化封顶 5 秒 → 恒久刻印满级 15 秒；眩晕枷锁冷却封顶 13 秒 → 时间刻印满级再降到 5.2 秒（眩晕仍不吃 CDR）',
                     '「时间刻印」现在同样作用于禁跳诅咒（10 秒）与净化之光（按张数下限 12 秒）的冷却，效果栏读秒与总时长同步',
-                    'AI 改为真实消耗弹药：每开一枪扣 1 发，弹匣打空后必须换弹（换弹期间无法开火，换弹中不会切枪），换弹完成才会继续射击；重生 / 每波开始仍会补满弹匣与备弹'
+                    'AI 改为真实消耗弹药：每开一枪扣 1 发，弹匣打空后必须换弹（换弹期间无法开火，换弹中不会切枪），换弹完成才会继续射击；重生 / 每波开始仍会补满弹匣与备弹',
+                    '存档支持自定义命名：开始界面「最近存档」每条右侧新增 ✏ 按钮，可输入最多 24 字名称（留空恢复默认「类型 + 波次」）；名称保存在存档数据中，自动存档、继续游戏与改名后都不会丢失'
                 ]
             },
             {
@@ -13739,6 +13808,20 @@
                 <div style="text-align:left;color:#9ad0ff;font-size:13px;font-weight:bold;margin-top:4px;">📂 最近存档</div>
                 <div id="saveSlotList" style="display:flex;flex-direction:column;gap:8px;max-height:42vh;overflow-y:auto;padding-right:2px;"></div>
                 <button id="startChoiceContinueBtn" onclick="continueGame()" style="display:none;background:linear-gradient(45deg,#6c5ce7,#a29bfe);border:none;color:white;padding:15px 40px;border-radius:10px;font-size:17px;cursor:pointer;font-weight:bold;">📂 继续游戏</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- 存档重命名 -->
+    <div id="saveRenamePanel" style="position:fixed;top:0;left:0;width:100%;height:100%;background:rgba(0,0,0,0.7);z-index:10002;display:none;align-items:center;justify-content:center;padding:20px;">
+        <div style="background:linear-gradient(135deg,#1a1a2e,#16213e);border-radius:18px;padding:28px 32px;border:2px solid #ffd54f;min-width:320px;max-width:420px;width:100%;text-align:center;box-sizing:border-box;">
+            <div style="font-size:32px;margin-bottom:6px;">✏️</div>
+            <h2 style="color:#ffd54f;font-size:20px;margin:0 0 14px;">重命名存档</h2>
+            <input id="saveRenameInput" maxlength="24" placeholder="输入存档名称（最多 24 字）" onkeydown="if(event.key==='Enter'){event.preventDefault();confirmSaveRename();}else if(event.key==='Escape'){closeSaveRename();}" style="width:100%;box-sizing:border-box;padding:11px 14px;border-radius:10px;border:1px solid rgba(255,213,79,0.5);background:rgba(0,0,0,0.35);color:#fff;font-size:15px;outline:none;">
+            <div style="color:#888;font-size:12px;margin:10px 0 16px;">留空则恢复默认名称（类型 + 波次）</div>
+            <div style="display:flex;gap:10px;">
+                <button onclick="confirmSaveRename()" style="flex:1;background:linear-gradient(45deg,#ffd54f,#ffb300);border:none;color:#1a1a2e;padding:12px;border-radius:10px;font-size:15px;cursor:pointer;font-weight:bold;">确定</button>
+                <button onclick="closeSaveRename()" style="flex:1;background:rgba(255,255,255,0.12);border:1px solid rgba(255,255,255,0.25);color:#ddd;padding:12px;border-radius:10px;font-size:15px;cursor:pointer;">取消</button>
             </div>
         </div>
     </div>
