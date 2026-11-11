@@ -3193,7 +3193,7 @@
             },
             {
                 id: 'stunlock', name: '眩晕枷锁', icon: '💫', type: 'equip', rarity: 'purple',
-                desc: '生命 +100，物攻 +20；每 15 秒（固定冷却，不受 CDR 影响）下一次攻击命中使敌人眩晕 2 秒：固定原地、无法跳跃/移动/开火且不受击退；每多一张眩晕 +0.3 秒、冷却 -0.5 秒，最多按 5 张结算（最高 3.2 秒 / 最低 13 秒）',
+                desc: '生命 +100，物攻 +20；每 15 秒（固定冷却，不受 CDR 影响）下一次攻击命中使敌人眩晕 2 秒：固定原地、无法跳跃/移动/开火且不受击退；每多一张眩晕 +0.3 秒、冷却 -0.5 秒，最多按 5 张结算（最高 3.2 秒 / 最低 13 秒）；「时间刻印」的额外冷却缩减仍生效',
                 apply(p) { const eq = ensureEquipObj(p); p.maxHealth += 100; eq.maxHp += 100; p.health = Math.min(p.maxHealth, p.health + 100); eq.atk += 20; eq.stunlock = (eq.stunlock || 0) + 1; }
             }
         ];
@@ -3388,7 +3388,8 @@
                     const _sn = Math.min(5, Math.max(1, Math.round(eq.stunlock)));
                     const _stunDur = 2000 + 300 * (_sn - 1);
                     const _stunCd = Math.max(13000, 15000 - 500 * (_sn - 1));
-                    attacker._stunReadyAt = now + _stunCd;
+                    // 固定冷却不吃 CDR; 「时间刻印」的额外缩减仍然生效 (刻印加成不被卡牌张数上限截断)
+                    attacker._stunReadyAt = now + Math.round(_stunCd * (1 - fxCdrExtra(attacker)));
                     fxApplyStun(attacker, target, _stunDur, now);
                 }
             }
@@ -3797,7 +3798,8 @@
             if (!(fx.noJump > 0)) return false;
             if (now < (fx.noJumpNextAt || 0)) return false;
             if (fxIsPurifying(tgt)) { fx.noJumpNextAt = now + 10000; return false; }   // 净化期间免疫, 但仍消耗本次冷却
-            fx.noJumpNextAt = now + 10000;
+            // 基础 10 秒冷却 ×「时间刻印」额外缩减 (不被禁跳自身张数上限截断)
+            fx.noJumpNextAt = now + Math.round(10000 * (1 - fxCdrExtra(att)));
             const dur = fxDebuffDur(att, Math.min(4000, 2000 + 300 * (fx.noJump - 1)));
             fx.noJumpUntil = now + dur;
             tgt.activeEffects = tgt.activeEffects || [];
@@ -3824,7 +3826,8 @@
             const _pCd = Math.max(12000, 20000 - 500 * (_pn - 1));
             const dur = fxBuffDur(p, _pDurBase);
             if (now >= (fx.purifyNextAt || 0)) {
-                fx.purifyNextAt = now + _pCd;
+                // 净化冷却: 先按张数得基础值 (下限 12 秒), 再乘「时间刻印」额外缩减
+                fx.purifyNextAt = now + Math.round(_pCd * (1 - fxCdrExtra(p)));
                 fx.purifyUntil = now + dur;
                 showFloatingText('💠 净化!', '#4f8eff');
             }
@@ -4201,10 +4204,10 @@
               apply(p) { const f = ensureFx(p); f.dmgRedHighHp += 0.40; f.dmgRedHighHpThresh = 0.6; } },
             { id: 'fx_turnshield_e', name: '准备充分', icon: '🔰', type: 'effect', rarity: 'epic', desc: '回合开始时获得最大生命35%的护盾',
               apply(p) { ensureFx(p).turnShieldPct += 0.35; } },
-            { id: 'fx_nojump_e', name: '禁跳诅咒', icon: '🚫', type: 'effect', rarity: 'epic', desc: '每10秒: 下次普攻命中使敌人禁用跳跃2秒; 每多一张+0.3秒(上限4秒); 唯一冷却, 不独立计时',
-              apply(p) { const f = ensureFx(p); if (f.noJump <= 0) f.noJumpNextAt = Date.now() + 10000; f.noJump++; } },
-            { id: 'fx_purify_e', name: '净化之光', icon: '💠', type: 'effect', rarity: 'epic', desc: '每20秒净化自身2秒; 每多一张净化时长+0.5秒、冷却-0.5秒; 上限净化5秒/冷却12秒; 净化期间清除并免疫所有负面效果, 散发蓝光',
-              apply(p) { const f = ensureFx(p); if (f.purify <= 0) f.purifyNextAt = Date.now() + 20000; f.purify++; } },
+            { id: 'fx_nojump_e', name: '禁跳诅咒', icon: '🚫', type: 'effect', rarity: 'epic', desc: '每10秒: 下次普攻命中使敌人禁用跳跃2秒; 每多一张+0.3秒(上限4秒); 唯一冷却, 不独立计时; 「时间刻印」的额外冷却缩减生效',
+              apply(p) { const f = ensureFx(p); if (f.noJump <= 0) f.noJumpNextAt = Date.now() + Math.round(10000 * (1 - fxCdrExtra(p))); f.noJump++; } },
+            { id: 'fx_purify_e', name: '净化之光', icon: '💠', type: 'effect', rarity: 'epic', desc: '每20秒净化自身2秒; 每多一张净化时长+0.5秒、冷却-0.5秒; 上限净化5秒/冷却12秒; 「时间刻印」的额外冷却缩减生效; 净化期间清除并免疫所有负面效果, 散发蓝光',
+              apply(p) { const f = ensureFx(p); if (f.purify <= 0) f.purifyNextAt = Date.now() + Math.round(20000 * (1 - fxCdrExtra(p))); f.purify++; } },
             { id: 'fx_cdrplus_e', name: '时间刻印', icon: '⏳', type: 'effect', rarity: 'epic', desc: '所有冷却型效果冷却额外 -10%（先乘 CDR 再乘本效果），可叠加，最多 -60%',
               apply(p) { const f = ensureFx(p); f.cdrPlus = Math.min(0.60, (f.cdrPlus || 0) + 0.10); } },
             { id: 'fx_debuffext_e', name: '衰亡刻印', icon: '⏬', type: 'effect', rarity: 'epic', desc: '使对方所有负面效果持续时间 +20%，可叠加，最多 +200%',
@@ -8580,16 +8583,16 @@
                 if (fx.noJump > 0) {
                     // 禁跳: 触发瞬间即进入 10 秒冷却, 冷却中始终显示剩余时间 (不再显示为"就绪")
                     const _njRemain = Math.max(0, (fx.noJumpNextAt || 0) - now);
-                    out.push({ type: 'cd', key: 'noJump', name: '禁跳', iconId: 'fx_nojump_e', emoji: '🚫', remain: _njRemain, total: 10000, badge: fx.noJump, badgeMax: 8 });
+                    out.push({ type: 'cd', key: 'noJump', name: '禁跳', iconId: 'fx_nojump_e', emoji: '🚫', remain: _njRemain, total: Math.round(10000 * (1 - fxCdrExtra(ent))), badge: fx.noJump, badgeMax: 8 });
                 }
                 if (fx.purify > 0) {
                     const _pRemain = Math.max(0, (fx.purifyUntil || 0) > now ? 0 : ((fx.purifyNextAt || 0) - now));
-                    const _pTotal = Math.max(12000, 20000 - 500 * (Math.max(1, Math.round(fx.purify)) - 1));
+                    const _pTotal = Math.round(Math.max(12000, 20000 - 500 * (Math.max(1, Math.round(fx.purify)) - 1)) * (1 - fxCdrExtra(ent)));
                     out.push({ type: 'cd', key: 'purify', name: '净化', iconId: 'fx_purify_e', emoji: '💠', remain: _pRemain, total: _pTotal, badge: fx.purify, badgeMax: 7 });
                 }
                 // 眩晕枷锁 (装备卡): 每 10 秒 (享受 CDR) 下一次命中眩晕
                 if (ent.equip && ent.equip.stunlock > 0) {
-                    const _slTotal = Math.max(13000, 15000 - 500 * (Math.min(5, Math.max(1, Math.round(ent.equip.stunlock))) - 1));
+                    const _slTotal = Math.round(Math.max(13000, 15000 - 500 * (Math.min(5, Math.max(1, Math.round(ent.equip.stunlock))) - 1)) * (1 - fxCdrExtra(ent)));
                     const _slRemain = Math.max(0, (ent._stunReadyAt || 0) - now);
                     out.push({ type: 'cd', key: 'stunlock', name: '眩晕枷锁', iconId: 'stunlock', emoji: '💫', remain: _slRemain, total: _slTotal, badge: ent.equip.stunlock, badgeMax: 5 });
                 }
@@ -11751,7 +11754,9 @@
                     '独立触发类装备改为逐件独立显示（如相位臂甲）：有几个就显示几个冷却条目，各自倒计时 / 就绪，不再合并成一条',
                     '修复「崎岖外壳」错误触发：只对普攻（子弹 / 近战）生效，特效伤害、灼烧等魔法伤害与环境伤害不再触发；霰弹枪同一次开火只反弹一次，同类攻击不会重复结算',
                     'PvE 命数调整：玩家 3 条命（每波开始自动补满），AI 仍为 2 条命；旧存档读档时玩家命数按新上限补齐',
-                    'PvE 里程碑自选卡牌支持重复选择：左键点击同一张可多次累加（角标显示已选张数），右键减少一张，选满后确认发放'
+                    'PvE 里程碑自选卡牌支持重复选择：左键点击同一张可多次累加（角标显示已选张数），右键减少一张，选满后确认发放',
+                    '「恒久刻印」「衰亡刻印」「时间刻印」的加成不受卡牌张数上限影响，一律在卡牌上限值之后再乘算：眩晕枷锁按 5 张封顶 3.2 秒 → 衰亡刻印满级 9.6 秒；净化封顶 5 秒 → 恒久刻印满级 15 秒；眩晕枷锁冷却封顶 13 秒 → 时间刻印满级再降到 5.2 秒（眩晕仍不吃 CDR）',
+                    '「时间刻印」现在同样作用于禁跳诅咒（10 秒）与净化之光（按张数下限 12 秒）的冷却，效果栏读秒与总时长同步'
                 ]
             },
             {
