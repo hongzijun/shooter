@@ -2639,7 +2639,8 @@
             FRICTION: 0.87,
             AIR_RESISTANCE: 0.94,
             MAX_HEALTH: 1000,
-            MAX_LIVES: 2,
+            MAX_LIVES: 2,          // AI 命数 (PvE 敌人 2 条)
+            PLAYER_MAX_LIVES: 3,   // PvE 玩家命数 (3 条)
             MAX_SHIELD: 500
         };
 
@@ -4387,8 +4388,8 @@
         // 新波次开始(打完AI三条命): 玩家命数补满 3 条且回满血; 单命击杀抽卡不触发
         function resetPlayerForNewWave() {
             if (!player) return;
-            player.maxLives = CONFIG.MAX_LIVES;
-            player.lives = CONFIG.MAX_LIVES;
+            player.maxLives = CONFIG.PLAYER_MAX_LIVES;
+            player.lives = CONFIG.PLAYER_MAX_LIVES;
             player.health = player.maxHealth;
             if (typeof updateUI === 'function') updateUI();
         }
@@ -5232,8 +5233,12 @@
             p.health = _num(d.health, p.maxHealth);
             p.maxShield = _num(d.maxShield, p.maxShield);
             p.shield = _num(d.shield, 0);
-            p.maxLives = CONFIG.MAX_LIVES;
-            p.lives = Math.min(CONFIG.MAX_LIVES, Math.max(1, _num(d.lives, p.lives)));
+            const _livesCap = p.isAI ? CONFIG.MAX_LIVES : CONFIG.PLAYER_MAX_LIVES;
+            p.maxLives = _livesCap;
+            // 旧存档玩家上限只有 2 条: 存档为满命(2)时按新上限补满, 已损命则保持原数
+            const _savedLives = _num(d.lives, p.lives);
+            p.lives = Math.min(_livesCap, Math.max(1, _savedLives));
+            if (!p.isAI && _savedLives >= CONFIG.MAX_LIVES) p.lives = _livesCap;
             p.atk = _num(d.atk, p.atk); p.atkM = _num(d.atkM, p.atkM);
             p.defense = _num(d.defense, p.defense); p.defenseM = _num(d.defenseM, p.defenseM);
             p.pen = _num(d.pen, p.pen); p.penM = _num(d.penM, p.penM);
@@ -5667,8 +5672,8 @@
 
                 this.invincible = false;
                 this.invincibleEnd = 0;
-                this.lives = CONFIG.MAX_LIVES;
-                this.maxLives = CONFIG.MAX_LIVES;
+                this.lives = isAI ? CONFIG.MAX_LIVES : CONFIG.PLAYER_MAX_LIVES;
+                this.maxLives = isAI ? CONFIG.MAX_LIVES : CONFIG.PLAYER_MAX_LIVES;
                 this.stuckCounter = 0;
                 this.lastPos = { x, y };
                 this.legAnim = 0;
@@ -11725,7 +11730,8 @@
                     'PvE 新增里程碑自选：每过 X 波（X / Y 取自 AI 抽卡成长配置）可自选 X×Y×(已通关波次/X)÷2 张卡牌（即 Y×波次÷2），装备 / 效果均可，选择期间游戏暂停',
                     '冷却缩减（CDR）上限由 60% 提升至 80%；「时间刻印」仍最多额外 -60%，两者乘算后最高约 92%',
                     '独立触发类装备改为逐件独立显示（如相位臂甲）：有几个就显示几个冷却条目，各自倒计时 / 就绪，不再合并成一条',
-                    '修复「崎岖外壳」错误触发：只对普攻（子弹 / 近战）生效，特效伤害、灼烧等魔法伤害与环境伤害不再触发；霰弹枪同一次开火只反弹一次，同类攻击不会重复结算'
+                    '修复「崎岖外壳」错误触发：只对普攻（子弹 / 近战）生效，特效伤害、灼烧等魔法伤害与环境伤害不再触发；霰弹枪同一次开火只反弹一次，同类攻击不会重复结算',
+                    'PvE 命数调整：玩家 3 条命（每波开始自动补满），AI 仍为 2 条命；旧存档读档时玩家命数按新上限补齐'
                 ]
             },
             {
@@ -12576,7 +12582,7 @@
                 if (player.health > CONFIG.MAX_HEALTH * 1.5) this.log('MECH', '⚠️ Player HP超标: ' + player.health + '/' + CONFIG.MAX_HEALTH);
                 if (ai.health > CONFIG.MAX_HEALTH * 1.5) this.log('MECH', '⚠️ AI HP超标: ' + ai.health + '/' + CONFIG.MAX_HEALTH);
 
-                if (player.lives > CONFIG.MAX_LIVES) this.log('MECH', '⚠️ Player命数超标: ' + player.lives + '/' + CONFIG.MAX_LIVES);
+                if (player.lives > (player.maxLives || CONFIG.PLAYER_MAX_LIVES)) this.log('MECH', '⚠️ Player命数超标: ' + player.lives + '/' + (player.maxLives || CONFIG.PLAYER_MAX_LIVES));
                 if (ai.lives > CONFIG.MAX_LIVES) this.log('MECH', '⚠️ AI命数超标: ' + ai.lives + '/' + CONFIG.MAX_LIVES);
 
                 if (player.shield > CONFIG.MAX_SHIELD * 1.3) this.log('MECH', '⚠️ Player护盾超标: ' + player.shield);
@@ -13512,7 +13518,7 @@
                     if (player) {
                         const originalLives = player.lives;
                         const originalHealth = player.health;
-                        player.lives = CONFIG.MAX_LIVES;
+                        player.lives = player.maxLives || CONFIG.PLAYER_MAX_LIVES;
                         player.health = CONFIG.MAX_HEALTH;
                         player.update();
                         player.lives = originalLives;
