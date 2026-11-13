@@ -11937,7 +11937,8 @@
                     '修复俯视模式 AI 不抽卡：每回合 AI 抽卡与「AI 抽卡成长（每 X 回合 +Y 张）」现在生效，并逐个播放「AI 已获取」动画',
                     '俯视角色头顶补齐横版状态：血条 / 护盾条 / 血量与护盾数值 / 护盾光圈 / 刀剑蓄力条（满蓄显示⚡旋风斩）；换弹进度条、状态面板、成就轮询等 v2 细节已全部接回',
                     '俯视眩晕 / 冰冻真正生效：被控期间禁止移动、禁止开火、禁止挥刀、禁止位移；角色脚下新增状态图标（眩晕 💫 / 灼烧 🔥 / 减速 ❄ / 禁位移 🚫 等）',
-                    '俯视新增 E 键切换战刃（在战刃与上一把远程武器之间切换），底部键位说明同步；受击闪白、护盾光圈已补齐'
+                    '俯视新增 E 键切换战刃（在战刃与上一把远程武器之间切换），底部键位说明同步；受击闪白、护盾光圈已补齐',
+                    '俯视补齐炙热长袍 90px 灼烧光圈与连杀数字显示'
                 ]
             },
             {
@@ -13062,6 +13063,21 @@
         function tdDrawEntity(ent, color, now) {
             const aim = ent._tdAim || 0;
             const r = ent._tdRadius || TD.radius;
+            // 炙热长袍: 90px 灼烧范围光圈 (与横版 drawRobeAura 一致)
+            if (ent.equip && ent.equip.robeCount > 0) {
+                ctx.fillStyle = 'rgba(255,120,40,0.10)';
+                ctx.strokeStyle = 'rgba(255,140,60,0.55)';
+                ctx.lineWidth = 2;
+                ctx.beginPath(); ctx.arc(ent.x, ent.y, 90, 0, Math.PI * 2); ctx.fill(); ctx.stroke();
+            }
+            // 连杀数字 (与横版 drawPlayerComboNumber 对齐)
+            if (ent.comboStacks > 0) {
+                ctx.textAlign = 'center';
+                ctx.font = 'bold 14px Arial';
+                ctx.fillStyle = '#ffd700';
+                ctx.fillText('x' + ent.comboStacks, ent.x, ent.y - r - 44);
+                ctx.textAlign = 'left';
+            }
             if (now < (ent._tdDashUntil || 0)) {
                 ctx.globalAlpha = 0.45;
                 ctx.fillStyle = '#ffffff';
