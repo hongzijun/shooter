@@ -11999,7 +11999,8 @@
                     '俯视数值面板新增：双方初始最大能量、每秒能量增长、每回合能量上限成长、每回合每秒能量成长（两项成长默认 0）',
                     '能量条移到左下 / 右下；角色外圈新增当前能量占比环（能量越高越满）',
                     '修复俯视刀剑：补齐挥刀冷却（与横版同源，AI ×1.2，不能再无限连点）；伤害改为横版公式（基础伤害 + 蓄力系数，计入暴击 / 连击 / 装备特效，AI ×0.85）',
-                    '刀剑新增黑色多边形斩击特效：命中或挥空时从左向右 / 从右向左扫过黑色环形扇区，并带白色描边与灰白内层高光'
+                    '刀剑新增黑色多边形斩击特效：命中或挥空时从左向右 / 从右向左扫过黑色环形扇区，并带白色描边与灰白内层高光',
+                    '俯视头顶 UI 完全照抄横版：血条 105×6 动态颜色（>60% 绿 / >30% 橙 / 否则红）、护盾条在血条上方（每条=最大生命、最多 5 层、蓝色）、血量与护盾数值、命数心形，刀蓄力条移到血条下方'
                 ]
             },
             {
@@ -13261,42 +13262,63 @@
                 ctx.stroke();
             }
             // === 头顶状态 (照抄横版: 血条 / 护盾条 / 数值 / 刀蓄力) ===
-            const bw = 64, bh = 6;
-            const hpr = Math.max(0, Math.min(1, ent.health / ent.maxHealth));
-            const _shBase = Math.max(1, ent.maxHealth);
-            const shpr = Math.max(0, Math.min(1, (ent.shield || 0) / _shBase));
-            const barY = ent.y - r - 20;
-            ctx.fillStyle = 'rgba(0,0,0,0.62)';
-            ctx.fillRect(ent.x - bw / 2 - 1, barY - 1, bw + 2, bh + (shpr > 0 ? 9 : 0) + 2);
-            ctx.fillStyle = color;
-            ctx.fillRect(ent.x - bw / 2, barY, bw * hpr, bh);
-            if (shpr > 0) {
-                ctx.fillStyle = 'rgba(116,185,255,0.95)';
-                ctx.fillRect(ent.x - bw / 2, barY + bh + 2, bw * shpr, 4);
-            }
-            // 血量 / 护盾数值
+            // === 头顶 UI (完全照抄横版 drawHeadUI / drawShieldHeadUI) ===
+            const barWidth = 105, barHeight = 6;
+            const headY = ent.y - r - 26;
+            ctx.fillStyle = 'rgba(0,0,0,0.8)';
+            ctx.fillRect(ent.x - barWidth / 2 - 2, headY - 2, barWidth + 4, barHeight + 4);
+            const hpPercent = Math.max(0, Math.min(1, ent.health / ent.maxHealth));
+            const hpColor = (hpPercent > 0.6) ? '#2ed573' : (hpPercent > 0.3 ? '#ffa502' : '#ff4757');
+            ctx.fillStyle = hpColor;
+            ctx.fillRect(ent.x - barWidth / 2, headY, barWidth * hpPercent, barHeight);
+            ctx.strokeStyle = 'rgba(255,255,255,0.3)';
+            ctx.lineWidth = 0.8;
+            ctx.strokeRect(ent.x - barWidth / 2, headY, barWidth, barHeight);
             ctx.textAlign = 'center';
-            ctx.font = 'bold 10px Arial';
-            ctx.fillStyle = 'rgba(255,255,255,0.92)';
-            ctx.fillText(Math.max(0, Math.round(ent.health)) + '', ent.x, barY - 6);
-            if (shpr > 0) {
-                ctx.fillStyle = 'rgba(116,185,255,0.95)';
-                ctx.font = '9px Arial';
-                ctx.fillText('🛡 ' + Math.round(ent.shield || 0), ent.x, barY + bh + 15);
-            }
-            // 护盾光圈
+            ctx.font = 'bold 11px Arial';
+            ctx.fillStyle = '#fff';
+            ctx.fillText(String(Math.ceil(Math.max(0, ent.health))), ent.x, headY - 13);
+            // 护盾条: 在血条上方, 每条 = 最大生命, 最多 5 层 (与横版一致)
             if ((ent.shield || 0) > 0) {
-                ctx.strokeStyle = 'rgba(116,185,255,0.65)';
+                const shBase = Math.max(1, ent.maxHealth);
+                const layers = Math.min(5, Math.max(1, Math.ceil(ent.shield / shBase)));
+                const spH = 4, spGap = 6;
+                const topY = headY - 9 - (layers - 1) * spGap;
+                ctx.fillStyle = 'rgba(0,0,0,0.8)';
+                ctx.fillRect(ent.x - barWidth / 2 - 2, topY - 2, barWidth + 4, (layers - 1) * spGap + spH + 4);
+                for (let li = 0; li < layers; li++) {
+                    const remain = ent.shield - li * shBase;
+                    const pct = Math.max(0, Math.min(1, remain / shBase));
+                    if (pct <= 0) continue;
+                    const ly = headY - 9 - li * spGap;
+                    ctx.fillStyle = '#4f8eff';
+                    ctx.fillRect(ent.x - barWidth / 2, ly, barWidth * pct, spH);
+                    ctx.strokeStyle = 'rgba(120,170,255,0.75)';
+                    ctx.lineWidth = 1;
+                    ctx.strokeRect(ent.x - barWidth / 2, ly, barWidth, spH);
+                }
+                ctx.font = 'bold 11px Arial';
+                ctx.fillStyle = '#4f8eff';
+                ctx.fillText(String(Math.ceil(ent.shield)), ent.x + 40, headY - 13);
+                ctx.strokeStyle = 'rgba(79,142,255,0.6)';
                 ctx.lineWidth = 3;
-                ctx.beginPath();
-                ctx.arc(ent.x, ent.y, r + 7, 0, Math.PI * 2);
-                ctx.stroke();
+                ctx.beginPath(); ctx.arc(ent.x, ent.y, r + 7, 0, Math.PI * 2); ctx.stroke();
             }
-            // 刀蓄力条 (照抄横版: 60×4, 颜色随蓄力, 满蓄提示旋风斩)
+            // 命数心形 (血条下方)
+            if (typeof ent.lives === 'number' && typeof ent.maxLives === 'number' && ent.lives < ent.maxLives) {
+                ctx.font = '11px Arial';
+                const hearts = '♥'.repeat(Math.max(0, ent.lives));
+                const lostHearts = '♡'.repeat(Math.max(0, ent.maxLives - ent.lives));
+                ctx.fillStyle = '#ff4757';
+                ctx.fillText(hearts, ent.x - ctx.measureText(lostHearts).width / 2, headY + 18);
+                ctx.fillStyle = '#333';
+                ctx.fillText(lostHearts, ent.x + ctx.measureText(hearts).width / 2 - ctx.measureText(lostHearts).width / 2, headY + 18);
+            }
+            // 刀蓄力条 (血条下方, 60×4)
             if (ent.weapon && ent.weapon.isMelee) {
                 const cw = 60, ch = 4;
                 const cp = Math.max(0, Math.min(1, ent._tdSwordCharge || 0));
-                const cy = barY - 20;
+                const cy = headY + 28;
                 ctx.fillStyle = 'rgba(0,0,0,0.75)';
                 ctx.fillRect(ent.x - cw / 2 - 1, cy - 1, cw + 2, ch + 2);
                 ctx.fillStyle = (cp < 0.25) ? '#ff8888' : (cp < 0.5 ? '#ff4444' : (cp < 0.75 ? '#ff2222' : '#ff0044'));
