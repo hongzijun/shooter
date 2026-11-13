@@ -11721,12 +11721,25 @@
             }
         }
 
-        function getEffectIcon(effect) {
-            const icons = { speed: '⚡', damage: '⚔️', shield: '🛡️', invincible: '⭐', invisible: '👁️', regen: '💚', fire: '🔥', ice: '❄️', slow: '🐌', burn: '🔥', frozen: '❄️' };
-            return icons[effect] || '❓';
+        function getEffectIcon(effect, name) {
+            const icons = {
+                speed: '⚡', damage: '⚔️', shield: '🛡️', invincible: '⭐', invisible: '👁️',
+                regen: '💚', fire: '🔥', ice: '❄️', slow: '🐌', burn: '🔥', frozen: '❄️',
+                stun: '💫', fxBurn: '🔥', healDown: '🩹', defDown: '🔨', bandSlow: '⛓️',
+                iceSlow: '❄️', purify: '💠', vulnerable: '💔', noJump: '🚫'
+            };
+            if (icons[effect]) return icons[effect];
+            // 兜底: 状态自带名称形如 "💫 眩晕", 直接取开头的图标, 不再显示问号
+            const m = String(name || '').match(/^[^\u4e00-\u9fa5A-Za-z0-9]+/);
+            return m ? m[0].trim() : '•';
         }
         function getEffectColor(effect) {
-            const colors = { speed: '#2ed573', damage: '#e74c3c', shield: '#3498db', invincible: '#f1c40f', invisible: '#9b59b6', regen: '#2ecc71', fire: '#e67e22', ice: '#1abc9c', slow: '#95a5a6', burn: '#d35400', frozen: '#00bcd4' };
+            const colors = {
+                speed: '#2ed573', damage: '#e74c3c', shield: '#3498db', invincible: '#f1c40f', invisible: '#9b59b6',
+                regen: '#2ecc71', fire: '#e67e22', ice: '#1abc9c', slow: '#95a5a6', burn: '#d35400', frozen: '#00bcd4',
+                stun: '#f39c12', fxBurn: '#ff6b35', healDown: '#a29bfe', defDown: '#e17055', bandSlow: '#fd79a8',
+                iceSlow: '#74b9ff', purify: '#4f8eff', vulnerable: '#ff6b81', noJump: '#95a5a6'
+            };
             return colors[effect] || '#fff';
         }
 
@@ -11797,7 +11810,7 @@
                 buffsEl.innerHTML = player.activeEffects.map(e => {
                     const remaining = Math.max(0, e.endTime - Date.now());
                     const secs = (remaining / 1000).toFixed(1);
-                    const icon = getEffectIcon(e.effect);
+                    const icon = getEffectIcon(e.effect, e.name);
                     return `<span style="color:${getEffectColor(e.effect)};font-size:11px;" title="${e.effect}">${icon} ${secs}s</span> `;
                 }).join('');
             } else if (buffsEl) {
@@ -12031,7 +12044,9 @@
                     '训练面板分区整理：初始最大能量、每秒能量放在基础区；每回合能量上限成长、每回合每秒能量成长移到成长区',
                     '仅俯视模式：Tab 属性面板新增「每秒能量（当前上限）」显示',
                     '俯视训练场补齐：方向键移动靶位；靶子死亡 2 秒后满血、清空状态与伤害统计并回到出生点；重置靶位适配俯视坐标',
-                    '修复训练场内点击面板按钮会触发攻击；修复伤害飘字与秒伤面板的位置偏移'
+                    '修复训练场内点击面板按钮会触发攻击；修复伤害飘字与秒伤面板的位置偏移',
+                    '修复俯视状态图标显示问号：补齐眩晕 💫 / 灼烧 🔥 / 减速 ⛓️ / 治疗降低 🩹 / 破甲 🔨 / 冰环 ❄️ / 净化 💠 / 易伤 💔 / 禁位移 🚫 等全部状态图标与颜色，未收录的状态自动取自带图标，不再出现 ❓',
+                    '修复俯视刀剑冷却不随「攻速」变化：挥刀间隔改为与横版同源公式 1000/(基准发/秒 × (1+攻速×本武器攻速倍率))，AI 再 ×1.2；冷却未好时点击不再清空蓄力'
                 ]
             },
             {
@@ -12727,9 +12742,10 @@
             if (ent.frozen || fxIsStunned(ent)) return false;   // 眩晕/冰冻: 不能挥刀
             const w = ent.weapon;
             if (!w || !w.isMelee) return false;
-            // 挥刀冷却: 与横版一致 (getFireInterval, AI ×1.2), 修复可无限连点的问题
-            // 挥刀冷却 = 蓄力满时间 (玩家 1.0s / AI 1.2s), 与头顶蓄力条同步
-            const _cd = ent.isAI ? 1200 : 1000;
+            // 挥刀冷却: 与横版同源公式 —— 1000 / (基准发/秒 × (1 + 攻速 × 本武器攻速倍率)), AI ×1.2
+            // 基准发/秒 = 1.8 (战刃 sps), 攻速含面板「攻速加成」与装备 / 卡牌加成
+            const _cdBase = (ent.getFireInterval ? ent.getFireInterval(w) : (w.fireRate || 556));
+            const _cd = ent.isAI ? Math.round(_cdBase * 1.2) : _cdBase;
             if (now - (ent._tdMeleeAt || 0) < _cd) return false;
             const sec = Math.max(0, Math.min(1, chargeSec || 0));
             const cost = TD_COST.sword + 6 * sec;
@@ -12920,8 +12936,10 @@
             if (w && w.isMelee) {
                 // 刀剑为内置蓄力: 点一下左键立即按当前蓄力挥砍, 用完清零
                 if (TD.firePressed) {
-                    tdMelee(player, player._tdAim, now, Math.min(1, player._tdSwordCharge || 0));
-                    player._tdSwordCharge = 0;
+                    // 只有真正挥出才清空蓄力: 冷却/能量不足被拒时保留蓄力
+                    if (tdMelee(player, player._tdAim, now, Math.min(1, player._tdSwordCharge || 0))) {
+                        player._tdSwordCharge = 0;
+                    }
                 }
             } else if (TD.fireHeld) {
                 tdFire(player, player._tdAim, now);
@@ -13174,9 +13192,10 @@
                 if (dd < 145) {
                     ai.currentWeapon = 'sword';
                     ai._tdAim = Math.atan2(ddy, ddx);
-                    tdMelee(ai, ai._tdAim, now, TD.aMeleeCharge || 0.9);
-                    ai._tdSwordCharge = 0;
-                    TD.aMeleeUntil = 0;
+                    if (tdMelee(ai, ai._tdAim, now, TD.aMeleeCharge || 0.9)) {
+                        ai._tdSwordCharge = 0;
+                        TD.aMeleeUntil = 0;
+                    }
                     ai.currentWeapon = 'rifle';
                     TD.aWeaponAt = 0;
                 }
@@ -13439,7 +13458,7 @@
                 for (let i = 0; i < _fxList.length; i++) {
                     const e = _fxList[i];
                     const ix = ent.x - _total / 2 + 11 + i * 22;
-                    const icon = (typeof getEffectIcon === 'function') ? getEffectIcon(e.effect) : '•';
+                    const icon = (typeof getEffectIcon === 'function') ? getEffectIcon(e.effect, e.name) : '•';
                     ctx.fillStyle = 'rgba(0,0,0,0.6)';
                     ctx.beginPath(); ctx.arc(ix, _iy, 9, 0, Math.PI * 2); ctx.fill();
                     ctx.strokeStyle = (typeof getEffectColor === 'function') ? getEffectColor(e.effect) : 'rgba(255,255,255,0.5)';
