@@ -1842,7 +1842,7 @@
             <p style="font-size:13px;color:#888;">最高连杀: <span id="finalMaxStreak" style="color:#ffd700;">0</span></p>
             <div style="display:flex;gap:12px;justify-content:center;margin-top:15px;">
                 <button class="btn" onclick="continueAfterGameOver()" style="background:linear-gradient(45deg,#2ed573,#1e9e57);">▶ 继续游戏（重置命数）</button>
-                <button class="btn" onclick="startGame()">再来一局</button>
+                <button class="btn" onclick="restartAfterGameOver()">再来一局</button>
                 <button class="btn" onclick="returnToHub()" style="background:linear-gradient(45deg,#555,#333);">🏠
                     返回主页</button>
             </div>
@@ -5456,7 +5456,7 @@
                     if (!TD._ctrlHTML) TD._ctrlHTML = _ctrl2.innerHTML;
                     _ctrl2.innerHTML = '<div><span class="key">WASD</span> 移动</div>' +
                         '<div><span class="key">鼠标</span> 瞄准 / 射击</div>' +
-                        '<div><span class="key">Shift</span> 能量位移</div>' +
+                        '<div><span class="key">空格</span> 能量位移</div>' +
                         '<div><span class="key">R</span> 换弹</div>' +
                         '<div><span class="key">1-5</span> 武器</div>' +
                         '<div><span class="key">6</span> 战刃</div>';
@@ -11928,7 +11928,10 @@
                     '俯视 PVE 已完整并入横版 PVE v2：训练场数值（生命 / 攻防 / 移速 / 每秒成长 / AI 抽卡成长）、波次成长与倒计时、击杀与波次选卡、选卡刷新 10 次、里程碑自选、AI 每波抽卡装备、起死回生、成就全部生效；俯视存档独立多槽，可继续 / 改名 / 删除',
                     '俯视模式操作与机制补齐：Tab 打开全属性面板、Esc 打开暂停菜单（继续 / 重开 / 返回主页）；卡牌的移速、暴击、子弹速度、特殊弹药、霰弹近距加成、灼烧、吸血、反伤等全部接入；禁跳诅咒改为「禁位移」；子弹命中带轻量击退（位移无敌期间免疫）',
                     '修复从「俯视 PVE」入口点「新开一局」后，开始界面弹窗不消失的问题',
-                    '俯视 PVE 的 HUD 已完整照搬横版：左上血条 / 护盾 / FPS、武器弹药与状态面板、顶部状态与双方命数、右上分数与击杀记录、左下玩家 / AI 状态、底部键位说明（已换成俯视键位）；能量环与刀蓄力条移到左下 / 右上空白处，避免与面板重叠'
+                    '俯视 PVE 的 HUD 已完整照搬横版：左上血条 / 护盾 / FPS、武器弹药与状态面板、顶部状态与双方命数、右上分数与击杀记录、左下玩家 / AI 状态、底部键位说明（已换成俯视键位）；能量环与刀蓄力条移到左下 / 右上空白处，避免与面板重叠',
+                    '俯视失败界面改为照搬横版结算面板：最终得分 / 存活波次 / 最高连杀，并提供「继续游戏（重置命数）」「再来一局」「返回主页」三个按钮，继续后按俯视规则复活双方',
+                    '俯视位移键改为「空格」（原 Shift 取消），底部键位说明同步更新',
+                    '俯视手感调整：双方移速提高 60%，子弹速度降低 20%；AI 预判改用同一弹速计算并小幅提升瞄准精度，新增击杀播报'
                 ]
             },
             {
@@ -12465,7 +12468,7 @@
         // 一屏全图 · WASD 移动 · 鼠标独立瞄准 · 能量系统 · 能量位移 · 生存优先 AI
         const TD = {
             W: 1600, H: 900, MARGIN: 30,
-            playerSpeed: 3.6, aiSpeed: 3.3,
+            playerSpeed: 5.76, aiSpeed: 5.28,   // 基础上调 60%
             radius: 22,
             energyMax: 100, regen: 15,
             dashCost: 30, dashDist: 300, dashMs: 250,
@@ -12572,7 +12575,7 @@
             const pellets = w.pellets || 1;
             const spread = (typeof w.spread === 'number') ? w.spread : 0;
             const volleyId = (ent._tdVolley = (ent._tdVolley || 0) + 1);
-            const _bulletSpeedMult = ent.cardBulletSpeedMult || 1;
+            const _bulletSpeedMult = (ent.cardBulletSpeedMult || 1) * 0.8;   // 子弹速度统一下调 20%
             for (let i = 0; i < pellets; i++) {
                 const a = angle + (Math.random() - 0.5) * spread * 2 + (ent.isAI ? (Math.random() - 0.5) * 0.045 : 0);
                 const _crit = (typeof checkCrit === 'function') ? checkCrit(ent) : { isCrit: false };
@@ -12727,6 +12730,15 @@
                     } else {
                         combo = 0; killStreak = 0;
                         TD.over = true;
+                        window._lastGameMode = 'topdown';
+                        gameState = 'gameover';
+                        const _go = document.getElementById('gameOver');
+                        if (_go) {
+                            const _fs = document.getElementById('finalScore'); if (_fs) _fs.textContent = score;
+                            const _fw = document.getElementById('finalWave'); if (_fw) _fw.textContent = wave;
+                            const _fms = document.getElementById('finalMaxStreak'); if (_fms) _fms.textContent = maxKillStreak;
+                            _go.classList.remove('hidden');
+                        }
                         try { GameAudio.play('gameover'); } catch (e) { }
                         try { checkAchievements(); } catch (e) { }
                     }
@@ -12953,6 +12965,7 @@
                         const mult = (typeof getKillStreakMultiplier === 'function') ? getKillStreakMultiplier(killStreak) : 1;
                         score += Math.round(180 * combo * wave * mult);
                         try { showKillStreak(killStreak); } catch (e) { }
+                        try { addKillFeed('Player', (player && player.weapon && player.weapon.name) || 'rifle', 100); } catch (e) { }
                         kills++; combo++; maxCombo = Math.max(maxCombo, combo);
                         wave++;
                         try { growEntityPerRound(player, 'mine', false); } catch (e) { }
@@ -12985,12 +12998,12 @@
             }
             tdMove(ai, TD.aMoveX, TD.aMoveY, tdMoveSpeedOf(ai), now);
             if (player && player.health > 0) {
-                const sp = (ai.weapon && ai.weapon.speed) ? ai.weapon.speed : 22;
+                const sp = ((ai.weapon && ai.weapon.speed) ? ai.weapon.speed : 22) * (ai.cardBulletSpeedMult || 1) * 0.8;
                 const d = Math.max(1, Math.hypot(player.x - ai.x, player.y - ai.y));
                 const lead = Math.min(0.35, d / (sp * 60));
                 const tx = player.x + (player._tdVX || 0) * 60 * lead;
                 const ty = player.y + (player._tdVY || 0) * 60 * lead;
-                const jitter = 0.025 + Math.max(0, (450 - d)) / 450 * 0.045;
+                const jitter = 0.018 + Math.max(0, (450 - d)) / 450 * 0.032;
                 ai._tdAim = Math.atan2(ty - ai.y, tx - ai.x) + (Math.random() - 0.5) * jitter;
                 const _key = tdWeaponKey(ai);
                 const _cost = TD_COST[_key] || 10;
@@ -13195,24 +13208,12 @@
                 ctx.textAlign = 'center';
                 ctx.fillText('能量不足', 92, ringY - 52);
             }
-            if (TD.over) {
-                ctx.fillStyle = 'rgba(0,0,0,0.65)';
-                ctx.fillRect(0, 0, canvas.width, canvas.height);
-                ctx.fillStyle = '#ff6b6b';
-                ctx.font = 'bold 44px Arial';
-                ctx.textAlign = 'center';
-                ctx.fillText('挑战失败', canvas.width / 2, canvas.height / 2 - 20);
-                ctx.fillStyle = '#ffffff';
-                ctx.font = '20px Arial';
-                ctx.fillText('坚持到第 ' + wave + ' 波 · 击杀 ' + kills + ' · 分数 ' + score, canvas.width / 2, canvas.height / 2 + 26);
-                ctx.fillStyle = '#9ad0ff';
-                ctx.font = '16px Arial';
-                ctx.fillText('按 Esc 返回主菜单', canvas.width / 2, canvas.height / 2 + 64);
-            }
+            // 失败界面已改为照搬横版 #gameOver 面板, 不再自绘
         }
 
         function startTopdown() {
             _initDOMCache();
+            window._lastGameMode = 'topdown';
             closeStartChoice();   // 修复: 俯视入口不会自动关闭开始弹窗
             _beginNewRun();   // 俯视独立存档槽, 不能覆盖横版存档
             try { if (autoSaveIntervalId) clearInterval(autoSaveIntervalId); } catch (e) { }
@@ -13242,7 +13243,7 @@
                 if (!TD._ctrlHTML) TD._ctrlHTML = _ctrl.innerHTML;
                 _ctrl.innerHTML = '<div><span class="key">WASD</span> 移动</div>' +
                     '<div><span class="key">鼠标</span> 瞄准 / 射击</div>' +
-                    '<div><span class="key">Shift</span> 能量位移</div>' +
+                    '<div><span class="key">空格</span> 能量位移</div>' +
                     '<div><span class="key">R</span> 换弹</div>' +
                     '<div><span class="key">1-5</span> 武器</div>' +
                     '<div><span class="key">6</span> 战刃</div>';
@@ -13355,7 +13356,8 @@
             const kk = String(e.key || '').toLowerCase();
             TD.keys[kk] = true;
             if (kk === 'r' && player) player.reload();
-            if (kk === 'shift' && player && Date.now() > TD.pDashLock) {
+            if ((e.code === 'Space' || kk === ' ') && player && Date.now() > TD.pDashLock) {
+                if (e.preventDefault) e.preventDefault();
                 let mx = 0, my = 0;
                 if (TD.keys['w']) my -= 1;
                 if (TD.keys['s']) my += 1;
@@ -13376,6 +13378,7 @@
 
         function startGame() {
             _initDOMCache();
+            window._lastGameMode = 'playing';
             if (autoSaveIntervalId) clearInterval(autoSaveIntervalId);
             _beginNewRun();
             _leaveTrainModeUI();
@@ -14813,8 +14816,30 @@
         document.addEventListener('keyup', e => { keys[e.key] = false });
 
         // PvE 失败界面「继续游戏」: 保留当前波次/分数/装备, 只重置自己的命数并原地复活
+        function restartAfterGameOver() {
+            const go = document.getElementById('gameOver');
+            if (go) go.classList.add('hidden');
+            if (window._lastGameMode === 'topdown') startTopdown();
+            else startGame();
+        }
+
         function continueAfterGameOver() {
             if (gameState !== 'gameover') return;
+            // 俯视失败后继续: 命数重置为满, 双方按俯视规则重生
+            if (window._lastGameMode === 'topdown') {
+                const _go = document.getElementById('gameOver');
+                if (_go) _go.classList.add('hidden');
+                isPaused = false; isDrafting = false; isAwardShowing = false; statPanelOpen = false;
+                gameState = 'topdown';
+                TD.over = false; TD.pDeadAt = 0; TD.pRespawnAt = 0; TD.aDeadAt = 0; TD.aRespawnAt = 0;
+                player.lives = CONFIG.PLAYER_MAX_LIVES;
+                tdRespawnPlayer();
+                ai.lives = CONFIG.MAX_LIVES;
+                tdRespawnAI(true);
+                bullets = []; particles = [];
+                updateUI();
+                return;
+            }
             const go = document.getElementById('gameOver');
             if (go) go.classList.add('hidden');
             gameState = 'playing';
