@@ -12002,7 +12002,8 @@
                     '刀剑新增黑色多边形斩击特效：命中或挥空时从左向右 / 从右向左扫过黑色环形扇区，并带白色描边与灰白内层高光',
                     '俯视头顶 UI 完全照抄横版：血条 105×6 动态颜色（>60% 绿 / >30% 橙 / 否则红）、护盾条在血条上方（每条=最大生命、最多 5 层、蓝色）、血量与护盾数值、命数心形，刀蓄力条移到血条下方',
                     '修复俯视训练场无法操作：键鼠输入现在在训练场生效；补齐训练调试台（装配卡牌 / 无敌 / 重置靶位 / 数值设置）、底部调试信息与 AI 头顶总伤害 / 秒伤面板',
-                    '角色外圈能量环宽度加粗一倍（3 → 6）'
+                    '角色外圈能量环宽度加粗一倍（3 → 6）',
+                    '刀剑冷却改为与蓄力条同步（玩家 1.0 秒 / AI 1.2 秒），蓄力满即可再挥；整体攻击范围扩大 40%，扇形预览与黑色刀光同步放大'
                 ]
             },
             {
@@ -12699,14 +12700,15 @@
             const w = ent.weapon;
             if (!w || !w.isMelee) return false;
             // 挥刀冷却: 与横版一致 (getFireInterval, AI ×1.2), 修复可无限连点的问题
-            const _cd = (ent.getFireInterval ? ent.getFireInterval(w) : 556) * (ent.isAI ? 1.2 : 1);
+            // 挥刀冷却 = 蓄力满时间 (玩家 1.0s / AI 1.2s), 与头顶蓄力条同步
+            const _cd = ent.isAI ? 1200 : 1000;
             if (now - (ent._tdMeleeAt || 0) < _cd) return false;
             const sec = Math.max(0, Math.min(1, chargeSec || 0));
             const cost = TD_COST.sword + 6 * sec;
             if (tdEnergy(ent) < cost) return false;
             ent._tdEnergy -= cost;
             ent._tdMeleeAt = now;
-            const reach = 100 + 45 * sec;
+            const reach = (100 + 45 * sec) * 1.4;   // 整体攻击范围 +40%
             const half = Math.PI * 0.42;
             // 伤害与横版同源: dmgBase + atk*atkCoef*蓄力秒 (满蓄等效 3 秒), AI ×0.85
             const chargeSeconds = sec * 3;
@@ -13127,7 +13129,7 @@
                 const ddx = player.x - ai.x, ddy = player.y - ai.y;
                 const dd = Math.max(1, Math.hypot(ddx, ddy));
                 TD.aMoveX = ddx / dd; TD.aMoveY = ddy / dd;
-                if (dd < 115) {
+                if (dd < 145) {
                     ai.currentWeapon = 'sword';
                     ai._tdAim = Math.atan2(ddy, ddx);
                     tdMelee(ai, ai._tdAim, now, TD.aMeleeCharge || 0.9);
@@ -13259,7 +13261,7 @@
             ctx.globalAlpha = 1;
             if (ent === player && ent.weapon && ent.weapon.isMelee && (ent._tdSwordCharge || 0) > 0.02) {
                 const sec = Math.min(1, ent._tdSwordCharge || 0);
-                const reach = 100 + 45 * sec;
+                const reach = (100 + 45 * sec) * 1.4;
                 const half = Math.PI * 0.42;
                 ctx.fillStyle = 'rgba(255,255,255,0.10)';
                 ctx.beginPath();
