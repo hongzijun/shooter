@@ -11931,7 +11931,8 @@
                     '俯视 PVE 的 HUD 已完整照搬横版：左上血条 / 护盾 / FPS、武器弹药与状态面板、顶部状态与双方命数、右上分数与击杀记录、左下玩家 / AI 状态、底部键位说明（已换成俯视键位）；能量环与刀蓄力条移到左下 / 右上空白处，避免与面板重叠',
                     '俯视失败界面改为照搬横版结算面板：最终得分 / 存活波次 / 最高连杀，并提供「继续游戏（重置命数）」「再来一局」「返回主页」三个按钮，继续后按俯视规则复活双方',
                     '俯视位移键改为「空格」（原 Shift 取消），底部键位说明同步更新',
-                    '俯视手感调整：双方移速提高 60%，子弹速度降低 20%；AI 预判改用同一弹速计算并小幅提升瞄准精度，新增击杀播报'
+                    '俯视手感调整：双方移速提高 60%，子弹速度降低 20%；AI 预判改用同一弹速计算并小幅提升瞄准精度，新增击杀播报',
+                    '俯视子弹判定半径翻倍（6 → 12），子弹速度在当前基础上再降到 70%（累计为原速 56%）；AI 预判同步新弹速'
                 ]
             },
             {
@@ -12575,7 +12576,7 @@
             const pellets = w.pellets || 1;
             const spread = (typeof w.spread === 'number') ? w.spread : 0;
             const volleyId = (ent._tdVolley = (ent._tdVolley || 0) + 1);
-            const _bulletSpeedMult = (ent.cardBulletSpeedMult || 1) * 0.8;   // 子弹速度统一下调 20%
+            const _bulletSpeedMult = (ent.cardBulletSpeedMult || 1) * 0.8 * 0.7;   // 子弹速度累计降至 56%
             for (let i = 0; i < pellets; i++) {
                 const a = angle + (Math.random() - 0.5) * spread * 2 + (ent.isAI ? (Math.random() - 0.5) * 0.045 : 0);
                 const _crit = (typeof checkCrit === 'function') ? checkCrit(ent) : { isCrit: false };
@@ -12585,7 +12586,7 @@
                     vx: Math.cos(a) * (w.speed || 22) * _bulletSpeedMult,
                     vy: Math.sin(a) * (w.speed || 22) * _bulletSpeedMult,
                     damage: dmg, isCrit: _crit.isCrit, finalDamage: dmg,
-                    owner: ent, life: 260, size: 6, active: true,
+                    owner: ent, life: 260, size: 12, active: true,   // 判定半径翻倍 (6 -> 12)
                     color: w.color || '#ffd700', trailPositions: [],
                     knockbackMult: w.knockbackMultiplier || 1,
                     fxMult: w.fxMult || 1, volleyId: volleyId, td: true,
@@ -12998,7 +12999,7 @@
             }
             tdMove(ai, TD.aMoveX, TD.aMoveY, tdMoveSpeedOf(ai), now);
             if (player && player.health > 0) {
-                const sp = ((ai.weapon && ai.weapon.speed) ? ai.weapon.speed : 22) * (ai.cardBulletSpeedMult || 1) * 0.8;
+                const sp = ((ai.weapon && ai.weapon.speed) ? ai.weapon.speed : 22) * (ai.cardBulletSpeedMult || 1) * 0.8 * 0.7;
                 const d = Math.max(1, Math.hypot(player.x - ai.x, player.y - ai.y));
                 const lead = Math.min(0.35, d / (sp * 60));
                 const tx = player.x + (player._tdVX || 0) * 60 * lead;
@@ -13147,7 +13148,7 @@
                 if (!b.active) return;
                 ctx.fillStyle = b.color || '#ffd700';
                 ctx.beginPath();
-                ctx.arc(b.x, b.y, 4, 0, Math.PI * 2);
+                ctx.arc(b.x, b.y, Math.max(4, (b.size || 12) * 0.75), 0, Math.PI * 2);
                 ctx.fill();
                 if (b.trailPositions && b.trailPositions.length) {
                     const t = b.trailPositions[Math.min(2, b.trailPositions.length - 1)];
