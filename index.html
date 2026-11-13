@@ -5459,7 +5459,7 @@
                         '<div><span class="key">空格</span> 能量位移</div>' +
                         '<div><span class="key">R</span> 换弹</div>' +
                         '<div><span class="key">1-5</span> 武器</div>' +
-                        '<div><span class="key">6</span> 战刃</div>';
+                        '<div><span class="key">E / 6</span> 战刃</div>';
                 }
                 isPaused = false; isDrafting = false; statPanelOpen = false; isAwardShowing = false;
                 gameState = 'topdown';
@@ -7441,6 +7441,7 @@
                     try { _floatSpawn(this.x, this.y - 10, '闪避', '#ffffff', { big: true }); } catch (e) { }
                     return { dmg: 0, shield: false };
                 }
+                if (gameState === 'topdown') this._tdHitAt = Date.now();
 
                 let actualDamage = dmg;
 
@@ -11934,7 +11935,9 @@
                     '俯视手感调整：双方移速提高 60%，子弹速度降低 20%；AI 预判改用同一弹速计算并小幅提升瞄准精度，新增击杀播报',
                     '俯视子弹判定半径翻倍（6 → 12），子弹速度在当前基础上再降到 70%（累计为原速 56%）；AI 预判同步新弹速',
                     '修复俯视模式 AI 不抽卡：每回合 AI 抽卡与「AI 抽卡成长（每 X 回合 +Y 张）」现在生效，并逐个播放「AI 已获取」动画',
-                    '俯视角色头顶补齐横版状态：血条 / 护盾条 / 血量与护盾数值 / 护盾光圈 / 刀剑蓄力条（满蓄显示⚡旋风斩）；换弹进度条、状态面板、成就轮询等 v2 细节已全部接回'
+                    '俯视角色头顶补齐横版状态：血条 / 护盾条 / 血量与护盾数值 / 护盾光圈 / 刀剑蓄力条（满蓄显示⚡旋风斩）；换弹进度条、状态面板、成就轮询等 v2 细节已全部接回',
+                    '俯视眩晕 / 冰冻真正生效：被控期间禁止移动、禁止开火、禁止挥刀、禁止位移；角色脚下新增状态图标（眩晕 💫 / 灼烧 🔥 / 减速 ❄ / 禁位移 🚫 等）',
+                    '俯视新增 E 键切换战刃（在战刃与上一把远程武器之间切换），底部键位说明同步；受击闪白、护盾光圈已补齐'
                 ]
             },
             {
@@ -12544,6 +12547,7 @@
 
         // 开火: 能量 + 弹药双资源, 全向弹道
         function tdFire(ent, angle, now) {
+            if (ent.frozen || fxIsStunned(ent)) return false;   // 眩晕/冰冻: 不能发射任何武器
             const w = ent.weapon;
             if (!w || w.isMelee) return false;
             if (ent.isReloading) return false;
@@ -12601,6 +12605,7 @@
 
         // 近战: 扇形判定, 范围与绘制完全一致
         function tdMelee(ent, angle, now, chargeSec) {
+            if (ent.frozen || fxIsStunned(ent)) return false;   // 眩晕/冰冻: 不能挥刀
             const w = ent.weapon;
             if (!w || !w.isMelee) return false;
             const sec = Math.max(0, Math.min(1, chargeSec || 0));
@@ -13067,6 +13072,10 @@
             ctx.globalAlpha = inv ? (0.55 + 0.45 * Math.sin(now / 40)) : 1;
             ctx.fillStyle = color;
             ctx.beginPath(); ctx.arc(ent.x, ent.y, r, 0, Math.PI * 2); ctx.fill();
+            if (now - (ent._tdHitAt || 0) < 110) {
+                ctx.fillStyle = 'rgba(255,255,255,0.65)';
+                ctx.beginPath(); ctx.arc(ent.x, ent.y, r, 0, Math.PI * 2); ctx.fill();
+            }
             ctx.strokeStyle = 'rgba(255,255,255,0.75)';
             ctx.lineWidth = 2;
             ctx.stroke();
@@ -13145,7 +13154,29 @@
                     ctx.fillText('⚡旋风斩', ent.x, cy - 3);
                 }
             }
+            // === 状态图标 (眩晕 💫 / 灼烧 🔥 / 减速 / 禁位移 / 冰冻 ...) ===
+            const _fxList = (ent.activeEffects || []).filter(function (e) { return e && (e.endTime || 0) > Date.now(); }).slice(0, 5);
+            if (_fxList.length) {
+                const _iy = ent.y + r + 24;
+                const _total = _fxList.length * 22;
+                ctx.textAlign = 'center';
+                ctx.textBaseline = 'middle';
+                ctx.font = '13px Arial';
+                for (let i = 0; i < _fxList.length; i++) {
+                    const e = _fxList[i];
+                    const ix = ent.x - _total / 2 + 11 + i * 22;
+                    const icon = (typeof getEffectIcon === 'function') ? getEffectIcon(e.effect) : '•';
+                    ctx.fillStyle = 'rgba(0,0,0,0.6)';
+                    ctx.beginPath(); ctx.arc(ix, _iy, 9, 0, Math.PI * 2); ctx.fill();
+                    ctx.strokeStyle = (typeof getEffectColor === 'function') ? getEffectColor(e.effect) : 'rgba(255,255,255,0.5)';
+                    ctx.lineWidth = 1;
+                    ctx.stroke();
+                    ctx.fillStyle = '#fff';
+                    ctx.fillText(icon, ix, _iy + 1);
+                }
+            }
             ctx.textAlign = 'left';
+            ctx.textBaseline = 'alphabetic';
         }
 
         function tdDrawEnergyRing(cx, cy, val, color) {
@@ -13268,7 +13299,7 @@
             const _li = document.getElementById('livesInfo');
             if (_li) {
                 if (!TD._livesPos) TD._livesPos = _li.style.top;
-                _li.style.top = '74px';
+                _li.style.top = '150px';
             }
             if (_hfs) {
                 if (!TD._hfsPos) TD._hfsPos = { top: _hfs.style.top, left: _hfs.style.left };
@@ -13283,7 +13314,7 @@
                     '<div><span class="key">空格</span> 能量位移</div>' +
                     '<div><span class="key">R</span> 换弹</div>' +
                     '<div><span class="key">1-5</span> 武器</div>' +
-                    '<div><span class="key">6</span> 战刃</div>';
+                    '<div><span class="key">E / 6</span> 战刃</div>';
             }
 
             resizeCanvas();
@@ -13405,9 +13436,18 @@
             const slot = ['1', '2', '3', '4', '5'].indexOf(e.key);
             if (slot >= 0 && player) {
                 const names = ['pistol', 'rifle', 'shotgun', 'smg', 'sniper'];
-                if (player.weapons[names[slot]]) player.currentWeapon = names[slot];
+                if (player.weapons[names[slot]]) { player.currentWeapon = names[slot]; player._tdLastGun = names[slot]; }
             }
-            if (e.key === '6' && player && player.weapons.sword) player.currentWeapon = 'sword';
+            if (e.key === '6' && player && player.weapons.sword) { player._tdLastGun = player.currentWeapon; player.currentWeapon = 'sword'; }
+            // E: 战刃与上一把远程武器互换 (与横版一致)
+            if (kk === 'e' && player && player.weapons.sword) {
+                if (player.currentWeapon === 'sword') {
+                    player.currentWeapon = player._tdLastGun || 'rifle';
+                } else {
+                    player._tdLastGun = player.currentWeapon;
+                    player.currentWeapon = 'sword';
+                }
+            }
         });
         window.addEventListener('keyup', function (e) {
             TD.keys[String(e.key || '').toLowerCase()] = false;
