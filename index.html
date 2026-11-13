@@ -11818,7 +11818,7 @@
                     '新增实验模式「俯视 PVE」（主菜单底部绿色按钮）：一屏全图的平面战场，WASD 八向自由移动、鼠标独立瞄准，取消重力与跳跃，操作维度从 2 个提升到 4 个（平移 x/y + 位移 + 瞄准角）',
                     '俯视模式能量系统：双方各自 0-100 能量，每秒 +15；手枪 10 / 步枪 6 / 霰弹 30 / 冲锋 4 / 狙击 35 / 刀 40+6×蓄力秒，能量不足无法攻击；能量环显示在空白角（玩家左下、AI 右上，中心对称），圆心显示当前/上限',
                     '俯视模式能量位移（Shift）：消耗 30 能量，沿当前移动方向 300px 直线突进，0.25 秒内免疫全部伤害，被击中会弹出白色「闪避」',
-                    '俯视模式 AI 重写为「生存优先」：实时预测弹道并垂直侧闪、能量不足自动换低消耗武器、换弹与位移冷却时主动拉距；同一把武器约 18 秒会强制重评，避免长期不换枪'
+                    '俯视模式 AI 改为「理性决策」：计算站着不动的期望代价（危险预测量），能靠走位躲开就不浪费位移，走位也躲不掉才交位移；远程低威胁不再预留 30 点能量；武器按「秒伤 × 命中率 × 能量可持续性」评分选优，明显更优才换枪；新增刀剑处决——刀蓄力在切换其他武器时也持续累积，近身且蓄满时切刀爆发'
                 ]
             },
             {
@@ -12368,7 +12368,9 @@
             pCharging: false, pChargeStart: 0,
             pSwing: null, aSwing: null,
             aMoveX: 0, aMoveY: 0,
-            aThinkAt: 0, aWeaponAt: 0, aWeaponSince: 0, aStrafeDir: 1,
+            aThinkAt: 0, aWeaponAt: 0, aWeaponSince: 0, aStrafeDir: 1, aStrafeAt: 0,
+            aMeleeAt: 0, aMeleeUntil: 0, aMeleeCharge: 0, aMeleeX: 0, aMeleeY: 0, aThreat: 0,
+            firePressed: false,
             aWantsDash: false, aDashX: 0, aDashY: 0,
             wave: 1, kills: 0, score: 0, lives: 3,
             pDeadAt: 0, aDeadAt: 0, pRespawnAt: 0, aRespawnAt: 0, over: false,
@@ -12537,94 +12539,159 @@
             player._tdAim = Math.atan2(wp.y - player.y, wp.x - player.x);
             const w = player.weapon;
             if (w && w.isMelee) {
-                if (TD.fireHeld) {
-                    if (!TD.pCharging) { TD.pCharging = true; TD.pChargeStart = now; }
-                } else if (TD.pCharging) {
-                    const sec = Math.min(1, (now - TD.pChargeStart) / 1000);
-                    tdMelee(player, player._tdAim, now, sec);
-                    TD.pCharging = false;
+                // 刀剑为内置蓄力: 点一下左键立即按当前蓄力挥砍, 用完清零
+                if (TD.firePressed) {
+                    tdMelee(player, player._tdAim, now, Math.min(1, player._tdSwordCharge || 0));
+                    player._tdSwordCharge = 0;
                 }
             } else if (TD.fireHeld) {
                 tdFire(player, player._tdAim, now);
             }
             player.updateReload();
+            TD.firePressed = false;
         }
 
-        // AI 核心: 生存优先 (> 输出), 每 100ms 重评
+        // === AI 决策: 危险预测量 + 走位可行性 + 武器期望收益 ===
+        // 原则: 能走位躲开就不位移; 只有"不躲的代价超过阈值"才交位移; 能量预留按威胁动态变化;
+        //       不做"预判对方何时开火"这类不可观测的推断, 只基于已发射的子弹。
+
+        // 命中率: 距离衰减 + 武器散射
+        function tdHitChance(key, dist) {
+            const range = TD_RANGE[key] || 600;
+            if (dist > range * 1.15) return 0;
+            let hit = 1 - 0.55 * Math.pow(Math.min(1, dist / range), 2);
+            const w = ai.weapons[key];
+            if (w) {
+                const sp = (typeof w.spread === 'number') ? w.spread : 0;
+                hit *= 1 / (1 + sp * dist / 55);
+            }
+            return Math.max(0, Math.min(0.95, hit));
+        }
+
+        // 武器期望收益: 秒伤(含暴击期望/弹丸/特效) × 命中率 × 能量可持续性
+        function tdWeaponScore(key, dist, energy) {
+            const w = ai.weapons[key];
+            if (!w || w.isMelee) return -1e9;
+            if (w.ammo <= 0) return -1e9;
+            const hit = tdHitChance(key, dist);
+            if (hit <= 0) return -1e9;
+            const atk = ai.getAtk ? ai.getAtk() : 100;
+            const base = (w.dmgBase != null ? w.dmgBase : (w.damage || 0)) + atk * (w.atkCoef != null ? w.atkCoef : 0);
+            const pellets = w.pellets || 1;
+            const crit = 1 + (ai.critRate || 0.1) * ((ai.critDamageMult || 1.5) - 1);
+            const single = base * pellets * (w.fxMult || 1) * crit;
+            const rps = 1000 / (w.fireRate || 200);
+            const dps = single * rps;
+            const costPerSec = (TD_COST[key] || 10) * rps;
+            // 能量能支撑的持续输出比例: 能量越低, 高消耗枪评分衰减越快
+            const sustain = tdClamp((energy + TD.regen * 1.5) / Math.max(1, costPerSec), 0.12, 1);
+            return dps * hit * sustain;
+        }
+
+        // 危险预测量: 8 方向走位采样, 返回最优走位方向与剩余风险
+        function tdThreatEval() {
+            const R = (ai._tdRadius || TD.radius) + 12;
+            const steps = 8;
+            const moveDist = TD.aiSpeed * 12;     // 走位约 0.2 秒的距离
+            let bestDir = 0, bestRisk = 1e9;
+            for (let s = 0; s < steps; s++) {
+                const ang = (Math.PI * 2 / steps) * s;
+                const ax = ai.x + Math.cos(ang) * moveDist;
+                const ay = ai.y + Math.sin(ang) * moveDist;
+                let risk = 0;
+                for (let i = 0; i < bullets.length; i++) {
+                    const b = bullets[i];
+                    if (!b.active || b.owner === ai) continue;
+                    const vv = b.vx * b.vx + b.vy * b.vy;
+                    if (vv < 0.5) continue;
+                    const rx = b.x - ax, ry = b.y - ay;
+                    let t = -(rx * b.vx + ry * b.vy) / vv;
+                    if (t < 0 || t > 30) continue;
+                    const cx = b.x + b.vx * t - ax;
+                    const cy = b.y + b.vy * t - ay;
+                    const dmin = Math.hypot(cx, cy);
+                    if (dmin < R) risk += (b.damage || 20) * (0.45 + 0.55 * ((R - dmin) / R)) / Math.max(1, ai.maxHealth);
+                }
+                if (risk < bestRisk) { bestRisk = risk; bestDir = ang; }
+            }
+            // 原地不动的风险
+            let standRisk = 0;
+            for (let i = 0; i < bullets.length; i++) {
+                const b = bullets[i];
+                if (!b.active || b.owner === ai) continue;
+                const vv = b.vx * b.vx + b.vy * b.vy;
+                if (vv < 0.5) continue;
+                const rx = b.x - ai.x, ry = b.y - ai.y;
+                let t = -(rx * b.vx + ry * b.vy) / vv;
+                if (t < 0 || t > 30) continue;
+                const cx = b.x + b.vx * t - ai.x;
+                const cy = b.y + b.vy * t - ai.y;
+                const dmin = Math.hypot(cx, cy);
+                if (dmin < R) standRisk += (b.damage || 20) * (0.45 + 0.55 * ((R - dmin) / R)) / Math.max(1, ai.maxHealth);
+            }
+            return { level: standRisk, walkRisk: bestRisk, dirX: Math.cos(bestDir), dirY: Math.sin(bestDir) };
+        }
+
         function tdAIThink(now) {
             if (!player) return;
             const dx = player.x - ai.x, dy = player.y - ai.y;
             const dist = Math.max(1, Math.hypot(dx, dy));
-            let dangerX = 0, dangerY = 0, threat = 0;
-            for (let i = 0; i < bullets.length; i++) {
-                const b = bullets[i];
-                if (!b.active || b.owner === ai) continue;
-                const rx = ai.x - b.x, ry = ai.y - b.y;
-                const vv = b.vx * b.vx + b.vy * b.vy;
-                if (vv < 0.5) continue;
-                let t = -(rx * b.vx + ry * b.vy) / vv;
-                if (t < 0 || t > 26) continue;
-                const cx = b.x + b.vx * t - ai.x;
-                const cy = b.y + b.vy * t - ai.y;
-                const d = Math.hypot(cx, cy);
-                if (d < 72) {
-                    const wgt = (72 - d) / 72;
-                    threat += wgt;
-                    const sp = Math.sqrt(vv);
-                    let ox = -b.vy / sp, oy = b.vx / sp;
-                    if (ox * -cx + oy * -cy < 0) { ox = -ox; oy = -oy; }
-                    dangerX += ox * wgt;
-                    dangerY += oy * wgt;
-                }
+            const threat = tdThreatEval();
+            TD.aThreat = threat.level;
+            tdAIPickWeapon(now, dist);
+
+            // === 刀剑: 后台蓄力已满 + 近身 + 有处决价值 -> 切刀 (挥砍在 tdUpdateAI 每帧执行) ===
+            const swordCharge = ai._tdSwordCharge || 0;
+            const finisher = (player.health / player.maxHealth) < 0.4 || (ai.health / ai.maxHealth) > 0.6;
+            if (swordCharge >= 0.85 && dist < 175 && tdEnergy(ai) >= 46 && now > (TD.aMeleeAt || 0) && finisher) {
+                TD.aMeleeAt = now + 5000;
+                TD.aMeleeUntil = now + 1200;
+                TD.aMeleeCharge = Math.min(1, swordCharge);
+                TD.aMeleeX = dx / dist;
+                TD.aMeleeY = dy / dist;
+                return;
             }
-            if (player._tdAim != null && dist < 900) {
-                const toAI = Math.atan2(ai.y - player.y, ai.x - player.x);
-                let diff = Math.abs(((player._tdAim - toAI + Math.PI * 3) % (Math.PI * 2)) - Math.PI);
-                if (diff < 0.45) threat += 0.3;
-            }
-            tdAIPickWeapon(now, dist, threat);
-            const ideal = TD_IDEAL[tdWeaponKey(ai)] || 380;
+
+            // === 移动: 能走位躲开就只走位, 走位也躲不掉才交位移 ===
             let mx = 0, my = 0;
-            if (threat > 0.12) {
-                mx = dangerX; my = dangerY;
-                if (threat > 0.75 && tdEnergy(ai) >= TD.dashCost && now > TD.aDashLock) {
-                    TD.aWantsDash = true;
-                    TD.aDashX = dangerX || -dy;
-                    TD.aDashY = dangerY || dx;
+            if (threat.level >= 0.025) {
+                mx = threat.dirX; my = threat.dirY;
+                if (threat.walkRisk >= 0.04 && tdEnergy(ai) >= TD.dashCost && now > TD.aDashLock) {
+                    if (tdDash(ai, threat.dirX, threat.dirY, now)) TD.aDashLock = now + 900;
                 }
             } else {
+                const ideal = TD_IDEAL[tdWeaponKey(ai)] || 380;
                 const nx = dx / dist, ny = dy / dist;
                 const err = dist - ideal;
                 if (err > 60) { mx += nx; my += ny; }
                 else if (err < -60) { mx -= nx; my -= ny; }
-                mx += -ny * 0.85 * TD.aStrafeDir;
-                my += nx * 0.85 * TD.aStrafeDir;
-                if (Math.random() < 0.02) TD.aStrafeDir = -TD.aStrafeDir;
+                mx += -ny * 0.8 * TD.aStrafeDir;
+                my += nx * 0.8 * TD.aStrafeDir;
+                if (dist < 45) { mx -= nx; my -= ny; }
+                if (now > (TD.aStrafeAt || 0)) {
+                    TD.aStrafeAt = now + 900 + Math.random() * 500;
+                    if (Math.random() < 0.5) TD.aStrafeDir = -TD.aStrafeDir;
+                }
             }
             TD.aMoveX = mx; TD.aMoveY = my;
         }
 
-        // AI 武器经济: 预留 30 点保命能量; 长期同枪强制轮换 (约 18 秒)
-        function tdAIPickWeapon(now, dist, threat) {
+        // 武器选择: 按期望收益评分, 新枪需明显更优才换 (避免抖动)
+        function tdAIPickWeapon(now, dist) {
             if (now < TD.aWeaponAt) return;
-            TD.aWeaponAt = now + 5000;
+            TD.aWeaponAt = now + 500;
+            const keys = ['pistol', 'rifle', 'shotgun', 'smg', 'sniper'];
             const e = tdEnergy(ai);
-            let pick = tdWeaponKey(ai);
-            if (e < 34) pick = 'smg';
-            else if (e >= 70) pick = (dist > 560 ? 'sniper' : (dist < 190 ? 'shotgun' : 'rifle'));
-            else pick = 'rifle';
-            if (dist < 110 && e >= 40) pick = 'shotgun';
-            if (TD.aWeaponSince && now - TD.aWeaponSince > 18000) {
-                const rotate = ['rifle', 'pistol', 'smg', 'shotgun'];
-                pick = rotate[(rotate.indexOf(pick) + 1) % rotate.length];
+            let bestKey = tdWeaponKey(ai), bestScore = -1e9, curScore = -1e9;
+            for (let i = 0; i < keys.length; i++) {
+                const sc = tdWeaponScore(keys[i], dist, e);
+                if (sc > bestScore) { bestScore = sc; bestKey = keys[i]; }
+                if (keys[i] === ai.currentWeapon) curScore = sc;
             }
-            if (pick !== ai.currentWeapon) {
-                const nw = ai.weapons[pick];
-                if (nw && nw.ammo > 0 && e >= (TD_COST[pick] || 10)) {
-                    ai.currentWeapon = pick;
-                    ai.isReloading = false;
-                    TD.aWeaponSince = now;
-                }
+            if (bestKey !== ai.currentWeapon && ai.weapons[bestKey] && bestScore > curScore * 1.15) {
+                ai.currentWeapon = bestKey;
+                ai.isReloading = false;
+                TD.aWeaponSince = now;
             }
         }
 
@@ -12661,6 +12728,21 @@
             tdRegen(ai, TD.dt || 0);
             ai.updateReload();
             if (now >= TD.aThinkAt) { TD.aThinkAt = now + 100; tdAIThink(now); }
+            // 刀剑处决: 逼近并在 115px 内挥砍, 结束后立刻切回远程武器
+            if (TD.aMeleeUntil && now < TD.aMeleeUntil) {
+                const ddx = player.x - ai.x, ddy = player.y - ai.y;
+                const dd = Math.max(1, Math.hypot(ddx, ddy));
+                TD.aMoveX = ddx / dd; TD.aMoveY = ddy / dd;
+                if (dd < 115) {
+                    ai.currentWeapon = 'sword';
+                    ai._tdAim = Math.atan2(ddy, ddx);
+                    tdMelee(ai, ai._tdAim, now, TD.aMeleeCharge || 0.9);
+                    ai._tdSwordCharge = 0;
+                    TD.aMeleeUntil = 0;
+                    ai.currentWeapon = 'rifle';
+                    TD.aWeaponAt = 0;
+                }
+            }
             tdMove(ai, TD.aMoveX, TD.aMoveY, TD.aiSpeed, now);
             if (player && player.health > 0) {
                 const sp = (ai.weapon && ai.weapon.speed) ? ai.weapon.speed : 22;
@@ -12668,13 +12750,14 @@
                 const lead = Math.min(0.35, d / (sp * 60));
                 const tx = player.x + (player._tdVX || 0) * 60 * lead;
                 const ty = player.y + (player._tdVY || 0) * 60 * lead;
-                const jitter = 0.03 + Math.max(0, (500 - d)) / 500 * 0.05;
+                const jitter = 0.025 + Math.max(0, (450 - d)) / 450 * 0.045;
                 ai._tdAim = Math.atan2(ty - ai.y, tx - ai.x) + (Math.random() - 0.5) * jitter;
-                if (d <= (TD_RANGE[tdWeaponKey(ai)] || 600)) {
-                    const cost = TD_COST[tdWeaponKey(ai)] || 10;
-                    if (tdEnergy(ai) >= cost && (tdEnergy(ai) - cost >= TD.dashCost || d < 170)) {
-                        tdFire(ai, ai._tdAim, now);
-                    }
+                const _key = tdWeaponKey(ai);
+                const _cost = TD_COST[_key] || 10;
+                // 动态保命储备: 只有近身且确有威胁时才留 30, 远程低威胁不预留
+                const _reserve = (TD.aThreat >= 0.05 && d < 320) ? TD.dashCost : 0;
+                if (ai.weapon && !ai.weapon.isMelee && tdHitChance(_key, d) >= 0.2 && (tdEnergy(ai) - _cost) >= _reserve) {
+                    tdFire(ai, ai._tdAim, now);
                 }
             }
             if (TD.aWantsDash) {
@@ -12686,6 +12769,9 @@
         function tdUpdate(now, dt) {
             TD.dt = dt;
             if (TD.over) return;
+            // 刀剑内置蓄力: 无论当前拿什么武器都在累积 (1 秒充满)
+            if (player) player._tdSwordCharge = Math.min(1, (player._tdSwordCharge || 0) + dt);
+            if (ai) ai._tdSwordCharge = Math.min(1, (ai._tdSwordCharge || 0) + dt);
             tdUpdatePlayer(now);
             tdUpdateAI(now);
             updateBullets();
@@ -12715,11 +12801,11 @@
             ctx.lineTo(ent.x + Math.cos(aim) * (r + 14), ent.y + Math.sin(aim) * (r + 14));
             ctx.stroke();
             ctx.globalAlpha = 1;
-            if (ent === player && TD.pCharging) {
-                const sec = Math.min(1, (now - TD.pChargeStart) / 1000);
+            if (ent === player && ent.weapon && ent.weapon.isMelee && (ent._tdSwordCharge || 0) > 0.02) {
+                const sec = Math.min(1, ent._tdSwordCharge || 0);
                 const reach = 100 + 45 * sec;
                 const half = Math.PI * 0.42;
-                ctx.fillStyle = 'rgba(255,255,255,0.14)';
+                ctx.fillStyle = 'rgba(255,255,255,0.10)';
                 ctx.beginPath();
                 ctx.moveTo(ent.x, ent.y);
                 ctx.arc(ent.x, ent.y, reach, aim - half, aim + half);
@@ -12833,6 +12919,14 @@
                 ctx.fillText('近战蓄力 · 能量 40+6×蓄力秒 · 松开释放', pxs, pys + ph + 16);
             }
             tdDrawEnergyRing(pxs + 44, pys - 62, tdEnergy(player), '#55efc4');
+            const _sc = player ? (player._tdSwordCharge || 0) : 0;
+            ctx.fillStyle = 'rgba(0,0,0,0.5)';
+            ctx.fillRect(pxs, pys + ph + 24, 120, 6);
+            ctx.fillStyle = (_sc >= 0.999) ? '#ffd700' : '#6c5ce7';
+            ctx.fillRect(pxs, pys + ph + 24, 120 * _sc, 6);
+            ctx.fillStyle = '#aaa';
+            ctx.font = '10px Arial';
+            ctx.fillText('刀蓄力 ' + Math.round(_sc * 100) + '%', pxs + 126, pys + ph + 31);
             const aw = 240, ah = 16;
             const axs = canvas.width - aw - 40, ays = 60;
             ctx.fillStyle = 'rgba(0,0,0,0.5)'; ctx.fillRect(axs, ays, aw, ah);
@@ -12926,6 +13020,9 @@
             TD.pInvUntil = 0; TD.aInvUntil = 0;
             TD.pDashUntil = 0; TD.aDashUntil = 0; TD.pDashLock = 0; TD.aDashLock = 0;
             TD.pCharging = false; TD.pSwing = null; TD.aSwing = null;
+            TD.firePressed = false;
+            TD.aStrafeAt = 0; TD.aMeleeAt = 0; TD.aMeleeUntil = 0; TD.aMeleeCharge = 0; TD.aThreat = 0;
+            player._tdSwordCharge = 0; ai._tdSwordCharge = 0;
             TD.aMoveX = 0; TD.aMoveY = 0;
             TD.aThinkAt = 0; TD.aWeaponAt = 0; TD.aWeaponSince = Date.now();
             TD.aWantsDash = false; TD.aStrafeDir = 1;
@@ -12969,10 +13066,7 @@
         window.addEventListener('mousedown', function (e) {
             if (gameState !== 'topdown' || e.button !== 0) return;
             TD.fireHeld = true;
-            if (player && player.weapon && player.weapon.isMelee && !TD.pCharging) {
-                TD.pCharging = true;
-                TD.pChargeStart = Date.now();
-            }
+            TD.firePressed = true;
         });
         window.addEventListener('mouseup', function (e) {
             if (e.button !== 0) return;
