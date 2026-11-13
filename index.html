@@ -1829,7 +1829,7 @@
             <button class="btn" id="btnStartGame2" onclick="askStartGame()" style="background:linear-gradient(45deg,#ff9f43,#ee5253);margin-left:10px;">开始游戏 2 (v2)</button>
             <button id="btnPvP" onclick="askStartPvP()" style="background:linear-gradient(135deg,#6c5ce7,#a29bfe);border:none;color:white;padding:14px 40px;border-radius:10px;font-size:18px;cursor:pointer;margin:10px;font-weight:bold;">⚔️ 双人对战</button>
             <button class="btn" id="btnTraining" onclick="startTraining()" style="background:linear-gradient(45deg,#2ed573,#1abc9c);">训练场</button>
-            <button class="btn" id="btnTopdown" onclick="startTopdown()" style="background:linear-gradient(45deg,#00b894,#55efc4);color:#07231c;margin-top:8px;">🎯 俯视 PVE（实验）</button>
+            <button class="btn" id="btnTopdown" onclick="askStartTopdown()" style="background:linear-gradient(45deg,#00b894,#55efc4);color:#07231c;margin-top:8px;">🎯 俯视 PVE（实验）</button>
             <button class="btn" id="openSettingsBtn" onclick="toggleSettings()" style="background:linear-gradient(45deg,#4f8eff,#74b9ff);margin-top:8px;">📖 说明</button>
             <button class="btn" id="openNoticeBtn" onclick="toggleNotice()" style="background:linear-gradient(45deg,#ffd700,#ff9f43);margin-top:8px;color:#1a1a2e;">📢 更新公告（持续开发中）</button>
             <button class="btn touch-only" id="btnTouchSettings" onclick="openTouchSettings()" style="background:linear-gradient(45deg,#6c5ce7,#a29bfe);margin-top:8px;">🎮 按键设置</button>
@@ -3804,15 +3804,20 @@
             const dur = fxDebuffDur(att, Math.min(4000, 2000 + 300 * (fx.noJump - 1)));
             fx.noJumpUntil = now + dur;
             tgt.activeEffects = tgt.activeEffects || [];
-            const old = tgt.activeEffects.find(function (e) { return e && e.effect === 'noJump'; });
+            // 俯视模式没有跳跃: 改为禁止使用能量位移 (同名效果, 不同 key)
+            const _tdNoJump = (gameState === 'topdown');
+            const _effKey = _tdNoJump ? 'noDash' : 'noJump';
+            const _effName = _tdNoJump ? '🚫 禁位移' : '🚫 禁跳';
+            if (_tdNoJump) tgt._tdNoDashUntil = Math.max(tgt._tdNoDashUntil || 0, now + dur);
+            const old = tgt.activeEffects.find(function (e) { return e && e.effect === _effKey; });
             if (old) {
                 old.endTime = Math.max(old.endTime || 0, now + dur);
                 old.startTime = now;
                 old.duration = Math.max(dur, old.duration || dur);
             } else {
-                tgt.activeEffects.push({ name: '🚫 禁跳', effect: 'noJump', color: '#e74c3c', startTime: now, endTime: now + dur, duration: dur, stackCount: 1 });
+                tgt.activeEffects.push({ name: _effName, effect: _effKey, color: '#e74c3c', startTime: now, endTime: now + dur, duration: dur, stackCount: 1 });
             }
-            showFloatingText('🚫 禁跳 ' + (dur / 1000).toFixed(1) + 's', '#ff4757');
+            showFloatingText(_effName + ' ' + (dur / 1000).toFixed(1) + 's', '#ff4757');
             return true;
         }
 
@@ -4401,9 +4406,17 @@
 
         function openDraft(kind) {
             draftRespawnKind = (kind === 'kill') ? 'kill' : 'wave';
-            const doRespawn = () => { if (ai) { if (draftRespawnKind === 'kill') { ai.respawn(); } else { resetPlayerForNewWave(); ai.respawnFull(); } } };
-            // 仅单人无尽流程触发: 训练场AI不会死透, PvP走独立分支, 此处双保险
-            if (gameState !== 'playing') { doRespawn(); return; }
+            const doRespawn = () => {
+                if (!ai) return;
+                if (gameState === 'topdown') {
+                    if (draftRespawnKind === 'kill') tdRespawnAI(false);
+                    else { resetPlayerForNewWave(); tdRespawnAI(true); }
+                    return;
+                }
+                if (draftRespawnKind === 'kill') { ai.respawn(); } else { resetPlayerForNewWave(); ai.respawnFull(); }
+            };
+            // 单人无尽 / 俯视 PVE 触发; 训练场AI不会死透, PvP走独立分支, 此处双保险
+            if (gameState !== 'playing' && gameState !== 'topdown') { doRespawn(); return; }
             const overlay = document.getElementById('draftOverlay');
             const titleEl = document.getElementById('draftTitle');
             const cardsEl = document.getElementById('draftCards');
@@ -4544,7 +4557,16 @@
             // Task 8: 按触发类型分派 —— 击杀弹卡(kill)→原样 respawn; 波次胜利(wave)→respawnFull 无尽成长
             // 重生完成后发放 AI 本回合装备 (卡池随机 1 张, 动画播完再恢复游戏)
             setTimeout(() => {
-                if (ai && gameState === 'playing') {
+                if (!ai) return;
+                if (gameState === 'topdown') {
+                    if (draftRespawnKind === 'kill') tdRespawnAI(false);
+                    else { resetPlayerForNewWave(); tdRespawnAI(true); }
+                    grantAiEquipForRound();
+                    fxRoundStart(player);
+                    fxRoundStart(ai);
+                    return;
+                }
+                if (gameState === 'playing') {
                     if (draftRespawnKind === 'kill') { ai.respawn(); } else { resetPlayerForNewWave(); ai.respawnFull(); }
                     grantAiEquipForRound();
                     // === 效果卡: 回合开始结算 (双方回合护盾/保险/护盾转换) ===
@@ -4561,7 +4583,7 @@
         let _freePickSel = [];
 
         function freePickMilestone() {
-            if (gameState !== 'playing' || draftRespawnKind !== 'wave') return null;
+            if ((gameState !== 'playing' && gameState !== 'topdown') || draftRespawnKind !== 'wave') return null;
             const t = (typeof TRAIN_TUNE !== 'undefined' && TRAIN_TUNE && TRAIN_TUNE.enemy) ? TRAIN_TUNE.enemy : null;
             const g = (t && t.growth) ? t.growth : null;
             if (!g) return null;
@@ -5113,7 +5135,7 @@
                 const raw = localStorage.getItem(getSaveSlotKey(id));
                 if (!raw) return null;
                 const d = JSON.parse(raw);
-                if (!d || (d.state !== 'playing' && d.state !== 'pvp')) return null;
+                if (!d || (d.state !== 'playing' && d.state !== 'pvp' && d.state !== 'topdown')) return null;
                 return d;
             } catch (e) { return null; }
         }
@@ -5334,8 +5356,9 @@
         // === 实时存档: 单人(playing)与双人(pvp)都保存, 由 gameLoop 每 300ms 调用 (>=3次/秒) ===
         function autoSaveGame() {
             try {
-                if (gameState !== 'playing' && gameState !== 'pvp') return;
-                if (gameState === 'playing' && (!player || !ai)) return;
+                if (gameState !== 'playing' && gameState !== 'pvp' && gameState !== 'topdown') return;
+                if (gameState === 'topdown' && TD.over) return;
+                if ((gameState === 'playing' || gameState === 'topdown') && (!player || !ai)) return;
                 if (gameState === 'pvp' && (!playerA || !playerB)) return;
                 const data = {
                     v: SAVE_VERSION,
@@ -5356,7 +5379,11 @@
                         round: pvpRound, phase: pvpPhase
                     } : null,
                     pvpA: gameState === 'pvp' ? _snapEntity(playerA) : null,
-                    pvpB: gameState === 'pvp' ? _snapEntity(playerB) : null
+                    pvpB: gameState === 'pvp' ? _snapEntity(playerB) : null,
+                    td: gameState === 'topdown' ? {
+                        pEnergy: player ? player._tdEnergy : TD.energyMax,
+                        aEnergy: ai ? ai._tdEnergy : TD.energyMax
+                    } : null
                 };
                 if (!_runId) _beginNewRun();
                 const _payload = JSON.stringify(data);
@@ -5375,6 +5402,73 @@
                 if (d) return d;
             }
             return null;
+        }
+
+        // === 继续俯视存档 (topdown) ===
+        function loadTopdownSave(data) {
+            try {
+                _initDOMCache();
+                if (autoSaveIntervalId) clearInterval(autoSaveIntervalId);
+                if (_DOM.menu) _DOM.menu.classList.add('hidden');
+                if (_DOM.gameOver) _DOM.gameOver.classList.add('hidden');
+                if (_DOM.victoryPanel) _DOM.victoryPanel.style.display = 'none';
+                if (_DOM.pvpWeaponDisplayA) _DOM.pvpWeaponDisplayA.style.display = 'none';
+                if (_DOM.pvpWeaponDisplayB) _DOM.pvpWeaponDisplayB.style.display = 'none';
+                if (_DOM.livesInfo) _DOM.livesInfo.style.display = 'none';
+                const _ov = document.getElementById('draftOverlay'); if (_ov) _ov.style.display = 'none';
+                const _fp = document.getElementById('freePickOverlay'); if (_fp) _fp.style.display = 'none';
+                resizeCanvas();
+                bullets = []; particles = [];
+                timeScale = 1;
+                screenShake = { x: 0, y: 0, intensity: 0, duration: 0, color: '' };
+                deathFreeze = { active: false, timer: 0 };
+                camera = { x: 0, y: 0, zoom: 1 };
+                loadTrainTune();
+                score = data.score || 0; kills = data.kills || 0; combo = data.combo || 0;
+                maxCombo = data.maxCombo || 0; wave = data.wave || 1;
+                killStreak = data.killStreak || 0; maxKillStreak = data.maxKillStreak || 0;
+                draftCount = data.draftCount || 0;
+                gameStartTime = data.gameStartTime || Date.now();
+                highestDamageSingleShot = data.highestDamageSingleShot || 0;
+                selectedCards = Array.isArray(data.selectedCards) ? data.selectedCards.slice() : [];
+                player = new Player((data.player && data.player.x) || 160, (data.player && data.player.y) || TD.H / 2, false);
+                _applyEntity(player, data.player);
+                ai = new Player((data.ai && data.ai.x) || TD.W - 160, (data.ai && data.ai.y) || TD.H / 2, true);
+                _applyEntity(ai, data.ai);
+                player._tdRadius = 22; ai._tdRadius = 22;
+                player._tdEnergy = _num(data.td && data.td.pEnergy, TD.energyMax);
+                ai._tdEnergy = _num(data.td && data.td.aEnergy, TD.energyMax);
+                player._tdSwordCharge = 0; ai._tdSwordCharge = 0;
+                player._tdKbVX = 0; player._tdKbVY = 0; ai._tdKbVX = 0; ai._tdKbVY = 0;
+                player._tdInvUntil = Date.now() + 1200; ai._tdInvUntil = Date.now() + 1200;
+                player._tdAim = 0; ai._tdAim = Math.PI;
+                player.invincible = false; player.invincibleEnd = 0;
+                ai.invincible = false; ai.invincibleEnd = 0;
+                player.lives = Math.min(CONFIG.PLAYER_MAX_LIVES, Math.max(1, _num(data.player && data.player.lives, CONFIG.PLAYER_MAX_LIVES)));
+                ai.lives = Math.min(CONFIG.MAX_LIVES, Math.max(1, _num(data.ai && data.ai.lives, CONFIG.MAX_LIVES)));
+                TD.wave = wave; TD.kills = kills; TD.score = score; TD.lives = player.lives;
+                TD.over = false; TD.pDeadAt = 0; TD.aDeadAt = 0; TD.pRespawnAt = 0; TD.aRespawnAt = 0;
+                TD.aWeaponSince = Date.now(); TD.aThinkAt = 0; TD.aWeaponAt = 0;
+                TD.aMeleeAt = 0; TD.aMeleeUntil = 0; TD.fireHeld = false; TD.firePressed = false;
+                TD._hidden = TD._hidden || [];
+                if (!TD._hidden.length) {
+                    ['hud', 'hudFullStatus', 'statusPanel', 'topStatusPanel', 'killFeedPanel', 'score', 'controls',
+                     'minimapContainer', 'livesInfo', 'actionBar', 'unifiedStatusPanel', 'diagPanel'].forEach(function (id) {
+                        const el = document.getElementById(id);
+                        if (!el) return;
+                        TD._hidden.push([el, el.style.display]);
+                        el.style.display = 'none';
+                    });
+                }
+                isPaused = false; isDrafting = false; statPanelOpen = false; isAwardShowing = false;
+                gameState = 'topdown';
+                TD.started = true;
+                updateUI();
+                try { GameAudio.init(); } catch (e) { }
+                showFloatingText('📂 继续俯视 PVE', '#2ed573');
+            } catch (e) {
+                showFloatingText('❌ 俯视读档失败', '#ff4757');
+            }
         }
 
         // === 继续单人存档 (playing) ===
@@ -5500,6 +5594,7 @@
             const _idxEntry = _readSaveIndex().find(function (s) { return s.id === _runId; });
             _runName = (data.name || (_idxEntry && _idxEntry.name) || '') || null;
             if (data.state === 'pvp') loadPvpSave(data);
+            else if (data.state === 'topdown') loadTopdownSave(data);
             else loadSingleSave(data);
         }
 
@@ -5538,7 +5633,8 @@
             }
             box.innerHTML = idx.map(function (s) {
                 const isPvp = (s.state === 'pvp');
-                const kind = isPvp ? '双人对战' : '单人无尽';
+                const isTd = (s.state === 'topdown');
+                const kind = isPvp ? '双人对战' : (isTd ? '俯视 PVE' : '单人无尽');
                 const detail = isPvp ? ('第 ' + (s.pvpRound || 1) + ' 回合') : ('第 ' + (s.wave || 1) + ' 波');
                 const extra = isPvp ? ('比分 ' + (s.score || 0)) : ((s.score || 0) + ' 分');
                 const sid = String(s.id);
@@ -5546,9 +5642,9 @@
                 const mainSpan = nm
                     ? '<span style="display:flex;flex-direction:column;gap:2px;min-width:0;">' +
                       '<span style="white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">📝 ' + nm + '</span>' +
-                      '<span style="color:#9ad0ff;font-size:11px;white-space:nowrap;">' + (isPvp ? '🔵' : '🎯') + ' ' + kind + ' · ' + detail + '</span>' +
+                      '<span style="color:#9ad0ff;font-size:11px;white-space:nowrap;">' + (isPvp ? '🔵' : (isTd ? '🕹' : '🎯')) + ' ' + kind + ' · ' + detail + '</span>' +
                       '</span>'
-                    : '<span>' + (isPvp ? '🔵' : '🎯') + ' ' + kind + ' · ' + detail + '</span>';
+                    : '<span>' + (isPvp ? '🔵' : (isTd ? '🕹' : '🎯')) + ' ' + kind + ' · ' + detail + '</span>';
                 return '<div style="display:flex;gap:6px;align-items:stretch;">' +
                     '<button onclick="loadSaveById(\'' + sid + '\')" ' +
                     'style="flex:1;display:flex;justify-content:space-between;align-items:center;gap:12px;padding:10px 14px;border-radius:10px;border:1px solid rgba(79,142,255,0.45);background:linear-gradient(45deg,rgba(108,92,231,0.35),rgba(41,128,185,0.35));color:#fff;font-size:13px;cursor:pointer;text-align:left;min-width:0;">' +
@@ -5620,6 +5716,7 @@
 
         function askStartGame() { _openStartChoice('playing'); }
         function askStartPvP() { _openStartChoice('pvp'); }
+        function askStartTopdown() { _openStartChoice('topdown'); }
 
         // 刷新当前模式的存档提示 (数量/上限)
         function _refreshStartChoiceHint() {
@@ -5628,14 +5725,14 @@
             const hint = document.getElementById('startChoiceHint');
             if (hint) {
                 hint.textContent = idx.length
-                    ? ((mode === 'pvp' ? '双人' : '单人') + '存档 ' + idx.length + ' / ' + SAVE_SLOT_LIMIT + ' · 选择其中一局继续')
+                    ? ((mode === 'pvp' ? '双人' : (mode === 'topdown' ? '俯视' : '单人')) + '存档 ' + idx.length + ' / ' + SAVE_SLOT_LIMIT + ' · 选择其中一局继续')
                     : '暂无存档';
             }
             return idx;
         }
 
         function _openStartChoice(mode) {
-            _startChoiceMode = (mode === 'pvp') ? 'pvp' : 'playing';
+            _startChoiceMode = (mode === 'pvp') ? 'pvp' : ((mode === 'topdown') ? 'topdown' : 'playing');
             const box = document.getElementById('startChoice');
             if (!box) {
                 if (_startChoiceMode === 'pvp') startPvP(); else startGame();
@@ -5643,10 +5740,10 @@
             }
             const title = document.getElementById('startChoiceTitle');
             const newBtn = document.getElementById('startChoiceNewBtn');
-            if (title) title.textContent = (_startChoiceMode === 'pvp') ? '双人对战' : '开始游戏';
+            if (title) title.textContent = (_startChoiceMode === 'pvp') ? '双人对战' : ((_startChoiceMode === 'topdown') ? '俯视 PVE' : '开始游戏');
             if (newBtn) {
-                newBtn.textContent = (_startChoiceMode === 'pvp') ? '🔄 重新对战' : '🔄 重新开始';
-                newBtn.onclick = (_startChoiceMode === 'pvp') ? startNewPvP : startNewGame;
+                newBtn.textContent = (_startChoiceMode === 'pvp') ? '🔄 重新对战' : ((_startChoiceMode === 'topdown') ? '🎯 新开一局' : '🔄 重新开始');
+                newBtn.onclick = (_startChoiceMode === 'pvp') ? startNewPvP : ((_startChoiceMode === 'topdown') ? startTopdown : startNewGame);
             }
             _refreshStartChoiceHint();
             const contBtn = document.getElementById('startChoiceContinueBtn');
@@ -10342,9 +10439,17 @@
                         const hitDirY = t.y - b.y;
                         const hd = Math.max(1, Math.sqrt(hitDirX * hitDirX + hitDirY * hitDirY));
                         if (!fxIsStunned(t)) {
-                            t.vx += (hitDirX / hd) * knockPower * horizontalKbMult;
-                            t.vy = Math.min(t.vy - knockPower * 0.18 * verticalKbMult, -0.45); // 垂直击退减少70% (0.6->0.18, 下限 -1.5->-0.45)
-                            t.isOnGround = false;
+                            if (gameState === 'topdown') {
+                                // 俯视轻量击退: 约 120px/s 初速, 逐帧衰减; 位移无敌期间免疫
+                                if (!(Date.now() < (t._tdInvUntil || 0))) {
+                                    t._tdKbVX = (t._tdKbVX || 0) + (hitDirX / hd) * knockPower * 0.8;
+                                    t._tdKbVY = (t._tdKbVY || 0) + (hitDirY / hd) * knockPower * 0.8;
+                                }
+                            } else {
+                                t.vx += (hitDirX / hd) * knockPower * horizontalKbMult;
+                                t.vy = Math.min(t.vy - knockPower * 0.18 * verticalKbMult, -0.45); // 垂直击退减少70% (0.6->0.18, 下限 -1.5->-0.45)
+                                t.isOnGround = false;
+                            }
                         }
                         // === 弹射子弹卡: 命中AI后不销毁子弹, 重新指向AI继续飞行 ===
                         // 单体场景的合理形态: 子弹围绕同一目标连续弹射, 每张卡额外打击2次
@@ -11818,7 +11923,9 @@
                     '新增实验模式「俯视 PVE」（主菜单底部绿色按钮）：一屏全图的平面战场，WASD 八向自由移动、鼠标独立瞄准，取消重力与跳跃，操作维度从 2 个提升到 4 个（平移 x/y + 位移 + 瞄准角）',
                     '俯视模式能量系统：双方各自 0-100 能量，每秒 +15；手枪 10 / 步枪 6 / 霰弹 30 / 冲锋 4 / 狙击 35 / 刀 40+6×蓄力秒，能量不足无法攻击；能量环显示在空白角（玩家左下、AI 右上，中心对称），圆心显示当前/上限',
                     '俯视模式能量位移（Shift）：消耗 30 能量，沿当前移动方向 300px 直线突进，0.25 秒内免疫全部伤害，被击中会弹出白色「闪避」',
-                    '俯视模式 AI 改为「理性决策」：计算站着不动的期望代价（危险预测量），能靠走位躲开就不浪费位移，走位也躲不掉才交位移；远程低威胁不再预留 30 点能量；武器按「秒伤 × 命中率 × 能量可持续性」评分选优，明显更优才换枪；新增刀剑处决——刀蓄力在切换其他武器时也持续累积，近身且蓄满时切刀爆发'
+                    '俯视模式 AI 改为「理性决策」：计算站着不动的期望代价（危险预测量），能靠走位躲开就不浪费位移，走位也躲不掉才交位移；远程低威胁不再预留 30 点能量；武器按「秒伤 × 命中率 × 能量可持续性」评分选优，明显更优才换枪；新增刀剑处决——刀蓄力在切换其他武器时也持续累积，近身且蓄满时切刀爆发',
+                    '俯视 PVE 已完整并入横版 PVE v2：训练场数值（生命 / 攻防 / 移速 / 每秒成长 / AI 抽卡成长）、波次成长与倒计时、击杀与波次选卡、选卡刷新 10 次、里程碑自选、AI 每波抽卡装备、起死回生、成就全部生效；俯视存档独立多槽，可继续 / 改名 / 删除',
+                    '俯视模式操作与机制补齐：Tab 打开全属性面板、Esc 打开暂停菜单（继续 / 重开 / 返回主页）；卡牌的移速、暴击、子弹速度、特殊弹药、霰弹近距加成、灼烧、吸血、反伤等全部接入；禁跳诅咒改为「禁位移」；子弹命中带轻量击退（位移无敌期间免疫）'
                 ]
             },
             {
@@ -12259,6 +12366,7 @@
             isPaused = false;
             if (mode === 'pvp') startPvP();
             else if (mode === 'training') startTraining();
+            else if (mode === 'topdown') startTopdown();
             else startGame();
         }
 
@@ -12405,6 +12513,8 @@
         // 能量位移: 消耗 30, 沿当前移动方向 300px 直线突进, 期间免疫全部伤害
         function tdDash(ent, dx, dy, now) {
             if (!ent || ent.health <= 0) return false;
+            if (now < (ent._tdNoDashUntil || 0)) return false;
+            if (fxIsStunned(ent)) return false;
             if (tdEnergy(ent) < TD.dashCost) return false;
             let len = Math.hypot(dx, dy);
             if (len < 0.01) {
@@ -12439,22 +12549,41 @@
             ent._tdEnergy -= cost;
             ent.lastShot = now;
             w.ammo--;
-            const dmg = Math.round((w.dmgBase != null ? w.dmgBase : (w.damage || 10)) + (ent.getAtk ? ent.getAtk() : 100) * (w.atkCoef != null ? w.atkCoef : 0));
+            // 特殊弹药: 与横版一致, 每次开火消耗 1 发
+            let specialType = null;
+            if (ent.currentSpecialAmmo && ent.specialAmmoCount > 0) {
+                specialType = ent.currentSpecialAmmo;
+                ent.specialAmmoCount--;
+                if (ent.specialAmmoCount <= 0) ent.currentSpecialAmmo = null;
+                try { updateSpecialAmmoUI(); } catch (e) { }
+            }
+            let actual = (w.dmgBase != null ? w.dmgBase : (w.damage || 10)) + (ent.getAtk ? ent.getAtk() : 100) * (w.atkCoef != null ? w.atkCoef : 0);
+            // 霰弹枪 100px 内 ×1.8
+            const _foe = tdEnemyOf(ent);
+            if (w.closeRangeBonus && _foe) {
+                const _fd = Math.hypot(_foe.x - ent.x, _foe.y - ent.y);
+                if (_fd < 100) actual *= 1.8;
+            }
+            if (ent.damageBoost && ent.damageMultiplier) actual *= ent.damageMultiplier;
+            const dmg = Math.round(actual);
             const pellets = w.pellets || 1;
             const spread = (typeof w.spread === 'number') ? w.spread : 0;
             const volleyId = (ent._tdVolley = (ent._tdVolley || 0) + 1);
+            const _bulletSpeedMult = ent.cardBulletSpeedMult || 1;
             for (let i = 0; i < pellets; i++) {
                 const a = angle + (Math.random() - 0.5) * spread * 2 + (ent.isAI ? (Math.random() - 0.5) * 0.045 : 0);
+                const _crit = (typeof checkCrit === 'function') ? checkCrit(ent) : { isCrit: false };
                 bullets.push({
                     x: ent.x + Math.cos(a) * 30,
                     y: ent.y + Math.sin(a) * 30,
-                    vx: Math.cos(a) * (w.speed || 22),
-                    vy: Math.sin(a) * (w.speed || 22),
-                    damage: dmg, isCrit: false, finalDamage: dmg,
+                    vx: Math.cos(a) * (w.speed || 22) * _bulletSpeedMult,
+                    vy: Math.sin(a) * (w.speed || 22) * _bulletSpeedMult,
+                    damage: dmg, isCrit: _crit.isCrit, finalDamage: dmg,
                     owner: ent, life: 260, size: 6, active: true,
                     color: w.color || '#ffd700', trailPositions: [],
                     knockbackMult: w.knockbackMultiplier || 1,
-                    fxMult: w.fxMult || 1, volleyId: volleyId, td: true
+                    fxMult: w.fxMult || 1, volleyId: volleyId, td: true,
+                    specialType: specialType
                 });
             }
             createParticles(ent.x + Math.cos(angle) * 30, ent.y + Math.sin(angle) * 30, w.color || '#ffd700', 3);
@@ -12489,6 +12618,15 @@
         }
 
         function tdMove(ent, mx, my, speed, now) {
+            if (fxIsStunned(ent)) { mx = 0; my = 0; speed = 0; }
+            if (ent._tdKbVX || ent._tdKbVY) {
+                ent.x += ent._tdKbVX || 0;
+                ent.y += ent._tdKbVY || 0;
+                ent._tdKbVX = (ent._tdKbVX || 0) * 0.86;
+                ent._tdKbVY = (ent._tdKbVY || 0) * 0.86;
+                if (Math.abs(ent._tdKbVX) < 0.05) ent._tdKbVX = 0;
+                if (Math.abs(ent._tdKbVY) < 0.05) ent._tdKbVY = 0;
+            }
             if (now < (ent._tdDashUntil || 0)) {
                 ent.x += ent._tdDashVX || 0;
                 ent.y += ent._tdDashVY || 0;
@@ -12503,23 +12641,95 @@
             ent.y = tdClamp(ent.y, TD.MARGIN, TD.H - TD.MARGIN);
         }
 
+        function tdMoveSpeedOf(ent) {
+            let spd = ent.isAI ? TD.aiSpeed : TD.playerSpeed;
+            const t = (typeof TRAIN_TUNE !== 'undefined' && TRAIN_TUNE) ? TRAIN_TUNE[ent.isAI ? 'enemy' : 'mine'] : null;
+            if (t && t.moveSpeed > 0 && CONFIG.MOVE_SPEED > 0) spd *= (t.moveSpeed / CONFIG.MOVE_SPEED);
+            if (ent.slowEffect) spd *= ent.slowEffect.mult;
+            if (ent.burningStacks > 0) spd *= (1 - ent.burningStacks * 0.05);
+            if (ent.activeEffects && ent.activeEffects.some(function (e) { return e.effect === 'bandSlow'; })) spd *= 0.7;
+            if (ent.activeEffects && ent.activeEffects.some(function (e) { return e.effect === 'iceSlow'; })) spd *= 0.7;
+            if (ent.frozen) spd = 0;
+            const buff = ent.buffs ? getBuffEffects(ent) : { speedMult: 1 };
+            if (buff.speedMult < 1) spd *= buff.speedMult;
+            spd *= (ent.cardSpeedMult || 1);
+            if (ent.fx) spd *= (1 + (ent.fx.spd || 0) + (ent._surgeSpd || 0)
+                + (ent.fx.turbineStacks || 0) * 0.06 * (ent.fx.turbine || 1)
+                + ((ent.fx.resonStacks || 0) >= 5 ? 0.10 * (ent.fx.resoncutter || 1) : 0));
+            if (ent.panicSpeedEnd && Date.now() < ent.panicSpeedEnd) spd *= 1.30;
+            if (ent.dartStacks > 0 && Date.now() < (ent.dartSpeedEnd || 0)) spd *= (1 + 0.07 * ent.dartStacks);
+            return spd;
+        }
+
+        function tdRespawnPlayer() {
+            if (!player) return;
+            player.health = player.maxHealth;
+            player.shield = 0;
+            player.isReloading = false;
+            player._atkSecAt = Date.now();
+            player.activeEffects = [];
+            player.dotDamage = null;
+            player.slowEffect = null;
+            player.burningStacks = 0; player.burnStacks = [];
+            player.invincible = false; player.invincibleEnd = 0;
+            player.x = 150; player.y = TD.H / 2;
+            player._tdKbVX = 0; player._tdKbVY = 0;
+            player._tdEnergy = TD.energyMax;
+            player._tdInvUntil = Date.now() + 1500;
+            TD.pDeadAt = 0; TD.pRespawnAt = 0;
+            Object.keys(player.weapons).forEach(function (k) {
+                const w = player.weapons[k];
+                if (w && !w.isMelee) { w.ammo = w.maxAmmo; w.reserve = 9999; }
+            });
+        }
+
+        function tdRespawnAI(full) {
+            if (!ai) return;
+            if (full) ai.respawnFull(); else ai.respawn();
+            // 横版重生会设置 invincible 布尔, 俯视不会调用 update() 解除 -> 必须手动清零
+            ai.invincible = false; ai.invincibleEnd = 0;
+            ai.x = TD.W - 160; ai.y = TD.H / 2;
+            ai.vx = 0; ai.vy = 0; ai.isOnGround = false;
+            ai._tdKbVX = 0; ai._tdKbVY = 0;
+            ai._tdEnergy = TD.energyMax;
+            ai._tdInvUntil = Date.now() + 1500;
+            ai._tdSwordCharge = 0;
+            ai.lastShot = 0;
+            ai.isReloading = false;
+            TD.aWeaponSince = Date.now();
+            // 关键: 重生后必须清空死亡标记, 否则下一次死亡不会被结算
+            TD.aDeadAt = 0; TD.aRespawnAt = 0;
+        }
+
         function tdUpdatePlayer(now) {
             if (!player) return;
             if (player.health <= 0) {
                 if (!TD.pDeadAt) {
                     TD.pDeadAt = now;
-                    TD.lives--;
-                    createParticles(player.x, player.y, '#4f8eff', 26);
-                    if (TD.lives <= 0) TD.over = true;
-                    else TD.pRespawnAt = now + 1500;
+                    // 起死回生: 消耗一次复活, 不减命, 立即以 30% 生命复活
+                    if (player.cardPerks && player.cardPerks.reviveLeft > 0) {
+                        player.cardPerks.reviveLeft--;
+                        player.health = Math.round(player.maxHealth * 0.3);
+                        player._tdInvUntil = Date.now() + 1500;
+                        try { showFloatingText('💀 起死回生!', '#ffd700'); } catch (e) { }
+                        TD.pDeadAt = 0;
+                        return;
+                    }
+                    if (typeof player.lives !== 'number') player.lives = CONFIG.PLAYER_MAX_LIVES;
+                    player.lives--;
+                    TD.lives = player.lives;
+                    try { createEnhancedDeathExplosion(player.x, player.y, '#4a7dff'); } catch (e) { }
+                    if (player.lives > 0) {
+                        TD.pRespawnAt = now + 1700;
+                    } else {
+                        combo = 0; killStreak = 0;
+                        TD.over = true;
+                        try { GameAudio.play('gameover'); } catch (e) { }
+                        try { checkAchievements(); } catch (e) { }
+                    }
                 }
                 if (!TD.over && TD.pRespawnAt && now >= TD.pRespawnAt) {
-                    player.x = 150; player.y = TD.H / 2;
-                    player.health = player.maxHealth;
-                    player.shield = 0;
-                    player.isReloading = false;
-                    player._tdEnergy = TD.energyMax;
-                    player._tdInvUntil = now + 1500;
+                    tdRespawnPlayer();
                     TD.pDeadAt = 0; TD.pRespawnAt = 0;
                 }
                 return;
@@ -12533,7 +12743,7 @@
             if (k['a']) mx -= 1;
             if (k['d']) mx += 1;
             const px0 = player.x, py0 = player.y;
-            tdMove(player, mx, my, TD.playerSpeed, now);
+            tdMove(player, mx, my, tdMoveSpeedOf(player), now);
             player._tdVX = player.x - px0;
             player._tdVY = player.y - py0;
             player._tdAim = Math.atan2(wp.y - player.y, wp.x - player.x);
@@ -12700,28 +12910,55 @@
             if (ai.health <= 0) {
                 if (!TD.aDeadAt) {
                     TD.aDeadAt = now;
-                    TD.kills++;
-                    TD.score += 100 + TD.wave * 20;
-                    createParticles(ai.x, ai.y, '#ff6b6b', 30);
-                    TD.aRespawnAt = now + 2000;
-                    TD.wave++;
-                }
-                if (now >= TD.aRespawnAt) {
-                    ai.x = TD.W - 160; ai.y = TD.H / 2;
-                    ai.maxHealth = 700 + TD.wave * 180;
-                    ai.health = ai.maxHealth;
-                    ai.shield = 0;
-                    ai.isReloading = false;
-                    ai._tdEnergy = TD.energyMax;
-                    ai._tdInvUntil = now + 1500;
-                    Object.keys(ai.weapons).forEach(function (k) {
-                        const w = ai.weapons[k];
-                        if (!w || w.isMelee) return;
-                        w.ammo = w.maxAmmo;
-                        w.reserve = 9999;
-                    });
-                    TD.aDeadAt = 0; TD.aRespawnAt = 0;
-                    TD.aWeaponSince = now;
+                    // === 击杀奖励 (与横版 die() 同源) ===
+                    if (player && player.equip && player.equip.bladeCount > 0 && player.health > 0) {
+                        const lostHp = Math.max(0, player.maxHealth - player.health);
+                        try { fxHeal(player, Math.round(lostHp * 0.35 * player.equip.bladeCount), 'blade'); } catch (e) { }
+                    }
+                    if (player && player.fx) {
+                        if (player.fx.killHealPct > 0) { try { fxHeal(player, player.maxHealth * player.fx.killHealPct, 'fx_killheal_p'); } catch (e) { } }
+                        if (player.fx.legend > 0 && !player.fx.legendDone) {
+                            player.fx.legendKills = (player.fx.legendKills || 0) + 1;
+                            if (player.fx.legendKills >= 12) {
+                                const _lgN = player.fx.legend || 1;
+                                player.fx.legendDone = true;
+                                player.fx.atk += 50 * _lgN; player.fx.atkM += 50 * _lgN;
+                                player.fx.lifesteal += 0.15 * _lgN;
+                                player.fx.spd += 0.10 * _lgN;
+                                player.maxHealth += 500 * _lgN;
+                                player.health = Math.min(player.maxHealth, player.health + 500 * _lgN);
+                                showFloatingText('👑 唯我独尊 达成!', '#ffd700');
+                            }
+                        }
+                    }
+                    if (player && player.cardPerks && player.cardPerks.killFrenzy > 0) player.frenzyUntil = performance.now() + 10000;
+                    ai.aiDeathStreak = (ai.aiDeathStreak || 0) + 1;
+                    ai.aiKillStreak = 0;
+                    ai.aiEmotion = 'aggressive';
+                    if (typeof ai.lives !== 'number') ai.lives = CONFIG.MAX_LIVES;
+                    ai.lives--;
+                    try { createEnhancedDeathExplosion(ai.x, ai.y, '#ff4757'); } catch (e) { }
+                    if (ai.lives > 0) {
+                        // 单命死亡: 1 秒后弹击杀选卡, 选完原样复活
+                        setTimeout(function () { if (gameState === 'topdown') openDraft('kill'); }, 1000);
+                    } else {
+                        // 整波击杀: 连杀/分数/波次/成长/倒计时, 然后弹波次选卡
+                        const _n = Date.now();
+                        if (_n - lastKillTime < 5000) killStreak++; else killStreak = 1;
+                        lastKillTime = _n;
+                        if (killStreak > maxKillStreak) maxKillStreak = killStreak;
+                        const mult = (typeof getKillStreakMultiplier === 'function') ? getKillStreakMultiplier(killStreak) : 1;
+                        score += Math.round(180 * combo * wave * mult);
+                        try { showKillStreak(killStreak); } catch (e) { }
+                        kills++; combo++; maxCombo = Math.max(maxCombo, combo);
+                        wave++;
+                        try { growEntityPerRound(player, 'mine', false); } catch (e) { }
+                        try { resetAtkPerSecBonus(); } catch (e) { }
+                        ai.lives = CONFIG.MAX_LIVES;
+                        if (wave > 1) setTimeout(function () { showWaveCountdown(wave, wave % 5 === 0); }, 500);
+                        setTimeout(function () { if (gameState === 'topdown') openDraft('wave'); }, 1000);
+                    }
+                    try { checkAchievements(); } catch (e) { }
                 }
                 return;
             }
@@ -12743,7 +12980,7 @@
                     TD.aWeaponAt = 0;
                 }
             }
-            tdMove(ai, TD.aMoveX, TD.aMoveY, TD.aiSpeed, now);
+            tdMove(ai, TD.aMoveX, TD.aMoveY, tdMoveSpeedOf(ai), now);
             if (player && player.health > 0) {
                 const sp = (ai.weapon && ai.weapon.speed) ? ai.weapon.speed : 22;
                 const d = Math.max(1, Math.hypot(player.x - ai.x, player.y - ai.y));
@@ -12769,9 +13006,28 @@
         function tdUpdate(now, dt) {
             TD.dt = dt;
             if (TD.over) return;
-            // 刀剑内置蓄力: 无论当前拿什么武器都在累积 (1 秒充满)
-            if (player) player._tdSwordCharge = Math.min(1, (player._tdSwordCharge || 0) + dt);
-            if (ai) ai._tdSwordCharge = Math.min(1, (ai._tdSwordCharge || 0) + dt);
+            if (isPaused || isDrafting || isAwardShowing || statPanelOpen) return;
+            // 每秒物攻/减疗成长 + 状态计时 + 灼烧 + 效果卡 tick (与横版同源)
+            [player, ai].forEach(function (ent) {
+                if (!ent || ent.health <= 0) return;
+                ent.tickAtkPerSecGrowth();
+                ent.updateEffects();
+                ent.updateDoTAndSlow();
+                if (ent.buffs) processBuffs(ent);
+                fxEffectsTick(ent, now);
+            });
+            robeBurnTick(player, ai, now);
+            robeBurnTick(ai, player, now);
+            try { updateWaveCountdown(); } catch (e) { }
+            // 刀剑内置蓄力: 切换其他武器时也持续累积 (暗黑戒指可缩短)
+            if (player) {
+                const _pc = 1 * Math.max(0.1, (player.equip && player.equip.swordChargeMult) || 1);
+                player._tdSwordCharge = Math.min(1, (player._tdSwordCharge || 0) + dt / _pc);
+            }
+            if (ai) {
+                const _ac = 1 * Math.max(0.1, (ai.equip && ai.equip.swordChargeMult) || 1);
+                ai._tdSwordCharge = Math.min(1, (ai._tdSwordCharge || 0) + dt / _ac);
+            }
             tdUpdatePlayer(now);
             tdUpdateAI(now);
             updateBullets();
@@ -12900,7 +13156,7 @@
             ctx.textAlign = 'center';
             ctx.fillStyle = 'rgba(255,255,255,0.85)';
             ctx.font = 'bold 16px Arial';
-            ctx.fillText('俯视 PVE · 第 ' + TD.wave + ' 波 · 击杀 ' + TD.kills + ' · 分数 ' + TD.score + ' · ESC 退出', canvas.width / 2, 28);
+            ctx.fillText('俯视 PVE · 第 ' + wave + ' 波 · 击杀 ' + kills + ' · 分数 ' + score + ' · ESC 暂停', canvas.width / 2, 28);
             const pw = 240, ph = 16;
             const pxs = 40, pys = canvas.height - 150;
             ctx.textAlign = 'left';
@@ -12909,7 +13165,7 @@
             ctx.fillStyle = '#4f8eff';
             ctx.fillRect(pxs, pys, pw * php, ph);
             ctx.fillStyle = '#ffffff'; ctx.font = '12px Arial';
-            ctx.fillText('生命 ' + Math.max(0, Math.round(player ? player.health : 0)) + ' / ' + (player ? player.maxHealth : 0) + '   命数 ' + TD.lives, pxs, pys - 6);
+            ctx.fillText('生命 ' + Math.max(0, Math.round(player ? player.health : 0)) + ' / ' + (player ? player.maxHealth : 0) + '   命数 ' + Math.max(0, player ? (player.lives || 0) : 0), pxs, pys - 6);
             const w = player && player.weapon;
             if (w && !w.isMelee) {
                 ctx.fillStyle = '#9ad0ff';
@@ -12964,7 +13220,7 @@
                 ctx.fillText('挑战失败', canvas.width / 2, canvas.height / 2 - 20);
                 ctx.fillStyle = '#ffffff';
                 ctx.font = '20px Arial';
-                ctx.fillText('坚持到第 ' + TD.wave + ' 波 · 击杀 ' + TD.kills + ' · 分数 ' + TD.score, canvas.width / 2, canvas.height / 2 + 26);
+                ctx.fillText('坚持到第 ' + wave + ' 波 · 击杀 ' + kills + ' · 分数 ' + score, canvas.width / 2, canvas.height / 2 + 26);
                 ctx.fillStyle = '#9ad0ff';
                 ctx.font = '16px Arial';
                 ctx.fillText('按 Esc 返回主菜单', canvas.width / 2, canvas.height / 2 + 64);
@@ -12973,6 +13229,7 @@
 
         function startTopdown() {
             _initDOMCache();
+            _beginNewRun();   // 俯视独立存档槽, 不能覆盖横版存档
             try { if (autoSaveIntervalId) clearInterval(autoSaveIntervalId); } catch (e) { }
             if (_DOM.menu) _DOM.menu.classList.add('hidden');
             if (_DOM.gameOver) _DOM.gameOver.classList.add('hidden');
@@ -12999,11 +13256,19 @@
             deathFreeze = { active: false, timer: 0 };
             camera = { x: 0, y: 0, zoom: 1 };
 
+            loadTrainTune();
             player = new Player(160, TD.H / 2, false);
             ai = new Player(TD.W - 160, TD.H / 2, true);
-            player.maxHealth = 1000; player.health = 1000; player.shield = 0;
-            ai.maxHealth = 880; ai.health = 880; ai.shield = 0;
+            try { ensureEquipObj(player); ensureFx(player); ensureEquipObj(ai); ensureFx(ai); } catch (e) { }
+            applyTrainTune(player, 'mine');
+            applyTuneWeapons(ai, 'enemy');
+            player.shield = 0;
+            player.lives = CONFIG.PLAYER_MAX_LIVES;
+            player.maxLives = CONFIG.PLAYER_MAX_LIVES;
             player._tdRadius = 22; ai._tdRadius = 22;
+            ai.lives = CONFIG.MAX_LIVES;
+            tdRespawnAI(true);          // AI 按无尽成长公式出生
+            tdRespawnPlayer();          // 玩家按训练面板生命出生（会设置 1.5 秒出生无敌）
             player._tdEnergy = TD.energyMax; ai._tdEnergy = TD.energyMax;
             player.currentWeapon = 'rifle'; ai.currentWeapon = 'rifle';
             [player, ai].forEach(function (ent) {
@@ -13015,7 +13280,12 @@
                 });
             });
 
-            TD.wave = 1; TD.kills = 0; TD.score = 0; TD.lives = 3;
+            score = 0; kills = 0; combo = 0; maxCombo = 0; wave = 1;
+            killStreak = 0; maxKillStreak = 0; lastKillTime = 0;
+            draftCount = 0; gameStartTime = Date.now(); highestDamageSingleShot = 0;
+            selectedCards = [];
+            resetDraftState();
+            TD.wave = 1; TD.kills = 0; TD.score = 0; TD.lives = CONFIG.PLAYER_MAX_LIVES;
             TD.over = false; TD.pDeadAt = 0; TD.aDeadAt = 0; TD.pRespawnAt = 0; TD.aRespawnAt = 0;
             TD.pInvUntil = 0; TD.aInvUntil = 0;
             TD.pDashUntil = 0; TD.aDashUntil = 0; TD.pDashLock = 0; TD.aDashLock = 0;
@@ -13079,7 +13349,6 @@
             if (gameState !== 'topdown') return;
             const kk = String(e.key || '').toLowerCase();
             TD.keys[kk] = true;
-            if (e.key === 'Escape') { tdExit(); return; }
             if (kk === 'r' && player) player.reload();
             if (kk === 'shift' && player && Date.now() > TD.pDashLock) {
                 let mx = 0, my = 0;
@@ -14186,7 +14455,7 @@
             frameCount++; time++;
             _tickCameraDt(); // 相机平滑用的帧步长 (帧率无关)
             // === 实时存档: 每 300ms 写一次盘 (>=3次/秒); 暂停/选卡期间状态不变故跳过 ===
-            if ((gameState === 'playing' || gameState === 'pvp') && !isPaused && !isDrafting
+            if ((gameState === 'playing' || gameState === 'pvp' || gameState === 'topdown') && !isPaused && !isDrafting
                 && frameStart - _lastSaveAt >= 300) {
                 autoSaveGame();
             }
@@ -14310,6 +14579,10 @@
                     TD.lastNow = _tdNow;
                     tdUpdate(_tdNow, _tdDt);
                     tdDraw(_tdNow);
+                    if (statPanelOpen && _tdNow - _statPanelLastRefresh >= 250) {
+                        _statPanelLastRefresh = _tdNow;
+                        renderStatPanel();
+                    }
                 } catch (err) {
                     console.error('俯视帧错误:', err.message || err);
                 }
@@ -14482,7 +14755,7 @@
             }
             // === 透明暂停: CapsLock 切换 (无任何暂停提示, 仅飘一行「暂停游戏」) ===
             if (e.key === 'CapsLock') {
-                if (gameState === 'playing' || gameState === 'pvp' || gameState === 'training') {
+                if (gameState === 'playing' || gameState === 'pvp' || gameState === 'training' || gameState === 'topdown') {
                     _tpTogglePause();
                 }
                 return;
@@ -14496,7 +14769,7 @@
             // === Task 6: Tab 全属性面板 —— 游戏进行中按 Tab 打开 (暂停实体更新), 再按 Tab/Esc 关闭恢复 ===
             // 复用暂停机制但不弹暂停菜单; 与 isDrafting 互斥 (选卡期间不响应)
             if ((e.key === 'Tab' || (e.key === 'Escape' && statPanelOpen)) &&
-                (gameState === 'playing' || gameState === 'training' || gameState === 'pvp') && !isDrafting) {
+                (gameState === 'playing' || gameState === 'training' || gameState === 'pvp' || gameState === 'topdown') && !isDrafting) {
                 e.preventDefault();
                 statPanelOpen = !statPanelOpen;
                 const sp = document.getElementById('statPanel');
@@ -14509,7 +14782,8 @@
             keys[e.key] = true;
 
             // 按 ESC 键切换暂停状态
-            if (e.key === 'Escape' && (gameState === 'playing' || gameState === 'training' || gameState === 'pvp')) {
+            if (e.key === 'Escape' && (gameState === 'playing' || gameState === 'training' || gameState === 'pvp' || gameState === 'topdown')) {
+                if (gameState === 'topdown' && TD.over) { tdExit(); return; }
                 if (isDrafting) return; // 选卡期间禁止 ESC 打断 (isDrafting 独立于 isPaused)
                 if (isAwardShowing) return; // AI 装备获取动画期间同样不响应 ESC
                 isPaused = !isPaused;
