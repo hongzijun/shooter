@@ -1829,6 +1829,7 @@
             <button class="btn" id="btnStartGame2" onclick="askStartGame()" style="background:linear-gradient(45deg,#ff9f43,#ee5253);margin-left:10px;">开始游戏 2 (v2)</button>
             <button id="btnPvP" onclick="askStartPvP()" style="background:linear-gradient(135deg,#6c5ce7,#a29bfe);border:none;color:white;padding:14px 40px;border-radius:10px;font-size:18px;cursor:pointer;margin:10px;font-weight:bold;">⚔️ 双人对战</button>
             <button class="btn" id="btnTraining" onclick="startTraining()" style="background:linear-gradient(45deg,#2ed573,#1abc9c);">训练场</button>
+            <button class="btn" id="btnTopdown" onclick="startTopdown()" style="background:linear-gradient(45deg,#00b894,#55efc4);color:#07231c;margin-top:8px;">🎯 俯视 PVE（实验）</button>
             <button class="btn" id="openSettingsBtn" onclick="toggleSettings()" style="background:linear-gradient(45deg,#4f8eff,#74b9ff);margin-top:8px;">📖 说明</button>
             <button class="btn" id="openNoticeBtn" onclick="toggleNotice()" style="background:linear-gradient(45deg,#ffd700,#ff9f43);margin-top:8px;color:#1a1a2e;">📢 更新公告（持续开发中）</button>
             <button class="btn touch-only" id="btnTouchSettings" onclick="openTouchSettings()" style="background:linear-gradient(45deg,#6c5ce7,#a29bfe);margin-top:8px;">🎮 按键设置</button>
@@ -7337,6 +7338,11 @@
             takeDamage(dmg, attacker, isCrit, damageType, isFxPass, isReflect, isBulletHit, noKnock, srcBullet) {
                 if (this.invincible) return;   // 无敌模式(godMode)不在此拦截: 伤害数字/秒伤/击退照常, 仅不扣血
                 if (this.health <= 0) return;
+                // === 俯视模式: 能量位移的无敌帧 (显示白色「闪避」, 本次伤害无效) ===
+                if (gameState === 'topdown' && this._tdInvUntil && Date.now() < this._tdInvUntil) {
+                    try { _floatSpawn(this.x, this.y - 10, '闪避', '#ffffff', { big: true }); } catch (e) { }
+                    return { dmg: 0, shield: false };
+                }
 
                 let actualDamage = dmg;
 
@@ -7603,6 +7609,10 @@
                 }
 
                 if (this.health <= 0) {
+                    // 俯视模式: 死亡结算交给 tdUpdatePlayer / tdUpdateAI, 不进入横版 die()
+                    if (gameState === 'topdown') {
+                        return { dmg: actualDamage, shield: shieldHit, absorbed: shieldAbsorbed };
+                    }
                     if (gameState === 'training' && this.isAI) {
                         // 训练场靶子被击杀: 重置靶位 (非无敌时), 不进入死亡/复仇流程
                         this.health = this.maxHealth;
@@ -9562,9 +9572,16 @@
                 }
                 const _txtEl = div.querySelector('.dn-txt');
                 // 视野缩放时飘字同步换算 (世界坐标 → 缩放后的屏幕坐标)
-                const _z = camera.zoom || 1;
-                const _sx = (x - camera.x - canvas.width / 2) * _z + canvas.width / 2;
-                const _sy = (y - camera.y - canvas.height / 2) * _z + canvas.height / 2;
+                let _sx, _sy;
+                if (gameState === 'topdown') {
+                    const _sc = tdScale();
+                    _sx = x * _sc.s + _sc.ox;
+                    _sy = (y - 26) * _sc.s + _sc.oy;
+                } else {
+                    const _z = camera.zoom || 1;
+                    _sx = (x - camera.x - canvas.width / 2) * _z + canvas.width / 2;
+                    _sy = (y - camera.y - canvas.height / 2) * _z + canvas.height / 2;
+                }
                 div.style.color = color || '#fff';
                 // 字号: 普通 20~30px; 合计「总」条目 30~38px (更醒目)
                 const fs = opt.big ? (30 + Math.random() * 8) : (20 + Math.random() * 10);
@@ -10200,20 +10217,23 @@
                     b.x += b.vx * ts;
                     b.y += b.vy * ts;
 
-                    // === Task 3: 子弹重力(统一0.058) ===
-                    b.vy += 0.058;
+                    // === Task 3: 子弹重力(统一0.058; 俯视模式为平面, 无重力) ===
+                    if (gameState !== 'topdown') b.vy += 0.058;
                 b.life--;
                 // 弹射子弹卡: 弹射后的命中免疫间隔逐帧递减 (防止一帧内反复命中同一目标)
                 if (b.ricochetCooldown > 0) b.ricochetCooldown--;
 
                 // === Task 3: 边界检测 ===
-                if (b.x < -65 || b.x > CONFIG.MAP_WIDTH + 65 || b.y < -65 || b.y > CONFIG.MAP_HEIGHT + 65 || b.life <= 0) return false;
+                const _bw = (gameState === 'topdown') ? TD.W : CONFIG.MAP_WIDTH;
+                const _bh = (gameState === 'topdown') ? TD.H : CONFIG.MAP_HEIGHT;
+                if (b.x < -65 || b.x > _bw + 65 || b.y < -65 || b.y > _bh + 65 || b.life <= 0) return false;
 
                 const targets = gameState === 'pvp' ? [playerA, playerB] : [player, ai];
                 targets.forEach(t => {
                     if (!t || t.health <= 0 || t === b.owner) return;
                     const hitDist = Math.sqrt((b.x - t.x) ** 2 + (b.y - t.y) ** 2);
-                    if (hitDist < t.width / 2 + b.size) {
+                    const _tRadius = (gameState === 'topdown') ? (t._tdRadius || 22) : t.width / 2;
+                    if (hitDist < _tRadius + b.size) {
                         // 弹射子弹卡: 弹射后的短免疫期内不参与命中判定
                         if (b.ricochetCooldown > 0) return;
                         // === Task 3-4: 更新命中统计 ===
@@ -10391,7 +10411,7 @@
             });
         }
 
-        function updateParticles() { particles = particles.filter(p => { if (!isFinite(p.x) || !isFinite(p.y)) { return false; } p.x += p.vx; p.y += p.vy; p.vy += 0.14; p.life--; return p.life > 0 }) }
+        function updateParticles() { particles = particles.filter(p => { if (!isFinite(p.x) || !isFinite(p.y)) { return false; } p.x += p.vx; p.y += p.vy; if (gameState !== 'topdown') p.vy += 0.14; p.life--; return p.life > 0 }) }
         function drawParticles() {
             particles.forEach(p => {
                 if (!isFinite(p.x) || !isFinite(p.y) || !isFinite(p.size)) return;
@@ -11793,6 +11813,15 @@
         // === 更新公告: 每次对话完成后在 UPDATE_LOG 顶部追加一条 (日期 + 分点内容) ===
         const UPDATE_LOG = [
             {
+                date: '2026-11-13',
+                items: [
+                    '新增实验模式「俯视 PVE」（主菜单底部绿色按钮）：一屏全图的平面战场，WASD 八向自由移动、鼠标独立瞄准，取消重力与跳跃，操作维度从 2 个提升到 4 个（平移 x/y + 位移 + 瞄准角）',
+                    '俯视模式能量系统：双方各自 0-100 能量，每秒 +15；手枪 10 / 步枪 6 / 霰弹 30 / 冲锋 4 / 狙击 35 / 刀 40+6×蓄力秒，能量不足无法攻击；能量环显示在空白角（玩家左下、AI 右上，中心对称），圆心显示当前/上限',
+                    '俯视模式能量位移（Shift）：消耗 30 能量，沿当前移动方向 300px 直线突进，0.25 秒内免疫全部伤害，被击中会弹出白色「闪避」',
+                    '俯视模式 AI 重写为「生存优先」：实时预测弹道并垂直侧闪、能量不足自动换低消耗武器、换弹与位移冷却时主动拉距；同一把武器约 18 秒会强制重评，避免长期不换枪'
+                ]
+            },
+            {
                 date: '2026-11-11',
                 items: [
                     '「恒久刻印」「衰亡刻印」「时间刻印」的加成不受卡牌张数上限影响，一律在卡牌上限值之后再乘算：眩晕枷锁按 5 张封顶 3.2 秒 → 衰亡刻印满级 9.6 秒；净化封顶 5 秒 → 恒久刻印满级 15 秒；眩晕枷锁冷却封顶 13 秒 → 时间刻印满级再降到 5.2 秒（眩晕仍不吃 CDR）',
@@ -12318,6 +12347,663 @@
                     setTimeout(function () { try { startGame(); } catch (e) { } }, 150);
                 }
             } catch (e) { }
+        });
+
+
+        // ==================== 俯视 PVE（实验模式） ====================
+        // 一屏全图 · WASD 移动 · 鼠标独立瞄准 · 能量系统 · 能量位移 · 生存优先 AI
+        const TD = {
+            W: 1600, H: 900, MARGIN: 30,
+            playerSpeed: 3.6, aiSpeed: 3.3,
+            radius: 22,
+            energyMax: 100, regen: 15,
+            dashCost: 30, dashDist: 300, dashMs: 250,
+            mouseX: 0, mouseY: 0,
+            fireHeld: false,
+            keys: Object.create(null),
+            pInvUntil: 0, aInvUntil: 0,
+            pDashUntil: 0, aDashUntil: 0,
+            pDashVX: 0, pDashVY: 0, aDashVX: 0, aDashVY: 0,
+            pDashLock: 0, aDashLock: 0,
+            pCharging: false, pChargeStart: 0,
+            pSwing: null, aSwing: null,
+            aMoveX: 0, aMoveY: 0,
+            aThinkAt: 0, aWeaponAt: 0, aWeaponSince: 0, aStrafeDir: 1,
+            aWantsDash: false, aDashX: 0, aDashY: 0,
+            wave: 1, kills: 0, score: 0, lives: 3,
+            pDeadAt: 0, aDeadAt: 0, pRespawnAt: 0, aRespawnAt: 0, over: false,
+            lastNow: 0, dt: 0, started: false, _noEnergyAt: 0
+        };
+        const TD_COST = { pistol: 10, rifle: 6, shotgun: 30, smg: 4, sniper: 35, sword: 40 };
+        const TD_RANGE = { pistol: 440, rifle: 600, shotgun: 220, smg: 380, sniper: 1000, sword: 110 };
+        const TD_IDEAL = { pistol: 300, rifle: 420, shotgun: 120, smg: 250, sniper: 760, sword: 70 };
+
+        function tdClamp(v, a, b) { return v < a ? a : (v > b ? b : v); }
+        function tdScale() {
+            const s = Math.min(canvas.width / TD.W, canvas.height / TD.H);
+            return { s: s, ox: (canvas.width - TD.W * s) / 2, oy: (canvas.height - TD.H * s) / 2 };
+        }
+        function tdScreenToWorld(sx, sy) {
+            const sc = tdScale();
+            return { x: (sx - sc.ox) / sc.s, y: (sy - sc.oy) / sc.s };
+        }
+        function tdEnergy(ent) {
+            if (!ent) return 0;
+            if (typeof ent._tdEnergy !== 'number') ent._tdEnergy = TD.energyMax;
+            return ent._tdEnergy;
+        }
+        function tdWeaponKey(ent) { return (ent && ent.currentWeapon) ? ent.currentWeapon : 'rifle'; }
+        function tdWeaponCost(ent) { return TD_COST[tdWeaponKey(ent)] || 10; }
+        function tdRegen(ent, dt) {
+            if (!ent) return;
+            ent._tdEnergy = Math.min(TD.energyMax, tdEnergy(ent) + TD.regen * dt);
+        }
+        function tdEnemyOf(ent) { return ent === player ? ai : player; }
+
+        // 能量位移: 消耗 30, 沿当前移动方向 300px 直线突进, 期间免疫全部伤害
+        function tdDash(ent, dx, dy, now) {
+            if (!ent || ent.health <= 0) return false;
+            if (tdEnergy(ent) < TD.dashCost) return false;
+            let len = Math.hypot(dx, dy);
+            if (len < 0.01) {
+                const a = ent._tdAim || 0;
+                dx = Math.cos(a); dy = Math.sin(a); len = 1;
+            }
+            dx /= len; dy /= len;
+            ent._tdEnergy -= TD.dashCost;
+            ent._tdInvUntil = now + TD.dashMs;
+            ent._tdDashUntil = now + TD.dashMs;
+            const perFrame = (TD.dashDist / (TD.dashMs / 1000)) / 60;
+            ent._tdDashVX = dx * perFrame;
+            ent._tdDashVY = dy * perFrame;
+            createParticles(ent.x, ent.y, '#55efc4', 10);
+            try { _floatSpawn(ent.x, ent.y - 12, '位移', '#55efc4', {}); } catch (e) { }
+            return true;
+        }
+
+        // 开火: 能量 + 弹药双资源, 全向弹道
+        function tdFire(ent, angle, now) {
+            const w = ent.weapon;
+            if (!w || w.isMelee) return false;
+            if (ent.isReloading) return false;
+            if (w.ammo <= 0) { ent.reload(); return false; }
+            const interval = (ent.getFireInterval ? ent.getFireInterval(w) : (w.fireRate || 200));
+            if (now - ent.lastShot < interval) return false;
+            const cost = tdWeaponCost(ent);
+            if (tdEnergy(ent) < cost) {
+                if (!ent.isAI) TD._noEnergyAt = now;
+                return false;
+            }
+            ent._tdEnergy -= cost;
+            ent.lastShot = now;
+            w.ammo--;
+            const dmg = Math.round((w.dmgBase != null ? w.dmgBase : (w.damage || 10)) + (ent.getAtk ? ent.getAtk() : 100) * (w.atkCoef != null ? w.atkCoef : 0));
+            const pellets = w.pellets || 1;
+            const spread = (typeof w.spread === 'number') ? w.spread : 0;
+            const volleyId = (ent._tdVolley = (ent._tdVolley || 0) + 1);
+            for (let i = 0; i < pellets; i++) {
+                const a = angle + (Math.random() - 0.5) * spread * 2 + (ent.isAI ? (Math.random() - 0.5) * 0.045 : 0);
+                bullets.push({
+                    x: ent.x + Math.cos(a) * 30,
+                    y: ent.y + Math.sin(a) * 30,
+                    vx: Math.cos(a) * (w.speed || 22),
+                    vy: Math.sin(a) * (w.speed || 22),
+                    damage: dmg, isCrit: false, finalDamage: dmg,
+                    owner: ent, life: 260, size: 6, active: true,
+                    color: w.color || '#ffd700', trailPositions: [],
+                    knockbackMult: w.knockbackMultiplier || 1,
+                    fxMult: w.fxMult || 1, volleyId: volleyId, td: true
+                });
+            }
+            createParticles(ent.x + Math.cos(angle) * 30, ent.y + Math.sin(angle) * 30, w.color || '#ffd700', 3);
+            return true;
+        }
+
+        // 近战: 扇形判定, 范围与绘制完全一致
+        function tdMelee(ent, angle, now, chargeSec) {
+            const w = ent.weapon;
+            if (!w || !w.isMelee) return false;
+            const sec = Math.max(0, Math.min(1, chargeSec || 0));
+            const cost = TD_COST.sword + 6 * sec;
+            if (tdEnergy(ent) < cost) return false;
+            ent._tdEnergy -= cost;
+            const reach = 100 + 45 * sec;
+            const half = Math.PI * 0.42;
+            const dmg = Math.round(70 + 110 * sec + (ent.getAtk ? ent.getAtk() : 100) * 0.18);
+            const target = tdEnemyOf(ent);
+            if (target && target.health > 0) {
+                const dx = target.x - ent.x, dy = target.y - ent.y;
+                const dist = Math.hypot(dx, dy);
+                let diff = Math.atan2(dy, dx) - angle;
+                while (diff > Math.PI) diff -= Math.PI * 2;
+                while (diff < -Math.PI) diff += Math.PI * 2;
+                if (dist <= reach + (target._tdRadius || TD.radius) && Math.abs(diff) <= half) {
+                    target.takeDamage(dmg, ent, false, 'phys', false, false, false, false);
+                }
+            }
+            ent._tdSwing = { angle: angle, reach: reach, half: half, until: now + 180 };
+            createParticles(ent.x + Math.cos(angle) * reach * 0.6, ent.y + Math.sin(angle) * reach * 0.6, '#ffffff', 8);
+            return true;
+        }
+
+        function tdMove(ent, mx, my, speed, now) {
+            if (now < (ent._tdDashUntil || 0)) {
+                ent.x += ent._tdDashVX || 0;
+                ent.y += ent._tdDashVY || 0;
+            } else {
+                const len = Math.hypot(mx, my);
+                if (len > 0.01) {
+                    ent.x += (mx / len) * speed;
+                    ent.y += (my / len) * speed;
+                }
+            }
+            ent.x = tdClamp(ent.x, TD.MARGIN, TD.W - TD.MARGIN);
+            ent.y = tdClamp(ent.y, TD.MARGIN, TD.H - TD.MARGIN);
+        }
+
+        function tdUpdatePlayer(now) {
+            if (!player) return;
+            if (player.health <= 0) {
+                if (!TD.pDeadAt) {
+                    TD.pDeadAt = now;
+                    TD.lives--;
+                    createParticles(player.x, player.y, '#4f8eff', 26);
+                    if (TD.lives <= 0) TD.over = true;
+                    else TD.pRespawnAt = now + 1500;
+                }
+                if (!TD.over && TD.pRespawnAt && now >= TD.pRespawnAt) {
+                    player.x = 150; player.y = TD.H / 2;
+                    player.health = player.maxHealth;
+                    player.shield = 0;
+                    player.isReloading = false;
+                    player._tdEnergy = TD.energyMax;
+                    player._tdInvUntil = now + 1500;
+                    TD.pDeadAt = 0; TD.pRespawnAt = 0;
+                }
+                return;
+            }
+            tdRegen(player, TD.dt || 0);
+            const wp = tdScreenToWorld(TD.mouseX, TD.mouseY);
+            let mx = 0, my = 0;
+            const k = TD.keys;
+            if (k['w']) my -= 1;
+            if (k['s']) my += 1;
+            if (k['a']) mx -= 1;
+            if (k['d']) mx += 1;
+            const px0 = player.x, py0 = player.y;
+            tdMove(player, mx, my, TD.playerSpeed, now);
+            player._tdVX = player.x - px0;
+            player._tdVY = player.y - py0;
+            player._tdAim = Math.atan2(wp.y - player.y, wp.x - player.x);
+            const w = player.weapon;
+            if (w && w.isMelee) {
+                if (TD.fireHeld) {
+                    if (!TD.pCharging) { TD.pCharging = true; TD.pChargeStart = now; }
+                } else if (TD.pCharging) {
+                    const sec = Math.min(1, (now - TD.pChargeStart) / 1000);
+                    tdMelee(player, player._tdAim, now, sec);
+                    TD.pCharging = false;
+                }
+            } else if (TD.fireHeld) {
+                tdFire(player, player._tdAim, now);
+            }
+            player.updateReload();
+        }
+
+        // AI 核心: 生存优先 (> 输出), 每 100ms 重评
+        function tdAIThink(now) {
+            if (!player) return;
+            const dx = player.x - ai.x, dy = player.y - ai.y;
+            const dist = Math.max(1, Math.hypot(dx, dy));
+            let dangerX = 0, dangerY = 0, threat = 0;
+            for (let i = 0; i < bullets.length; i++) {
+                const b = bullets[i];
+                if (!b.active || b.owner === ai) continue;
+                const rx = ai.x - b.x, ry = ai.y - b.y;
+                const vv = b.vx * b.vx + b.vy * b.vy;
+                if (vv < 0.5) continue;
+                let t = -(rx * b.vx + ry * b.vy) / vv;
+                if (t < 0 || t > 26) continue;
+                const cx = b.x + b.vx * t - ai.x;
+                const cy = b.y + b.vy * t - ai.y;
+                const d = Math.hypot(cx, cy);
+                if (d < 72) {
+                    const wgt = (72 - d) / 72;
+                    threat += wgt;
+                    const sp = Math.sqrt(vv);
+                    let ox = -b.vy / sp, oy = b.vx / sp;
+                    if (ox * -cx + oy * -cy < 0) { ox = -ox; oy = -oy; }
+                    dangerX += ox * wgt;
+                    dangerY += oy * wgt;
+                }
+            }
+            if (player._tdAim != null && dist < 900) {
+                const toAI = Math.atan2(ai.y - player.y, ai.x - player.x);
+                let diff = Math.abs(((player._tdAim - toAI + Math.PI * 3) % (Math.PI * 2)) - Math.PI);
+                if (diff < 0.45) threat += 0.3;
+            }
+            tdAIPickWeapon(now, dist, threat);
+            const ideal = TD_IDEAL[tdWeaponKey(ai)] || 380;
+            let mx = 0, my = 0;
+            if (threat > 0.12) {
+                mx = dangerX; my = dangerY;
+                if (threat > 0.75 && tdEnergy(ai) >= TD.dashCost && now > TD.aDashLock) {
+                    TD.aWantsDash = true;
+                    TD.aDashX = dangerX || -dy;
+                    TD.aDashY = dangerY || dx;
+                }
+            } else {
+                const nx = dx / dist, ny = dy / dist;
+                const err = dist - ideal;
+                if (err > 60) { mx += nx; my += ny; }
+                else if (err < -60) { mx -= nx; my -= ny; }
+                mx += -ny * 0.85 * TD.aStrafeDir;
+                my += nx * 0.85 * TD.aStrafeDir;
+                if (Math.random() < 0.02) TD.aStrafeDir = -TD.aStrafeDir;
+            }
+            TD.aMoveX = mx; TD.aMoveY = my;
+        }
+
+        // AI 武器经济: 预留 30 点保命能量; 长期同枪强制轮换 (约 18 秒)
+        function tdAIPickWeapon(now, dist, threat) {
+            if (now < TD.aWeaponAt) return;
+            TD.aWeaponAt = now + 5000;
+            const e = tdEnergy(ai);
+            let pick = tdWeaponKey(ai);
+            if (e < 34) pick = 'smg';
+            else if (e >= 70) pick = (dist > 560 ? 'sniper' : (dist < 190 ? 'shotgun' : 'rifle'));
+            else pick = 'rifle';
+            if (dist < 110 && e >= 40) pick = 'shotgun';
+            if (TD.aWeaponSince && now - TD.aWeaponSince > 18000) {
+                const rotate = ['rifle', 'pistol', 'smg', 'shotgun'];
+                pick = rotate[(rotate.indexOf(pick) + 1) % rotate.length];
+            }
+            if (pick !== ai.currentWeapon) {
+                const nw = ai.weapons[pick];
+                if (nw && nw.ammo > 0 && e >= (TD_COST[pick] || 10)) {
+                    ai.currentWeapon = pick;
+                    ai.isReloading = false;
+                    TD.aWeaponSince = now;
+                }
+            }
+        }
+
+        function tdUpdateAI(now) {
+            if (!ai) return;
+            if (ai.health <= 0) {
+                if (!TD.aDeadAt) {
+                    TD.aDeadAt = now;
+                    TD.kills++;
+                    TD.score += 100 + TD.wave * 20;
+                    createParticles(ai.x, ai.y, '#ff6b6b', 30);
+                    TD.aRespawnAt = now + 2000;
+                    TD.wave++;
+                }
+                if (now >= TD.aRespawnAt) {
+                    ai.x = TD.W - 160; ai.y = TD.H / 2;
+                    ai.maxHealth = 700 + TD.wave * 180;
+                    ai.health = ai.maxHealth;
+                    ai.shield = 0;
+                    ai.isReloading = false;
+                    ai._tdEnergy = TD.energyMax;
+                    ai._tdInvUntil = now + 1500;
+                    Object.keys(ai.weapons).forEach(function (k) {
+                        const w = ai.weapons[k];
+                        if (!w || w.isMelee) return;
+                        w.ammo = w.maxAmmo;
+                        w.reserve = 9999;
+                    });
+                    TD.aDeadAt = 0; TD.aRespawnAt = 0;
+                    TD.aWeaponSince = now;
+                }
+                return;
+            }
+            tdRegen(ai, TD.dt || 0);
+            ai.updateReload();
+            if (now >= TD.aThinkAt) { TD.aThinkAt = now + 100; tdAIThink(now); }
+            tdMove(ai, TD.aMoveX, TD.aMoveY, TD.aiSpeed, now);
+            if (player && player.health > 0) {
+                const sp = (ai.weapon && ai.weapon.speed) ? ai.weapon.speed : 22;
+                const d = Math.max(1, Math.hypot(player.x - ai.x, player.y - ai.y));
+                const lead = Math.min(0.35, d / (sp * 60));
+                const tx = player.x + (player._tdVX || 0) * 60 * lead;
+                const ty = player.y + (player._tdVY || 0) * 60 * lead;
+                const jitter = 0.03 + Math.max(0, (500 - d)) / 500 * 0.05;
+                ai._tdAim = Math.atan2(ty - ai.y, tx - ai.x) + (Math.random() - 0.5) * jitter;
+                if (d <= (TD_RANGE[tdWeaponKey(ai)] || 600)) {
+                    const cost = TD_COST[tdWeaponKey(ai)] || 10;
+                    if (tdEnergy(ai) >= cost && (tdEnergy(ai) - cost >= TD.dashCost || d < 170)) {
+                        tdFire(ai, ai._tdAim, now);
+                    }
+                }
+            }
+            if (TD.aWantsDash) {
+                TD.aWantsDash = false;
+                if (tdDash(ai, TD.aDashX, TD.aDashY, now)) TD.aDashLock = now + 900;
+            }
+        }
+
+        function tdUpdate(now, dt) {
+            TD.dt = dt;
+            if (TD.over) return;
+            tdUpdatePlayer(now);
+            tdUpdateAI(now);
+            updateBullets();
+            updateParticles();
+        }
+
+        function tdDrawEntity(ent, color, now) {
+            const aim = ent._tdAim || 0;
+            const r = ent._tdRadius || TD.radius;
+            if (now < (ent._tdDashUntil || 0)) {
+                ctx.globalAlpha = 0.45;
+                ctx.fillStyle = '#ffffff';
+                ctx.beginPath(); ctx.arc(ent.x, ent.y, r, 0, Math.PI * 2); ctx.fill();
+                ctx.globalAlpha = 1;
+            }
+            const inv = now < (ent._tdInvUntil || 0);
+            ctx.globalAlpha = inv ? (0.55 + 0.45 * Math.sin(now / 40)) : 1;
+            ctx.fillStyle = color;
+            ctx.beginPath(); ctx.arc(ent.x, ent.y, r, 0, Math.PI * 2); ctx.fill();
+            ctx.strokeStyle = 'rgba(255,255,255,0.75)';
+            ctx.lineWidth = 2;
+            ctx.stroke();
+            ctx.strokeStyle = '#ffffff';
+            ctx.lineWidth = 5;
+            ctx.beginPath();
+            ctx.moveTo(ent.x + Math.cos(aim) * r * 0.4, ent.y + Math.sin(aim) * r * 0.4);
+            ctx.lineTo(ent.x + Math.cos(aim) * (r + 14), ent.y + Math.sin(aim) * (r + 14));
+            ctx.stroke();
+            ctx.globalAlpha = 1;
+            if (ent === player && TD.pCharging) {
+                const sec = Math.min(1, (now - TD.pChargeStart) / 1000);
+                const reach = 100 + 45 * sec;
+                const half = Math.PI * 0.42;
+                ctx.fillStyle = 'rgba(255,255,255,0.14)';
+                ctx.beginPath();
+                ctx.moveTo(ent.x, ent.y);
+                ctx.arc(ent.x, ent.y, reach, aim - half, aim + half);
+                ctx.closePath();
+                ctx.fill();
+            }
+            if (ent._tdSwing && now < ent._tdSwing.until) {
+                const sw = ent._tdSwing;
+                ctx.strokeStyle = 'rgba(255,255,255,0.85)';
+                ctx.lineWidth = 5;
+                ctx.beginPath();
+                ctx.arc(ent.x, ent.y, sw.reach, sw.angle - sw.half, sw.angle + sw.half);
+                ctx.stroke();
+            }
+            const bw = 56, bh = 5;
+            const hpr = Math.max(0, Math.min(1, ent.health / ent.maxHealth));
+            ctx.fillStyle = 'rgba(0,0,0,0.55)';
+            ctx.fillRect(ent.x - bw / 2, ent.y - r - 16, bw, bh);
+            ctx.fillStyle = color;
+            ctx.fillRect(ent.x - bw / 2, ent.y - r - 16, bw * hpr, bh);
+        }
+
+        function tdDrawEnergyRing(cx, cy, val, color) {
+            const r = 34, lw = 7;
+            ctx.beginPath(); ctx.arc(cx, cy, r, 0, Math.PI * 2);
+            ctx.strokeStyle = 'rgba(255,255,255,0.14)'; ctx.lineWidth = lw; ctx.stroke();
+            const ratio = Math.max(0, Math.min(1, val / TD.energyMax));
+            ctx.beginPath(); ctx.arc(cx, cy, r, -Math.PI / 2, -Math.PI / 2 + Math.PI * 2 * ratio);
+            ctx.strokeStyle = color; ctx.lineWidth = lw; ctx.lineCap = 'round'; ctx.stroke();
+            ctx.fillStyle = 'rgba(0,0,0,0.42)';
+            ctx.beginPath(); ctx.arc(cx, cy, r - lw / 2 - 1, 0, Math.PI * 2); ctx.fill();
+            ctx.fillStyle = '#ffffff';
+            ctx.font = 'bold 16px Arial';
+            ctx.textAlign = 'center';
+            ctx.textBaseline = 'middle';
+            ctx.fillText(Math.floor(val) + '', cx, cy - 6);
+            ctx.font = '10px Arial';
+            ctx.fillStyle = 'rgba(255,255,255,0.55)';
+            ctx.fillText('/' + TD.energyMax, cx, cy + 11);
+            ctx.textBaseline = 'alphabetic';
+        }
+
+        function tdDraw(now) {
+            const sc = tdScale();
+            ctx.fillStyle = '#070d18';
+            ctx.fillRect(0, 0, canvas.width, canvas.height);
+            ctx.save();
+            ctx.translate(sc.ox, sc.oy);
+            ctx.scale(sc.s, sc.s);
+            ctx.fillStyle = '#0f1727';
+            ctx.fillRect(0, 0, TD.W, TD.H);
+            ctx.strokeStyle = 'rgba(79,142,255,0.10)';
+            ctx.lineWidth = 1;
+            for (let x = 0; x <= TD.W; x += 100) { ctx.beginPath(); ctx.moveTo(x, 0); ctx.lineTo(x, TD.H); ctx.stroke(); }
+            for (let y = 0; y <= TD.H; y += 100) { ctx.beginPath(); ctx.moveTo(0, y); ctx.lineTo(TD.W, y); ctx.stroke(); }
+            ctx.strokeStyle = 'rgba(79,142,255,0.55)';
+            ctx.lineWidth = 4;
+            ctx.strokeRect(2, 2, TD.W - 4, TD.H - 4);
+            particles.forEach(function (p) {
+                if (p.life <= 0) return;
+                ctx.globalAlpha = Math.max(0, p.life / (p.maxLife || 48));
+                ctx.fillStyle = p.color || '#fff';
+                ctx.fillRect(p.x, p.y, 3, 3);
+            });
+            ctx.globalAlpha = 1;
+            bullets.forEach(function (b) {
+                if (!b.active) return;
+                ctx.fillStyle = b.color || '#ffd700';
+                ctx.beginPath();
+                ctx.arc(b.x, b.y, 4, 0, Math.PI * 2);
+                ctx.fill();
+                if (b.trailPositions && b.trailPositions.length) {
+                    const t = b.trailPositions[Math.min(2, b.trailPositions.length - 1)];
+                    if (t) {
+                        ctx.strokeStyle = b.color || '#ffd700';
+                        ctx.globalAlpha = 0.35;
+                        ctx.beginPath();
+                        ctx.moveTo(b.x, b.y);
+                        ctx.lineTo(t.x, t.y);
+                        ctx.stroke();
+                        ctx.globalAlpha = 1;
+                    }
+                }
+            });
+            if (player && player.health > 0) tdDrawEntity(player, '#4f8eff', now);
+            if (ai && ai.health > 0) tdDrawEntity(ai, '#ff6b6b', now);
+            ctx.restore();
+            tdDrawHUD(now);
+        }
+
+        function tdDrawHUD(now) {
+            ctx.textAlign = 'center';
+            ctx.fillStyle = 'rgba(255,255,255,0.85)';
+            ctx.font = 'bold 16px Arial';
+            ctx.fillText('俯视 PVE · 第 ' + TD.wave + ' 波 · 击杀 ' + TD.kills + ' · 分数 ' + TD.score + ' · ESC 退出', canvas.width / 2, 28);
+            const pw = 240, ph = 16;
+            const pxs = 40, pys = canvas.height - 150;
+            ctx.textAlign = 'left';
+            ctx.fillStyle = 'rgba(0,0,0,0.5)'; ctx.fillRect(pxs, pys, pw, ph);
+            const php = Math.max(0, Math.min(1, (player ? player.health / player.maxHealth : 0)));
+            ctx.fillStyle = '#4f8eff';
+            ctx.fillRect(pxs, pys, pw * php, ph);
+            ctx.fillStyle = '#ffffff'; ctx.font = '12px Arial';
+            ctx.fillText('生命 ' + Math.max(0, Math.round(player ? player.health : 0)) + ' / ' + (player ? player.maxHealth : 0) + '   命数 ' + TD.lives, pxs, pys - 6);
+            const w = player && player.weapon;
+            if (w && !w.isMelee) {
+                ctx.fillStyle = '#9ad0ff';
+                ctx.fillText((player.isReloading ? '换弹中…' : (w.ammo + ' / ' + w.reserve)) + '   ' + (w.name || '') + '   [R 换弹 · 1-5 切枪]', pxs, pys + ph + 16);
+            } else if (w) {
+                ctx.fillStyle = '#9ad0ff';
+                ctx.fillText('近战蓄力 · 能量 40+6×蓄力秒 · 松开释放', pxs, pys + ph + 16);
+            }
+            tdDrawEnergyRing(pxs + 44, pys - 62, tdEnergy(player), '#55efc4');
+            const aw = 240, ah = 16;
+            const axs = canvas.width - aw - 40, ays = 60;
+            ctx.fillStyle = 'rgba(0,0,0,0.5)'; ctx.fillRect(axs, ays, aw, ah);
+            const ahp = Math.max(0, Math.min(1, (ai ? ai.health / ai.maxHealth : 0)));
+            ctx.fillStyle = '#ff6b6b';
+            ctx.fillRect(axs, ays, aw * ahp, ah);
+            ctx.fillStyle = '#ffffff';
+            ctx.textAlign = 'right';
+            ctx.fillText('AI 生命 ' + Math.max(0, Math.round(ai ? ai.health : 0)) + ' / ' + (ai ? ai.maxHealth : 0), axs + aw, ays - 6);
+            ctx.textAlign = 'left';
+            tdDrawEnergyRing(axs + aw - 44, ays + ah + 62, tdEnergy(ai), '#ffb86b');
+            if (TD.mouseX > 0 && TD.mouseY > 0) {
+                const mx = TD.mouseX, my = TD.mouseY;
+                ctx.strokeStyle = 'rgba(255,255,255,0.85)';
+                ctx.lineWidth = 1.5;
+                ctx.beginPath();
+                ctx.moveTo(mx - 9, my); ctx.lineTo(mx - 3, my);
+                ctx.moveTo(mx + 3, my); ctx.lineTo(mx + 9, my);
+                ctx.moveTo(mx, my - 9); ctx.lineTo(mx, my - 3);
+                ctx.moveTo(mx, my + 3); ctx.lineTo(mx, my + 9);
+                ctx.stroke();
+            }
+            if (TD._noEnergyAt && now - TD._noEnergyAt < 500) {
+                ctx.fillStyle = 'rgba(255,120,120,0.9)';
+                ctx.font = 'bold 14px Arial';
+                ctx.textAlign = 'center';
+                ctx.fillText('能量不足', canvas.width / 2, canvas.height - 40);
+            }
+            if (TD.over) {
+                ctx.fillStyle = 'rgba(0,0,0,0.65)';
+                ctx.fillRect(0, 0, canvas.width, canvas.height);
+                ctx.fillStyle = '#ff6b6b';
+                ctx.font = 'bold 44px Arial';
+                ctx.textAlign = 'center';
+                ctx.fillText('挑战失败', canvas.width / 2, canvas.height / 2 - 20);
+                ctx.fillStyle = '#ffffff';
+                ctx.font = '20px Arial';
+                ctx.fillText('坚持到第 ' + TD.wave + ' 波 · 击杀 ' + TD.kills + ' · 分数 ' + TD.score, canvas.width / 2, canvas.height / 2 + 26);
+                ctx.fillStyle = '#9ad0ff';
+                ctx.font = '16px Arial';
+                ctx.fillText('按 Esc 返回主菜单', canvas.width / 2, canvas.height / 2 + 64);
+            }
+        }
+
+        function startTopdown() {
+            _initDOMCache();
+            try { if (autoSaveIntervalId) clearInterval(autoSaveIntervalId); } catch (e) { }
+            if (_DOM.menu) _DOM.menu.classList.add('hidden');
+            if (_DOM.gameOver) _DOM.gameOver.classList.add('hidden');
+            if (_DOM.victoryPanel) _DOM.victoryPanel.style.display = 'none';
+            if (_DOM.pvpWeaponDisplayA) _DOM.pvpWeaponDisplayA.style.display = 'none';
+            if (_DOM.pvpWeaponDisplayB) _DOM.pvpWeaponDisplayB.style.display = 'none';
+            if (_DOM.livesInfo) _DOM.livesInfo.style.display = 'none';
+            const _ov = document.getElementById('draftOverlay'); if (_ov) _ov.style.display = 'none';
+            const _tm = document.getElementById('trainingDebug'); if (_tm) _tm.style.display = 'none';
+            // 隐藏横版 HUD, 避免与俯视 HUD 重叠 (退出时恢复原 display)
+            TD._hidden = TD._hidden || [];
+            ['hud', 'hudFullStatus', 'statusPanel', 'topStatusPanel', 'killFeedPanel', 'score', 'controls',
+             'minimapContainer', 'livesInfo', 'actionBar', 'unifiedStatusPanel', 'diagPanel'].forEach(function (id) {
+                const el = document.getElementById(id);
+                if (!el) return;
+                TD._hidden.push([el, el.style.display]);
+                el.style.display = 'none';
+            });
+
+            resizeCanvas();
+            bullets = []; particles = [];
+            timeScale = 1;
+            screenShake = { x: 0, y: 0, intensity: 0, duration: 0, color: '' };
+            deathFreeze = { active: false, timer: 0 };
+            camera = { x: 0, y: 0, zoom: 1 };
+
+            player = new Player(160, TD.H / 2, false);
+            ai = new Player(TD.W - 160, TD.H / 2, true);
+            player.maxHealth = 1000; player.health = 1000; player.shield = 0;
+            ai.maxHealth = 880; ai.health = 880; ai.shield = 0;
+            player._tdRadius = 22; ai._tdRadius = 22;
+            player._tdEnergy = TD.energyMax; ai._tdEnergy = TD.energyMax;
+            player.currentWeapon = 'rifle'; ai.currentWeapon = 'rifle';
+            [player, ai].forEach(function (ent) {
+                Object.keys(ent.weapons).forEach(function (k) {
+                    const w = ent.weapons[k];
+                    if (!w || w.isMelee) return;
+                    w.ammo = w.maxAmmo;
+                    w.reserve = 9999;
+                });
+            });
+
+            TD.wave = 1; TD.kills = 0; TD.score = 0; TD.lives = 3;
+            TD.over = false; TD.pDeadAt = 0; TD.aDeadAt = 0; TD.pRespawnAt = 0; TD.aRespawnAt = 0;
+            TD.pInvUntil = 0; TD.aInvUntil = 0;
+            TD.pDashUntil = 0; TD.aDashUntil = 0; TD.pDashLock = 0; TD.aDashLock = 0;
+            TD.pCharging = false; TD.pSwing = null; TD.aSwing = null;
+            TD.aMoveX = 0; TD.aMoveY = 0;
+            TD.aThinkAt = 0; TD.aWeaponAt = 0; TD.aWeaponSince = Date.now();
+            TD.aWantsDash = false; TD.aStrafeDir = 1;
+            TD.fireHeld = false;
+            TD.lastNow = Date.now(); TD.dt = 0; TD._noEnergyAt = 0;
+            player._tdAim = 0; ai._tdAim = Math.PI;
+            player.lastShot = 0; ai.lastShot = 0;
+
+            isPaused = false; isDrafting = false; statPanelOpen = false; isAwardShowing = false;
+            gameState = 'topdown';
+            TD.started = true;
+            updateUI();
+            try { GameAudio.init(); } catch (e) { }
+            showFloatingText('🎯 俯视 PVE', '#55efc4');
+        }
+
+        function tdExit() {
+            TD.started = false;
+            TD.fireHeld = false;
+            TD.pCharging = false;
+            (TD._hidden || []).forEach(function (pair) {
+                try { pair[0].style.display = pair[1]; } catch (e) { }
+            });
+            TD._hidden = [];
+            bullets = []; particles = [];
+            gameState = 'menu';
+            try { goHomeMenu(true); } catch (e) {
+                gameState = 'menu';
+                if (_DOM.menu) _DOM.menu.classList.remove('hidden');
+            }
+        }
+
+        function tdOnMouseMove(e) {
+            if (gameState !== 'topdown') return;
+            const r = canvas.getBoundingClientRect();
+            if (!r.width || !r.height) return;
+            TD.mouseX = (e.clientX - r.left) * (canvas.width / r.width);
+            TD.mouseY = (e.clientY - r.top) * (canvas.height / r.height);
+        }
+        window.addEventListener('mousemove', tdOnMouseMove);
+        window.addEventListener('mousedown', function (e) {
+            if (gameState !== 'topdown' || e.button !== 0) return;
+            TD.fireHeld = true;
+            if (player && player.weapon && player.weapon.isMelee && !TD.pCharging) {
+                TD.pCharging = true;
+                TD.pChargeStart = Date.now();
+            }
+        });
+        window.addEventListener('mouseup', function (e) {
+            if (e.button !== 0) return;
+            TD.fireHeld = false;
+        });
+        window.addEventListener('contextmenu', function (e) {
+            if (gameState === 'topdown') e.preventDefault();
+        });
+        window.addEventListener('keydown', function (e) {
+            if (gameState !== 'topdown') return;
+            const kk = String(e.key || '').toLowerCase();
+            TD.keys[kk] = true;
+            if (e.key === 'Escape') { tdExit(); return; }
+            if (kk === 'r' && player) player.reload();
+            if (kk === 'shift' && player && Date.now() > TD.pDashLock) {
+                let mx = 0, my = 0;
+                if (TD.keys['w']) my -= 1;
+                if (TD.keys['s']) my += 1;
+                if (TD.keys['a']) mx -= 1;
+                if (TD.keys['d']) mx += 1;
+                if (tdDash(player, mx, my, Date.now())) TD.pDashLock = Date.now() + 350;
+            }
+            const slot = ['1', '2', '3', '4', '5'].indexOf(e.key);
+            if (slot >= 0 && player) {
+                const names = ['pistol', 'rifle', 'shotgun', 'smg', 'sniper'];
+                if (player.weapons[names[slot]]) player.currentWeapon = names[slot];
+            }
+            if (e.key === '6' && player && player.weapons.sword) player.currentWeapon = 'sword';
+        });
+        window.addEventListener('keyup', function (e) {
+            TD.keys[String(e.key || '').toLowerCase()] = false;
         });
 
         function startGame() {
@@ -13520,6 +14206,18 @@
                     restoreCameraZoomTransform();
                     if (shakeApplied) { try { ctx.restore(); } catch (e) { } shakeApplied = false; }
                     Diag.log('ERROR', '帧异常: ' + (err.message || err).slice(0, 150));
+                }
+            }
+
+            if (gameState === 'topdown') {
+                try {
+                    const _tdNow = Date.now();
+                    const _tdDt = Math.min(0.1, Math.max(0, (_tdNow - (TD.lastNow || _tdNow)) / 1000));
+                    TD.lastNow = _tdNow;
+                    tdUpdate(_tdNow, _tdDt);
+                    tdDraw(_tdNow);
+                } catch (err) {
+                    console.error('俯视帧错误:', err.message || err);
                 }
             }
 
