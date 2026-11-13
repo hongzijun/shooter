@@ -11997,7 +11997,9 @@
                     '俯视显示与横版对齐：命中屏幕震动已生效、头顶血量只显示当前值、护盾条以最大生命为基数（与左上 HUD 同源）',
                     '新增「俯视训练场」入口：数值面板与普通训练场完全独立（各自一份本地存储），互不影响；训练场 AI 为静止靶子，打空 2 秒后满血重置',
                     '俯视数值面板新增：双方初始最大能量、每秒能量增长、每回合能量上限成长、每回合每秒能量成长（两项成长默认 0）',
-                    '能量条移到左下 / 右下；角色外圈新增当前能量占比环（能量越高越满）'
+                    '能量条移到左下 / 右下；角色外圈新增当前能量占比环（能量越高越满）',
+                    '修复俯视刀剑：补齐挥刀冷却（与横版同源，AI ×1.2，不能再无限连点）；伤害改为横版公式（基础伤害 + 蓄力系数，计入暴击 / 连击 / 装备特效，AI ×0.85）',
+                    '刀剑新增黑色多边形斩击特效：命中或挥空时从左向右 / 从右向左扫过黑色环形扇区，并带白色描边与灰白内层高光'
                 ]
             },
             {
@@ -12693,14 +12695,24 @@
             if (ent.frozen || fxIsStunned(ent)) return false;   // 眩晕/冰冻: 不能挥刀
             const w = ent.weapon;
             if (!w || !w.isMelee) return false;
+            // 挥刀冷却: 与横版一致 (getFireInterval, AI ×1.2), 修复可无限连点的问题
+            const _cd = (ent.getFireInterval ? ent.getFireInterval(w) : 556) * (ent.isAI ? 1.2 : 1);
+            if (now - (ent._tdMeleeAt || 0) < _cd) return false;
             const sec = Math.max(0, Math.min(1, chargeSec || 0));
             const cost = TD_COST.sword + 6 * sec;
             if (tdEnergy(ent) < cost) return false;
             ent._tdEnergy -= cost;
+            ent._tdMeleeAt = now;
             const reach = 100 + 45 * sec;
             const half = Math.PI * 0.42;
-            const dmg = Math.round(70 + 110 * sec + (ent.getAtk ? ent.getAtk() : 100) * 0.18);
+            // 伤害与横版同源: dmgBase + atk*atkCoef*蓄力秒 (满蓄等效 3 秒), AI ×0.85
+            const chargeSeconds = sec * 3;
+            const atk = ent.getAtk ? ent.getAtk() : 100;
+            let dmg = Math.round(((w.dmgBase != null ? w.dmgBase : 80) + atk * (w.atkCoef != null ? w.atkCoef : 0.3) * chargeSeconds) * (ent.isAI ? 0.85 : 1));
+            if (ent.damageBoost && ent.damageMultiplier) dmg = Math.round(dmg * ent.damageMultiplier);
+            const comboBonus = (ent.comboStacks || 0) * 75;
             const target = tdEnemyOf(ent);
+            let hit = false;
             if (target && target.health > 0) {
                 const dx = target.x - ent.x, dy = target.y - ent.y;
                 const dist = Math.hypot(dx, dy);
@@ -12708,12 +12720,27 @@
                 while (diff > Math.PI) diff -= Math.PI * 2;
                 while (diff < -Math.PI) diff += Math.PI * 2;
                 if (dist <= reach + (target._tdRadius || TD.radius) && Math.abs(diff) <= half) {
-                    target.takeDamage(dmg, ent, false, 'phys', false, false, false, false);
+                    hit = true;
+                    const crit = (typeof checkCrit === 'function') ? checkCrit(ent) : { isCrit: false };
+                    target.takeDamage(dmg + comboBonus, ent, crit.isCrit, 'phys', false, false, false, false);
+                    if (typeof applyEquipOnHitList === 'function') {
+                        try {
+                            const fxList = applyEquipOnHitList(ent, target, 1.5);
+                            for (let fi = 0; fi < fxList.length; fi++) {
+                                target.takeDamage(fxList[fi].dmg, ent, false, 'phys', true);
+                            }
+                        } catch (e) { }
+                    }
+                    ent.comboStacks = (ent.comboStacks || 0) + 1;
+                    ent.comboExpire = Date.now();
                 }
             }
+            if (!hit) ent.comboStacks = 0;
+            // 黑色多边形斩击特效 (左→右 / 右→左 随机)
+            ent._tdSlash = { angle: angle, dir: (Math.random() < 0.5 ? 1 : -1), reach: reach, half: half, start: now, until: now + 240 };
             ent._tdSwing = { angle: angle, reach: reach, half: half, until: now + 180 };
             try { GameAudio.play('shoot_shotgun'); } catch (e) { }
-            createParticles(ent.x + Math.cos(angle) * reach * 0.6, ent.y + Math.sin(angle) * reach * 0.6, '#ffffff', 8);
+            createParticles(ent.x + Math.cos(angle) * reach * 0.6, ent.y + Math.sin(angle) * reach * 0.6, '#111111', 10);
             return true;
         }
 
@@ -13282,6 +13309,43 @@
                     ctx.fillStyle = '#ffffff';
                     ctx.fillText('⚡旋风斩', ent.x, cy - 3);
                 }
+            }
+            // === 黑色多边形斩击 (扫过的环形扇区, 4 边形) ===
+            if (ent._tdSlash && now < ent._tdSlash.until) {
+                const sl = ent._tdSlash;
+                const p = Math.max(0, Math.min(1, (now - sl.start) / (sl.until - sl.start)));
+                const startA = sl.angle - sl.half * sl.dir;
+                const curA = startA + sl.half * 2 * p * sl.dir;
+                // 只保留刃口后方一段拖尾, 形成移动的弧形黑刃 (不是整块扇形)
+                const tailA = curA - sl.dir * sl.half * 0.62;
+                ctx.save();
+                ctx.globalAlpha = Math.max(0, 1 - p * 0.9);
+                ctx.beginPath();
+                ctx.arc(ent.x, ent.y, sl.reach, tailA, curA, sl.dir < 0);
+                ctx.arc(ent.x, ent.y, sl.reach * 0.80, curA, tailA, sl.dir > 0);
+                ctx.closePath();
+                ctx.fillStyle = 'rgba(0,0,0,0.95)';
+                ctx.fill();
+                ctx.strokeStyle = 'rgba(255,255,255,0.65)';
+                ctx.lineWidth = 1.5;
+                ctx.stroke();
+                // 刃口高光 (细弧线)
+                ctx.globalAlpha = Math.max(0, 1 - p);
+                ctx.beginPath();
+                ctx.arc(ent.x, ent.y, sl.reach * 0.92, curA - sl.dir * sl.half * 0.28, curA, sl.dir < 0);
+                ctx.strokeStyle = 'rgba(230,230,255,0.9)';
+                ctx.lineWidth = 2.5;
+                ctx.stroke();
+                // 末端尖锋
+                ctx.globalAlpha = Math.max(0, (1 - p) * 0.8);
+                ctx.beginPath();
+                ctx.moveTo(ent.x + Math.cos(curA) * sl.reach * 1.02, ent.y + Math.sin(curA) * sl.reach * 1.02);
+                ctx.lineTo(ent.x + Math.cos(curA - sl.dir * 0.10) * sl.reach * 0.72, ent.y + Math.sin(curA - sl.dir * 0.10) * sl.reach * 0.72);
+                ctx.lineTo(ent.x + Math.cos(curA + sl.dir * 0.10) * sl.reach * 0.72, ent.y + Math.sin(curA + sl.dir * 0.10) * sl.reach * 0.72);
+                ctx.closePath();
+                ctx.fillStyle = 'rgba(0,0,0,0.95)';
+                ctx.fill();
+                ctx.restore();
             }
             // === 状态图标 (眩晕 💫 / 灼烧 🔥 / 减速 / 禁位移 / 冰冻 ...) ===
             const _fxList = (ent.activeEffects || []).filter(function (e) { return e && (e.endTime || 0) > Date.now(); }).slice(0, 5);
