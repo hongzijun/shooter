@@ -9509,6 +9509,10 @@
                         ' <span style="color:#7f8ba8">(已累积 +' + Math.round(e._atkPerSecBonus || 0) + ')</span>') +
                     row('减疗(对敌)', '<span style="color:#ff9f43">' + fmtPct(Math.min(0.95, e._healDecayBonus || 0)) + '</span>' +
                         ' <span style="color:#7f8ba8">(每秒累加, 上限95%, 独立于抗治疗)</span>') +
+                    ((gameState === 'topdown' || gameState === 'tdtraining')
+                        ? row('每秒能量', '<span style="color:#55efc4">' + (Math.round(tdRegenOf(e) * 10) / 10) + '</span>' +
+                            ' <span style="color:#7f8ba8">(当前上限 ' + Math.round(tdEnergyMaxOf(e)) + ')</span>')
+                        : '') +
                     row('灼烧', hasRobe ? '<span style="color:#ff9f43">有 (' + e.equip.robeCount + '件)</span>' : '无') +
                     '<div class="stat-section"><div class="sec-title">现有卡牌 (点击查看详情)</div><div class="stat-cards">' +
                         buildCardChipsHTML(getEntityCardLog(e)) + '</div></div>' +
@@ -9713,10 +9717,12 @@
                 const _txtEl = div.querySelector('.dn-txt');
                 // 视野缩放时飘字同步换算 (世界坐标 → 缩放后的屏幕坐标)
                 let _sx, _sy;
-                if (gameState === 'topdown') {
+                if (gameState === 'topdown' || gameState === 'tdtraining') {
                     const _sc = tdScale();
-                    _sx = x * _sc.s + _sc.ox;
-                    _sy = (y - 26) * _sc.s + _sc.oy;
+                    const _rect = canvas.getBoundingClientRect();
+                    const _k = _rect.width / Math.max(1, canvas.width);
+                    _sx = (x * _sc.s + _sc.ox) * _k;
+                    _sy = ((y - 26) * _sc.s + _sc.oy) * _k;
                 } else {
                     const _z = camera.zoom || 1;
                     _sx = (x - camera.x - canvas.width / 2) * _z + canvas.width / 2;
@@ -10912,6 +10918,18 @@
         // 重置训练场靶子: 位置/速度/血量全部复位 (调试台按钮)
         function resetTrainEnemy() {
             if (!ai) return;
+            if (gameState === 'tdtraining') {
+                ai.x = TD.W - 360; ai.y = TD.H / 2;
+                ai._tdKbVX = 0; ai._tdKbVY = 0;
+                ai.activeEffects = []; ai.slowEffect = null;
+                ai.burningStacks = 0; ai.burnStacks = []; ai.frozen = false;
+                ai._trainDmgTotal = 0; ai._trainDmgStart = 0; ai._trainDmgLast = 0;
+                if (!ai.godMode) { ai.health = ai.maxHealth; ai.shield = 0; }
+                ai._tdEnergy = tdEnergyMaxOf(ai);
+                TD.aDeadAt = 0;
+                showFloatingText('🎯 靶位已重置', '#74b9ff');
+                return;
+            }
             ai.x = CONFIG.MAP_WIDTH / 2;
             ai.y = CONFIG.GROUND_Y - 30;
             ai.vx = 0; ai.vy = 0;
@@ -11117,9 +11135,7 @@
             { key: 'healResist', label: '抗治疗(%)', pct: true },
             { key: 'healDecayBase', label: '每秒减疗(%)', pct: true },
             { key: 'energyMax', label: '初始最大能量', tdOnly: true },
-            { key: 'energyRegen', label: '每秒能量增长', tdOnly: true },
-            { key: 'growth.energyMaxPerRound', label: '每回合能量上限成长', tdOnly: true },
-            { key: 'growth.energyRegenPerRound', label: '每回合每秒能量成长', tdOnly: true }
+            { key: 'energyRegen', label: '每秒能量增长', tdOnly: true }
         ];
         const TRAIN_TUNE_AI_FIELDS = [
             { key: 'aiRound', label: '模拟回合' },
@@ -11133,7 +11149,9 @@
             { key: 'growth.healDecayPerRound', label: '减疗成长(%)/波', pct: true },
             { key: 'aiDrawCount', label: 'AI每次抽卡个数', only: 'enemy' },
             { key: 'growth.drawEveryRounds', label: '抽卡成长: 每 X 回合', only: 'enemy' },
-            { key: 'growth.drawAddPerStep', label: '抽卡成长: 每次 +Y 张', only: 'enemy' }
+            { key: 'growth.drawAddPerStep', label: '抽卡成长: 每次 +Y 张', only: 'enemy' },
+            { key: 'growth.energyMaxPerRound', label: '每回合能量上限成长', tdOnly: true },
+            { key: 'growth.energyRegenPerRound', label: '每回合每秒能量成长', tdOnly: true }
         ];
 
         function _numStr(v) {
@@ -11496,6 +11514,9 @@
                     shieldMult: num(so.shieldMult, d.shieldMult),
                     healResist: num(so.healResist, d.healResist),
                     healDecayBase: Math.max(0, Math.min(0.95, num(so.healDecayBase, d.healDecayBase))),
+                    // 俯视能量: 初始最大能量默认 100 / 每秒能量默认 15
+                    energyMax: Math.max(1, num(so.energyMax, d.energyMax != null ? d.energyMax : 100)),
+                    energyRegen: Math.max(0, num(so.energyRegen, d.energyRegen != null ? d.energyRegen : 15)),
                     weapons: {},
                     aiRound: Math.max(1, Math.round(num(so.aiRound, d.aiRound))),
                     aiDrawCount: Math.max(1, Math.min(10, Math.round(num(so.aiDrawCount, d.aiDrawCount)))),
@@ -11525,7 +11546,9 @@
                             })()),
                         // 抽卡成长: 每 X 回合 +Y 张 (v5 新增, 缺省用云端默认 10 / 1)
                         drawEveryRounds: Math.max(0, Math.round(num(so.growth && so.growth.drawEveryRounds, _gd.drawEveryRounds != null ? _gd.drawEveryRounds : 10))),
-                        drawAddPerStep: Math.max(0, Math.round(num(so.growth && so.growth.drawAddPerStep, _gd.drawAddPerStep != null ? _gd.drawAddPerStep : 1)))
+                        drawAddPerStep: Math.max(0, Math.round(num(so.growth && so.growth.drawAddPerStep, _gd.drawAddPerStep != null ? _gd.drawAddPerStep : 1))),
+                        energyMaxPerRound: Math.max(0, num(so.growth && so.growth.energyMaxPerRound, _gd.energyMaxPerRound != null ? _gd.energyMaxPerRound : 0)),
+                        energyRegenPerRound: Math.max(0, num(so.growth && so.growth.energyRegenPerRound, _gd.energyRegenPerRound != null ? _gd.energyRegenPerRound : 0))
                     }
                 };
                 TRAIN_WEAPON_KEYS.forEach(function (k) {
@@ -12003,7 +12026,12 @@
                     '俯视头顶 UI 完全照抄横版：血条 105×6 动态颜色（>60% 绿 / >30% 橙 / 否则红）、护盾条在血条上方（每条=最大生命、最多 5 层、蓝色）、血量与护盾数值、命数心形，刀蓄力条移到血条下方',
                     '修复俯视训练场无法操作：键鼠输入现在在训练场生效；补齐训练调试台（装配卡牌 / 无敌 / 重置靶位 / 数值设置）、底部调试信息与 AI 头顶总伤害 / 秒伤面板',
                     '角色外圈能量环宽度加粗一倍（3 → 6）',
-                    '刀剑冷却改为与蓄力条同步（玩家 1.0 秒 / AI 1.2 秒），蓄力满即可再挥；整体攻击范围扩大 40%，扇形预览与黑色刀光同步放大'
+                    '刀剑冷却改为与蓄力条同步（玩家 1.0 秒 / AI 1.2 秒），蓄力满即可再挥；整体攻击范围扩大 40%，扇形预览与黑色刀光同步放大',
+                    '修复俯视训练场数值保存不生效：读取白名单补回能量字段（此前每次读档都会丢字段并重置为 0）；默认初始最大能量 100 / 每秒能量 15',
+                    '训练面板分区整理：初始最大能量、每秒能量放在基础区；每回合能量上限成长、每回合每秒能量成长移到成长区',
+                    '仅俯视模式：Tab 属性面板新增「每秒能量（当前上限）」显示',
+                    '俯视训练场补齐：方向键移动靶位；靶子死亡 2 秒后满血、清空状态与伤害统计并回到出生点；重置靶位适配俯视坐标',
+                    '修复训练场内点击面板按钮会触发攻击；修复伤害飘字与秒伤面板的位置偏移'
                 ]
             },
             {
@@ -13051,11 +13079,25 @@
             // === 俯视训练场: AI 为静止靶子, 不移动不还手; 打空 2 秒后满血重置 ===
             if (gameState === 'tdtraining') {
                 TD.aMoveX = 0; TD.aMoveY = 0;
+                // 方向键移动靶位
+                const _sp = 5;
+                if (TD.keys['arrowup']) ai.y -= _sp;
+                if (TD.keys['arrowdown']) ai.y += _sp;
+                if (TD.keys['arrowleft']) ai.x -= _sp;
+                if (TD.keys['arrowright']) ai.x += _sp;
+                ai.x = tdClamp(ai.x, TD.MARGIN, TD.W - TD.MARGIN);
+                ai.y = tdClamp(ai.y, TD.MARGIN, TD.H - TD.MARGIN);
                 if (ai.health <= 0) {
                     if (!TD.aDeadAt) TD.aDeadAt = now;
                     if (now - TD.aDeadAt > 2000) {
                         ai.health = ai.maxHealth; ai.shield = 0;
+                        ai.activeEffects = []; ai.slowEffect = null;
+                        ai.burningStacks = 0; ai.burnStacks = [];
+                        ai.dotDamage = null; ai.frozen = false;
+                        ai._trainDmgTotal = 0; ai._trainDmgStart = 0; ai._trainDmgLast = 0;
                         ai._tdEnergy = tdEnergyMaxOf(ai);
+                        ai._tdMeleeAt = 0; ai.lastShot = 0;
+                        ai.x = TD.W - 360; ai.y = TD.H / 2;
                         TD.aDeadAt = 0;
                     }
                 } else {
@@ -13487,7 +13529,7 @@
             ctx.restore();
             // 训练场: AI 头顶总伤害 / 秒伤面板 (与横版同源, 屏幕空间绘制)
             if (gameState === 'tdtraining' && ai && ai.health > 0) {
-                try { drawTrainDamagePanel(ctx, ai, ai.x * sc.s + sc.ox, ai.y * sc.s + sc.oy); } catch (e) { }
+                try { drawTrainDamagePanel(ctx, ai, ai.x * sc.s + sc.ox, ai.y * sc.s + sc.oy + 118); } catch (e) { }
             }
             tdDrawHUD(now);
         }
@@ -13732,6 +13774,9 @@
         window.addEventListener('mousemove', tdOnMouseMove);
         window.addEventListener('mousedown', function (e) {
             if ((gameState !== 'topdown' && gameState !== 'tdtraining') || e.button !== 0) return;
+            // 点击任何 UI 面板/按钮/输入框时不应触发射击
+            const _tg = e.target;
+            if (_tg && _tg.closest && _tg.closest('button, input, textarea, select, #trainPanel, #trainToggle, #trainShop, #trainTunePanel, #pauseMenu, #statPanel, #draftOverlay, #freePickOverlay, #startChoice, #gameOver')) return;
             TD.fireHeld = true;
             TD.firePressed = true;
         });
@@ -13747,6 +13792,9 @@
             const kk = String(e.key || '').toLowerCase();
             TD.keys[kk] = true;
             if (kk === 'r' && player) player.reload();
+            if (gameState === 'tdtraining' && kk.indexOf('arrow') === 0) {
+                if (e.preventDefault) e.preventDefault();
+            }
             if ((e.code === 'Space' || kk === ' ') && player && Date.now() > TD.pDashLock) {
                 if (e.preventDefault) e.preventDefault();
                 let mx = 0, my = 0;
