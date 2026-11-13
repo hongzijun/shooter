@@ -1,4 +1,4 @@
-<!DOCTYPE html>
+﻿<!DOCTYPE html>
 <html lang="zh-CN"><head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1, user-scalable=no, viewport-fit=cover">
@@ -5450,15 +5450,16 @@
                 TD.over = false; TD.pDeadAt = 0; TD.aDeadAt = 0; TD.pRespawnAt = 0; TD.aRespawnAt = 0;
                 TD.aWeaponSince = Date.now(); TD.aThinkAt = 0; TD.aWeaponAt = 0;
                 TD.aMeleeAt = 0; TD.aMeleeUntil = 0; TD.fireHeld = false; TD.firePressed = false;
-                TD._hidden = TD._hidden || [];
-                if (!TD._hidden.length) {
-                    ['hud', 'hudFullStatus', 'statusPanel', 'topStatusPanel', 'killFeedPanel', 'score', 'controls',
-                     'minimapContainer', 'livesInfo', 'actionBar', 'unifiedStatusPanel', 'diagPanel'].forEach(function (id) {
-                        const el = document.getElementById(id);
-                        if (!el) return;
-                        TD._hidden.push([el, el.style.display]);
-                        el.style.display = 'none';
-                    });
+                TD._hidden = [];
+                const _ctrl2 = document.getElementById('controls');
+                if (_ctrl2) {
+                    if (!TD._ctrlHTML) TD._ctrlHTML = _ctrl2.innerHTML;
+                    _ctrl2.innerHTML = '<div><span class="key">WASD</span> 移动</div>' +
+                        '<div><span class="key">鼠标</span> 瞄准 / 射击</div>' +
+                        '<div><span class="key">Shift</span> 能量位移</div>' +
+                        '<div><span class="key">R</span> 换弹</div>' +
+                        '<div><span class="key">1-5</span> 武器</div>' +
+                        '<div><span class="key">6</span> 战刃</div>';
                 }
                 isPaused = false; isDrafting = false; statPanelOpen = false; isAwardShowing = false;
                 gameState = 'topdown';
@@ -11680,7 +11681,7 @@
         function updateFullStatus() {
             const panel = _DOM.hudFullStatus;
             if (!panel) return;
-            if (gameState !== 'playing') { panel.style.display = 'none'; return; }
+            if (gameState !== 'playing' && gameState !== 'topdown') { panel.style.display = 'none'; return; }
             panel.style.display = 'block';
 
             const w = player.weapon;
@@ -11743,7 +11744,7 @@
             const as = _DOM.aiStatus;
             if (!panel || !ps || !as) return;
 
-            if (gameState !== 'playing') {
+            if (gameState !== 'playing' && gameState !== 'topdown') {
                 panel.style.display = 'none';
                 return;
             }
@@ -11810,7 +11811,7 @@
         function updateTopStatusPanel() {
             const panel = _DOM.topStatusPanel;
             if (!panel) return;
-            if (gameState !== 'playing' || !player) {
+            if ((gameState !== 'playing' && gameState !== 'topdown') || !player) {
                 panel.style.display = 'none';
                 return;
             }
@@ -11925,7 +11926,9 @@
                     '俯视模式能量位移（Shift）：消耗 30 能量，沿当前移动方向 300px 直线突进，0.25 秒内免疫全部伤害，被击中会弹出白色「闪避」',
                     '俯视模式 AI 改为「理性决策」：计算站着不动的期望代价（危险预测量），能靠走位躲开就不浪费位移，走位也躲不掉才交位移；远程低威胁不再预留 30 点能量；武器按「秒伤 × 命中率 × 能量可持续性」评分选优，明显更优才换枪；新增刀剑处决——刀蓄力在切换其他武器时也持续累积，近身且蓄满时切刀爆发',
                     '俯视 PVE 已完整并入横版 PVE v2：训练场数值（生命 / 攻防 / 移速 / 每秒成长 / AI 抽卡成长）、波次成长与倒计时、击杀与波次选卡、选卡刷新 10 次、里程碑自选、AI 每波抽卡装备、起死回生、成就全部生效；俯视存档独立多槽，可继续 / 改名 / 删除',
-                    '俯视模式操作与机制补齐：Tab 打开全属性面板、Esc 打开暂停菜单（继续 / 重开 / 返回主页）；卡牌的移速、暴击、子弹速度、特殊弹药、霰弹近距加成、灼烧、吸血、反伤等全部接入；禁跳诅咒改为「禁位移」；子弹命中带轻量击退（位移无敌期间免疫）'
+                    '俯视模式操作与机制补齐：Tab 打开全属性面板、Esc 打开暂停菜单（继续 / 重开 / 返回主页）；卡牌的移速、暴击、子弹速度、特殊弹药、霰弹近距加成、灼烧、吸血、反伤等全部接入；禁跳诅咒改为「禁位移」；子弹命中带轻量击退（位移无敌期间免疫）',
+                    '修复从「俯视 PVE」入口点「新开一局」后，开始界面弹窗不消失的问题',
+                    '俯视 PVE 的 HUD 已完整照搬横版：左上血条 / 护盾 / FPS、武器弹药与状态面板、顶部状态与双方命数、右上分数与击杀记录、左下玩家 / AI 状态、底部键位说明（已换成俯视键位）；能量环与刀蓄力条移到左下 / 右上空白处，避免与面板重叠'
                 ]
             },
             {
@@ -12245,10 +12248,10 @@
                 const al = _DOM.aiLives; if (al && ai) al.innerHTML = '❤️'.repeat(Math.max(0, ai.lives)) + '🖤'.repeat(Math.max(0, ai.maxLives - ai.lives));
                 // 单人模式显示生命系统面板(玩家/敌人命数)，对齐 v17.0（仅在变化时写DOM，避免每帧重排）
                 if (_DOM.livesInfo && gameState !== 'pvp') {
-                    const want = (gameState === 'playing' && ai) ? 'flex' : 'none';
+                    const want = ((gameState === 'playing' || gameState === 'topdown') && ai) ? 'flex' : 'none';
                     if (_DOM.livesInfo.style.display !== want) _DOM.livesInfo.style.display = want;
                 }
-                if (gameState === 'playing' && ai) {
+                if ((gameState === 'playing' || gameState === 'topdown') && ai) {
                     const lp = document.getElementById('lifeLabelPlayer'); if (lp && lp.textContent !== '玩家') lp.textContent = '玩家';
                     const la = document.getElementById('lifeLabelAi'); if (la && la.textContent !== '敌人') la.textContent = '敌人';
                 }
@@ -13153,47 +13156,28 @@
         }
 
         function tdDrawHUD(now) {
+            // 横版 HUD 已完整照搬 (血条 / 护盾 / 武器 / 状态 / 分数 / 命数),
+            // 这里只补俯视专属: 双方能量环 (底部中央左右对称) + 刀蓄力 + 准星
+            const ringY = canvas.height - 250;
+            tdDrawEnergyRing(92, ringY, tdEnergy(player), '#55efc4');
+            tdDrawEnergyRing(canvas.width - 92, 250, tdEnergy(ai), '#ffb86b');
             ctx.textAlign = 'center';
-            ctx.fillStyle = 'rgba(255,255,255,0.85)';
-            ctx.font = 'bold 16px Arial';
-            ctx.fillText('俯视 PVE · 第 ' + wave + ' 波 · 击杀 ' + kills + ' · 分数 ' + score + ' · ESC 暂停', canvas.width / 2, 28);
-            const pw = 240, ph = 16;
-            const pxs = 40, pys = canvas.height - 150;
-            ctx.textAlign = 'left';
-            ctx.fillStyle = 'rgba(0,0,0,0.5)'; ctx.fillRect(pxs, pys, pw, ph);
-            const php = Math.max(0, Math.min(1, (player ? player.health / player.maxHealth : 0)));
-            ctx.fillStyle = '#4f8eff';
-            ctx.fillRect(pxs, pys, pw * php, ph);
-            ctx.fillStyle = '#ffffff'; ctx.font = '12px Arial';
-            ctx.fillText('生命 ' + Math.max(0, Math.round(player ? player.health : 0)) + ' / ' + (player ? player.maxHealth : 0) + '   命数 ' + Math.max(0, player ? (player.lives || 0) : 0), pxs, pys - 6);
-            const w = player && player.weapon;
-            if (w && !w.isMelee) {
-                ctx.fillStyle = '#9ad0ff';
-                ctx.fillText((player.isReloading ? '换弹中…' : (w.ammo + ' / ' + w.reserve)) + '   ' + (w.name || '') + '   [R 换弹 · 1-5 切枪]', pxs, pys + ph + 16);
-            } else if (w) {
-                ctx.fillStyle = '#9ad0ff';
-                ctx.fillText('近战蓄力 · 能量 40+6×蓄力秒 · 松开释放', pxs, pys + ph + 16);
-            }
-            tdDrawEnergyRing(pxs + 44, pys - 62, tdEnergy(player), '#55efc4');
-            const _sc = player ? (player._tdSwordCharge || 0) : 0;
-            ctx.fillStyle = 'rgba(0,0,0,0.5)';
-            ctx.fillRect(pxs, pys + ph + 24, 120, 6);
+            ctx.font = '11px Arial';
+            ctx.fillStyle = 'rgba(255,255,255,0.6)';
+            ctx.fillText('我方能量', 92, ringY + 54);
+            ctx.fillText('敌方能量', canvas.width - 92, 304);
+
+            // 刀蓄力条 (玩家)
+            const _sc = player ? Math.min(1, player._tdSwordCharge || 0) : 0;
+            const bw = 150, bx = 17, byy = canvas.height - 145;
+            ctx.fillStyle = 'rgba(0,0,0,0.55)';
+            ctx.fillRect(bx, byy, bw, 7);
             ctx.fillStyle = (_sc >= 0.999) ? '#ffd700' : '#6c5ce7';
-            ctx.fillRect(pxs, pys + ph + 24, 120 * _sc, 6);
-            ctx.fillStyle = '#aaa';
+            ctx.fillRect(bx, byy, bw * _sc, 7);
+            ctx.fillStyle = 'rgba(255,255,255,0.65)';
             ctx.font = '10px Arial';
-            ctx.fillText('刀蓄力 ' + Math.round(_sc * 100) + '%', pxs + 126, pys + ph + 31);
-            const aw = 240, ah = 16;
-            const axs = canvas.width - aw - 40, ays = 60;
-            ctx.fillStyle = 'rgba(0,0,0,0.5)'; ctx.fillRect(axs, ays, aw, ah);
-            const ahp = Math.max(0, Math.min(1, (ai ? ai.health / ai.maxHealth : 0)));
-            ctx.fillStyle = '#ff6b6b';
-            ctx.fillRect(axs, ays, aw * ahp, ah);
-            ctx.fillStyle = '#ffffff';
-            ctx.textAlign = 'right';
-            ctx.fillText('AI 生命 ' + Math.max(0, Math.round(ai ? ai.health : 0)) + ' / ' + (ai ? ai.maxHealth : 0), axs + aw, ays - 6);
-            ctx.textAlign = 'left';
-            tdDrawEnergyRing(axs + aw - 44, ays + ah + 62, tdEnergy(ai), '#ffb86b');
+            ctx.fillText('刀蓄力 ' + Math.round(_sc * 100) + '%', 92, byy - 4);
+
             if (TD.mouseX > 0 && TD.mouseY > 0) {
                 const mx = TD.mouseX, my = TD.mouseY;
                 ctx.strokeStyle = 'rgba(255,255,255,0.85)';
@@ -13209,7 +13193,7 @@
                 ctx.fillStyle = 'rgba(255,120,120,0.9)';
                 ctx.font = 'bold 14px Arial';
                 ctx.textAlign = 'center';
-                ctx.fillText('能量不足', canvas.width / 2, canvas.height - 40);
+                ctx.fillText('能量不足', 92, ringY - 52);
             }
             if (TD.over) {
                 ctx.fillStyle = 'rgba(0,0,0,0.65)';
@@ -13229,6 +13213,7 @@
 
         function startTopdown() {
             _initDOMCache();
+            closeStartChoice();   // 修复: 俯视入口不会自动关闭开始弹窗
             _beginNewRun();   // 俯视独立存档槽, 不能覆盖横版存档
             try { if (autoSaveIntervalId) clearInterval(autoSaveIntervalId); } catch (e) { }
             if (_DOM.menu) _DOM.menu.classList.add('hidden');
@@ -13239,15 +13224,29 @@
             if (_DOM.livesInfo) _DOM.livesInfo.style.display = 'none';
             const _ov = document.getElementById('draftOverlay'); if (_ov) _ov.style.display = 'none';
             const _tm = document.getElementById('trainingDebug'); if (_tm) _tm.style.display = 'none';
-            // 隐藏横版 HUD, 避免与俯视 HUD 重叠 (退出时恢复原 display)
-            TD._hidden = TD._hidden || [];
-            ['hud', 'hudFullStatus', 'statusPanel', 'topStatusPanel', 'killFeedPanel', 'score', 'controls',
-             'minimapContainer', 'livesInfo', 'actionBar', 'unifiedStatusPanel', 'diagPanel'].forEach(function (id) {
-                const el = document.getElementById(id);
-                if (!el) return;
-                TD._hidden.push([el, el.style.display]);
-                el.style.display = 'none';
-            });
+            // 照搬横版 HUD: 不再隐藏任何面板, 只调整排版与键位说明
+            TD._hidden = [];
+            const _hfs = document.getElementById('hudFullStatus');
+            const _li = document.getElementById('livesInfo');
+            if (_li) {
+                if (!TD._livesPos) TD._livesPos = _li.style.top;
+                _li.style.top = '74px';
+            }
+            if (_hfs) {
+                if (!TD._hfsPos) TD._hfsPos = { top: _hfs.style.top, left: _hfs.style.left };
+                _hfs.style.top = '224px';
+                _hfs.style.left = '12px';
+            }
+            const _ctrl = document.getElementById('controls');
+            if (_ctrl) {
+                if (!TD._ctrlHTML) TD._ctrlHTML = _ctrl.innerHTML;
+                _ctrl.innerHTML = '<div><span class="key">WASD</span> 移动</div>' +
+                    '<div><span class="key">鼠标</span> 瞄准 / 射击</div>' +
+                    '<div><span class="key">Shift</span> 能量位移</div>' +
+                    '<div><span class="key">R</span> 换弹</div>' +
+                    '<div><span class="key">1-5</span> 武器</div>' +
+                    '<div><span class="key">6</span> 战刃</div>';
+            }
 
             resizeCanvas();
             bullets = []; particles = [];
@@ -13317,6 +13316,12 @@
                 try { pair[0].style.display = pair[1]; } catch (e) { }
             });
             TD._hidden = [];
+            const _ctrl3 = document.getElementById('controls');
+            if (_ctrl3 && TD._ctrlHTML) { _ctrl3.innerHTML = TD._ctrlHTML; TD._ctrlHTML = ''; }
+            const _hfs3 = document.getElementById('hudFullStatus');
+            if (_hfs3 && TD._hfsPos) { _hfs3.style.top = TD._hfsPos.top; _hfs3.style.left = TD._hfsPos.left; TD._hfsPos = null; }
+            const _li3 = document.getElementById('livesInfo');
+            if (_li3 && TD._livesPos !== undefined) { _li3.style.top = TD._livesPos; TD._livesPos = null; }
             bullets = []; particles = [];
             gameState = 'menu';
             try { goHomeMenu(true); } catch (e) {
@@ -14579,6 +14584,18 @@
                     TD.lastNow = _tdNow;
                     tdUpdate(_tdNow, _tdDt);
                     tdDraw(_tdNow);
+                    // 照搬横版 HUD: 同步属性/状态/效果/分数/命数/武器面板
+                    _uiFrameCounter++;
+                    if (_uiFrameCounter % 2 === 0) {
+                        updateUI();
+                        updateActionBar();
+                        updateHUDEffects();
+                        updateFullStatus();
+                        updateStatusPanel();
+                        updateTopStatusPanel();
+                    }
+                    updateEffectsUI();
+                    drawAllEffectPanels();
                     if (statPanelOpen && _tdNow - _statPanelLastRefresh >= 250) {
                         _statPanelLastRefresh = _tdNow;
                         renderStatPanel();
