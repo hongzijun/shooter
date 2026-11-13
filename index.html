@@ -2325,20 +2325,20 @@
 
         /** 触控暂停: 复用现有暂停菜单 (含训练场「保存数值」按钮状态) */
         function touchTogglePause() {
-            if (gameState !== 'playing' && gameState !== 'pvp' && gameState !== 'training') return;
+            if (gameState !== 'playing' && gameState !== 'pvp' && (gameState !== 'training' && gameState !== 'tdtraining')) return;
             if (isDrafting || isAwardShowing) return;
             clearTouchInputState();
             isPaused = !isPaused;
             const pm = document.getElementById('pauseMenu');
             if (pm) pm.style.display = isPaused ? 'flex' : 'none';
             const pst = document.getElementById('pauseSaveTuneBtn');
-            if (pst) pst.style.display = (isPaused && gameState === 'training') ? 'flex' : 'none';
+            if (pst) pst.style.display = (isPaused && (gameState === 'training' || gameState === 'tdtraining')) ? 'flex' : 'none';
             updateTouchLayerVisibility();
         }
 
         /** 触控打开/关闭全属性面板; 打开时冻结游戏并显示右上角关闭键 */
         function touchToggleStats() {
-            if (gameState !== 'playing' && gameState !== 'pvp' && gameState !== 'training') return;
+            if (gameState !== 'playing' && gameState !== 'pvp' && (gameState !== 'training' && gameState !== 'tdtraining')) return;
             if (isPaused || isDrafting || isAwardShowing) return;
             if (statPanelOpen) { touchCloseStats(); return; }
             clearTouchInputState();
@@ -2382,7 +2382,7 @@
                         const _shopOpen = _touchOverlayShown(document.getElementById('trainShop'));
                         const _tuneOpen = _touchOverlayShown(document.getElementById('trainTune'));
                         show = !(_shopOpen || _tuneOpen)
-                            && (gameState === 'playing' || gameState === 'pvp' || gameState === 'training')
+                            && (gameState === 'playing' || gameState === 'pvp' || (gameState === 'training' || gameState === 'tdtraining'))
                             && !isPaused && !isDrafting && !isAwardShowing && !statPanelOpen;
                     }
                 }
@@ -3281,7 +3281,7 @@
         function getEntityCardLog(e) {
             if (!e) return [];
             // 训练场: 用实体自身的装配记录 (selectedCards / aiEquipLog 属于正式对局数据)
-            if (gameState === 'training' && Array.isArray(e.cardLog) && e.cardLog.length) return e.cardLog;
+            if ((gameState === 'training' || gameState === 'tdtraining') && Array.isArray(e.cardLog) && e.cardLog.length) return e.cardLog;
             if (e === player) return selectedCards;
             if (e.aiEquipLog && e.aiEquipLog.length) return e.aiEquipLog;
             return e.cardLog || [];
@@ -6947,7 +6947,7 @@
                         if (keys['4']) this.switchWeapon('smg');
                         if (keys['5']) this.switchWeapon('sniper');
                     }
-                } else if (gameState === 'training' && this.isAI) {
+                } else if ((gameState === 'training' || gameState === 'tdtraining') && this.isAI) {
                     // 兜底: 仅当靶子未标记 _trainManual 时才会走到 (正常不会命中)
                     const _pvx = this.vx, _pvy = this.vy;
                     this.updateAI();
@@ -7665,7 +7665,7 @@
                 if (hitTotal > highestDamageSingleShot) highestDamageSingleShot = hitTotal;
 
                 // === 训练场: 受伤统计 (总伤害 / 秒伤, 3 秒无伤害清零) ===
-                if (gameState === 'training' && this.isAI) {
+                if ((gameState === 'training' || gameState === 'tdtraining') && this.isAI) {
                     const _dnow = Date.now();
                     if (!this._trainDmgLast || _dnow - this._trainDmgLast > 3000) {
                         this._trainDmgTotal = 0;
@@ -7753,7 +7753,7 @@
                     if (gameState === 'topdown') {
                         return { dmg: actualDamage, shield: shieldHit, absorbed: shieldAbsorbed };
                     }
-                    if (gameState === 'training' && this.isAI) {
+                    if ((gameState === 'training' || gameState === 'tdtraining') && this.isAI) {
                         // 训练场靶子被击杀: 重置靶位 (非无敌时), 不进入死亡/复仇流程
                         this.health = this.maxHealth;
                         this.shield = 0;
@@ -8687,7 +8687,7 @@
             if (gameState === 'pvp') {
                 drawEffectPanel(playerA, 'tl'); drawEffectPanel(playerA, 'bl');
                 drawEffectPanel(playerB, 'tr'); drawEffectPanel(playerB, 'br');
-            } else if (gameState === 'training') {
+            } else if ((gameState === 'training' || gameState === 'tdtraining')) {
                 drawEffectPanel(player, 'tl'); drawEffectPanel(player, 'bl');
                 drawEffectPanel(ai, 'tr'); drawEffectPanel(ai, 'br');
             } else {
@@ -9129,7 +9129,7 @@
             if (gameState === 'pvp') {
                 drawStaticColumn(playerA, 'left');
                 drawStaticColumn(playerB, 'right');
-            } else if (gameState === 'training') {
+            } else if ((gameState === 'training' || gameState === 'tdtraining')) {
                 drawStaticColumn(player, 'left');
                 drawStaticColumn(ai, 'right');
             } else {
@@ -11184,7 +11184,7 @@
         }
 
         function openTrainTune() {
-            if (gameState !== 'training') return;
+            if ((gameState !== 'training' && gameState !== 'tdtraining')) return;
             const el = document.getElementById('trainTune');
             if (!el) return;
             trainTuneSide = 'mine';
@@ -11403,7 +11403,7 @@
                 });
             }
             // 成长只在训练场结算 (双方都按「模拟回合」), 正式对局/无尽不受影响
-            const round = (gameState === 'training') ? Math.max(1, Math.round(t.aiRound || 1)) : 1;
+            const round = ((gameState === 'training' || gameState === 'tdtraining')) ? Math.max(1, Math.round(t.aiRound || 1)) : 1;
             const i = round - 1;
             const g = t.growth || { hpPerRound: 0, atkPerRound: 0, dmgMultPerRound: 0, defPerRound: 0, penPerRound: 0 };
             ent.maxHealth = Math.max(1, Math.round((t.baseHp || 0) + g.hpPerRound * i));
@@ -11441,7 +11441,7 @@
                 updateUI();
                 return;
             }
-            if (gameState !== 'training') return;
+            if ((gameState !== 'training' && gameState !== 'tdtraining')) return;
             if (player) trainApplyLoadout('mine');
             if (ai) trainApplyLoadout('enemy');
         }
@@ -12000,7 +12000,9 @@
                     '能量条移到左下 / 右下；角色外圈新增当前能量占比环（能量越高越满）',
                     '修复俯视刀剑：补齐挥刀冷却（与横版同源，AI ×1.2，不能再无限连点）；伤害改为横版公式（基础伤害 + 蓄力系数，计入暴击 / 连击 / 装备特效，AI ×0.85）',
                     '刀剑新增黑色多边形斩击特效：命中或挥空时从左向右 / 从右向左扫过黑色环形扇区，并带白色描边与灰白内层高光',
-                    '俯视头顶 UI 完全照抄横版：血条 105×6 动态颜色（>60% 绿 / >30% 橙 / 否则红）、护盾条在血条上方（每条=最大生命、最多 5 层、蓝色）、血量与护盾数值、命数心形，刀蓄力条移到血条下方'
+                    '俯视头顶 UI 完全照抄横版：血条 105×6 动态颜色（>60% 绿 / >30% 橙 / 否则红）、护盾条在血条上方（每条=最大生命、最多 5 层、蓝色）、血量与护盾数值、命数心形，刀蓄力条移到血条下方',
+                    '修复俯视训练场无法操作：键鼠输入现在在训练场生效；补齐训练调试台（装配卡牌 / 无敌 / 重置靶位 / 数值设置）、底部调试信息与 AI 头顶总伤害 / 秒伤面板',
+                    '角色外圈能量环宽度加粗一倍（3 → 6）'
                 ]
             },
             {
@@ -13175,6 +13177,18 @@
             robeBurnTick(ai, player, now);
             try { updateWaveCountdown(); } catch (e) { }
             if (!TD._achAt || now - TD._achAt >= 500) { TD._achAt = now; try { checkAchievements(); } catch (e) { } }
+            // 训练场调试条
+            if (gameState === 'tdtraining' && (!TD._dbgAt || now - TD._dbgAt >= 250)) {
+                TD._dbgAt = now;
+                const _dbg = document.getElementById('trainingDebug');
+                if (_dbg) {
+                    const _st = (typeof trainDmgStats === 'function' && ai) ? trainDmgStats(ai) : { total: 0, dps: 0 };
+                    _dbg.innerHTML = '位置 ' + Math.round(player.x) + ',' + Math.round(player.y) +
+                        ' · 能量 ' + Math.round(tdEnergy(player)) + '/' + Math.round(tdEnergyMaxOf(player)) +
+                        ' · AI 生命 ' + Math.round(ai.health) + '/' + Math.round(ai.maxHealth) +
+                        ' · 总伤害 ' + _st.total + ' · 秒伤 ' + _st.dps;
+                }
+            }
             // 刀剑内置蓄力: 切换其他武器时也持续累积 (暗黑戒指可缩短)
             if (player) {
                 const _pc = 1 * Math.max(0.1, (player.equip && player.equip.swordChargeMult) || 1);
@@ -13198,9 +13212,10 @@
                 const _emax = Math.max(1, tdEnergyMaxOf(ent));
                 const _er = Math.max(0, Math.min(1, tdEnergy(ent) / _emax));
                 ctx.strokeStyle = 'rgba(255,255,255,0.16)';
-                ctx.lineWidth = 3;
+                ctx.lineWidth = 6;
                 ctx.beginPath(); ctx.arc(ent.x, ent.y, r + 5, 0, Math.PI * 2); ctx.stroke();
                 ctx.strokeStyle = ent.isAI ? '#ffb86b' : '#55efc4';
+                ctx.lineWidth = 6;
                 ctx.beginPath(); ctx.arc(ent.x, ent.y, r + 5, -Math.PI / 2, -Math.PI / 2 + Math.PI * 2 * _er); ctx.stroke();
             }
             // 炙热长袍: 90px 灼烧范围光圈 (与横版 drawRobeAura 一致)
@@ -13468,6 +13483,10 @@
             if (player && player.health > 0) tdDrawEntity(player, '#4f8eff', now);
             if (ai && ai.health > 0) tdDrawEntity(ai, '#ff6b6b', now);
             ctx.restore();
+            // 训练场: AI 头顶总伤害 / 秒伤面板 (与横版同源, 屏幕空间绘制)
+            if (gameState === 'tdtraining' && ai && ai.health > 0) {
+                try { drawTrainDamagePanel(ctx, ai, ai.x * sc.s + sc.ox, ai.y * sc.s + sc.oy); } catch (e) { }
+            }
             tdDrawHUD(now);
         }
 
@@ -13568,6 +13587,11 @@
             const _li = document.getElementById('livesInfo');
             if (_li) { if (!TD._livesPos) TD._livesPos = _li.style.top; _li.style.top = '150px'; }
             TD.started = true;
+            const _tg = document.getElementById('trainToggle');
+            if (_tg) _tg.style.display = 'flex';
+            const _dbg = document.getElementById('trainingDebug');
+            if (_dbg) _dbg.style.display = 'block';
+            try { updateTrainGodBtns(); } catch (e) { }
             updateUI();
             try { GameAudio.init(); } catch (e) { }
             showFloatingText('🥊 俯视训练场', '#2ed573');
@@ -13674,6 +13698,7 @@
 
         function tdExit() {
             _exitTdTune();
+            try { if (typeof _leaveTrainModeUI === 'function') _leaveTrainModeUI(); } catch (e) { }
             TD.started = false;
             TD.fireHeld = false;
             TD.pCharging = false;
@@ -13696,7 +13721,7 @@
         }
 
         function tdOnMouseMove(e) {
-            if (gameState !== 'topdown') return;
+            if (gameState !== 'topdown' && gameState !== 'tdtraining') return;
             const r = canvas.getBoundingClientRect();
             if (!r.width || !r.height) return;
             TD.mouseX = (e.clientX - r.left) * (canvas.width / r.width);
@@ -13704,7 +13729,7 @@
         }
         window.addEventListener('mousemove', tdOnMouseMove);
         window.addEventListener('mousedown', function (e) {
-            if (gameState !== 'topdown' || e.button !== 0) return;
+            if ((gameState !== 'topdown' && gameState !== 'tdtraining') || e.button !== 0) return;
             TD.fireHeld = true;
             TD.firePressed = true;
         });
@@ -13713,10 +13738,10 @@
             TD.fireHeld = false;
         });
         window.addEventListener('contextmenu', function (e) {
-            if (gameState === 'topdown') e.preventDefault();
+            if (gameState === 'topdown' || gameState === 'tdtraining') e.preventDefault();
         });
         window.addEventListener('keydown', function (e) {
-            if (gameState !== 'topdown') return;
+            if (gameState !== 'topdown' && gameState !== 'tdtraining') return;
             const kk = String(e.key || '').toLowerCase();
             TD.keys[kk] = true;
             if (kk === 'r' && player) player.reload();
@@ -14607,7 +14632,7 @@
             const x = t.atkPerSecBase || 0;                            // 基数 x (基础属性面板)
             const y = (t.growth && t.growth.atkPerSecPerRound) || 0;   // 增量 y (成长面板: 每波 +y 点)
             let z = 1;
-            if (gameState === 'training') z = Math.max(1, Math.round(t.aiRound || 1));
+            if ((gameState === 'training' || gameState === 'tdtraining')) z = Math.max(1, Math.round(t.aiRound || 1));
             else if (gameState === 'pvp') z = Math.max(1, pvpRound || 1);
             else z = Math.max(1, wave || 1);
             return Math.max(0, x + y * (z - 1));
@@ -14621,7 +14646,7 @@
             const x = t.healDecayBase || 0;
             const y = (t.growth && t.growth.healDecayPerRound) || 0;
             let z = 1;
-            if (gameState === 'training') z = Math.max(1, Math.round(t.aiRound || 1));
+            if ((gameState === 'training' || gameState === 'tdtraining')) z = Math.max(1, Math.round(t.aiRound || 1));
             else if (gameState === 'pvp') z = Math.max(1, pvpRound || 1);
             else z = Math.max(1, wave || 1);
             return Math.max(0, Math.min(0.95, x + y * (z - 1)));
@@ -14771,7 +14796,7 @@
         }
 
         function drawTrainDamagePanel(ctx, unit, screenX, screenY) {
-            if (gameState !== 'training' || !unit || unit.health <= 0) return;
+            if ((gameState !== 'training' && gameState !== 'tdtraining') || !unit || unit.health <= 0) return;
             const st = trainDmgStats(unit);
             const t1 = '总伤害 ' + st.total;
             const t2 = '秒伤 ' + st.dps;
@@ -14909,7 +14934,7 @@
                         // AI 炙热长袍光圈 (装备效果可视化, 与玩家同款)
                         drawRobeAura(ctx, ai);
                         drawPlayerComboNumber(ctx, ai, ai.x - camera.x, ai.y - camera.y);
-                        if (gameState === 'training') drawTrainDamagePanel(ctx, ai, ai.x - camera.x, ai.y - camera.y);
+                        if ((gameState === 'training' || gameState === 'tdtraining')) drawTrainDamagePanel(ctx, ai, ai.x - camera.x, ai.y - camera.y);
                     }
                     drawShieldOverlays();
                     restoreCameraZoomTransform();
@@ -15143,7 +15168,7 @@
 
         document.addEventListener('keydown', e => {
             // === 训练场输入框聚焦时: 键盘完全交给输入框自身 (否则输入数字切枪、方向键移动) ===
-            if (gameState === 'training') {
+            if ((gameState === 'training' || gameState === 'tdtraining')) {
                 const _ae = document.activeElement;
                 if (_ae && (_ae.tagName === 'INPUT' || _ae.tagName === 'TEXTAREA' || _ae.tagName === 'SELECT')) return;
             }
@@ -15184,7 +15209,7 @@
                 _DOM.pauseMenu.style.display = isPaused ? 'flex' : 'none';
                 // 「保存数值」按钮只在训练场暂停时出现
                 const _pstb = document.getElementById('pauseSaveTuneBtn');
-                if (_pstb) _pstb.style.display = (isPaused && gameState === 'training') ? 'flex' : 'none';
+                if (_pstb) _pstb.style.display = (isPaused && (gameState === 'training' || gameState === 'tdtraining')) ? 'flex' : 'none';
             }
         });
         document.addEventListener('keyup', e => { keys[e.key] = false });
