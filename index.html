@@ -1830,6 +1830,7 @@
             <button id="btnPvP" onclick="askStartPvP()" style="background:linear-gradient(135deg,#6c5ce7,#a29bfe);border:none;color:white;padding:14px 40px;border-radius:10px;font-size:18px;cursor:pointer;margin:10px;font-weight:bold;">⚔️ 双人对战</button>
             <button class="btn" id="btnTraining" onclick="startTraining()" style="background:linear-gradient(45deg,#2ed573,#1abc9c);">训练场</button>
             <button class="btn" id="btnTopdown" onclick="askStartTopdown()" style="background:linear-gradient(45deg,#00b894,#55efc4);color:#07231c;margin-top:8px;">🎯 俯视 PVE（实验）</button>
+            <button class="btn" id="btnTdTraining" onclick="startTopdownTraining()" style="background:linear-gradient(45deg,#6c5ce7,#a29bfe);margin-top:8px;">🥊 俯视训练场</button>
             <button class="btn" id="openSettingsBtn" onclick="toggleSettings()" style="background:linear-gradient(45deg,#4f8eff,#74b9ff);margin-top:8px;">📖 说明</button>
             <button class="btn" id="openNoticeBtn" onclick="toggleNotice()" style="background:linear-gradient(45deg,#ffd700,#ff9f43);margin-top:8px;color:#1a1a2e;">📢 更新公告（持续开发中）</button>
             <button class="btn touch-only" id="btnTouchSettings" onclick="openTouchSettings()" style="background:linear-gradient(45deg,#6c5ce7,#a29bfe);margin-top:8px;">🎮 按键设置</button>
@@ -2743,17 +2744,56 @@
                 healResist: 0,
                 healDecayBase: 0.03,  // x: 每秒减疗% 基数 (基础属性面板, 作用于对方回血; 默认每秒 3%)
                 weapons: weapons,
+                energyMax: 100,
+                energyRegen: 15,
                 aiRound: 2,
                 aiDrawCount: 1,
                 growthVer: 1,
                 tuneVer: 6,
                 growth: isEnemy
-                    ? { hpPerRound: 200, atkPerRound: 10, dmgMultPerRound: 0, defPerRound: 10, penPerRound: 5, redDefPerRound: 20, atkPerSecPerRound: 0.2, drawEveryRounds: 10, drawAddPerStep: 1, healDecayPerRound: 0 }
-                    : { hpPerRound: 150, atkPerRound: 5, dmgMultPerRound: 0, defPerRound: 5, penPerRound: 3, redDefPerRound: 18, atkPerSecPerRound: 0.15, drawEveryRounds: 0, drawAddPerStep: 1, healDecayPerRound: 0 }
+                    ? { hpPerRound: 200, atkPerRound: 10, dmgMultPerRound: 0, defPerRound: 10, penPerRound: 5, redDefPerRound: 20, atkPerSecPerRound: 0.2, drawEveryRounds: 10, drawAddPerStep: 1, healDecayPerRound: 0, energyMaxPerRound: 0, energyRegenPerRound: 0 }
+                    : { hpPerRound: 150, atkPerRound: 5, dmgMultPerRound: 0, defPerRound: 5, penPerRound: 3, redDefPerRound: 18, atkPerSecPerRound: 0.15, drawEveryRounds: 0, drawAddPerStep: 1, healDecayPerRound: 0, energyMaxPerRound: 0, energyRegenPerRound: 0 }
             };
         }
         // 双方默认数值统一在 _trainDefaultTune 维护 (面板可调, 保存写入本地存档)
         let TRAIN_TUNE = { mine: _trainDefaultTune('mine'), enemy: _trainDefaultTune('enemy') };
+        // === 俯视独立数值 (与横版 TRAIN_TUNE 互不干扰) ===
+        function _tdDefaultTune(side) {
+            const t = JSON.parse(JSON.stringify(_trainDefaultTune(side)));
+            if (t.energyMax == null) t.energyMax = 100;
+            if (t.energyRegen == null) t.energyRegen = 15;
+            t.growth = t.growth || {};
+            if (t.growth.energyMaxPerRound == null) t.growth.energyMaxPerRound = 0;
+            if (t.growth.energyRegenPerRound == null) t.growth.energyRegenPerRound = 0;
+            return t;
+        }
+        let TDT_TUNE = { mine: _tdDefaultTune('mine'), enemy: _tdDefaultTune('enemy') };
+        function _loadTdTune() {
+            try {
+                const raw = localStorage.getItem('shooter_td_tune_v1');
+                if (!raw) return;
+                const d = JSON.parse(raw);
+                ['mine', 'enemy'].forEach(function (side) {
+                    const def = _tdDefaultTune(side);
+                    const src = (d && d[side]) || {};
+                    const t = Object.assign(def, src);
+                    t.growth = Object.assign(def.growth, src.growth || {});
+                    t.weapons = Object.assign(def.weapons, src.weapons || {});
+                    TDT_TUNE[side] = t;
+                });
+            } catch (e) { }
+        }
+        function _enterTdTune() {
+            if (window._tdTuneSwapped) return;
+            window._tuneSavedRef = TRAIN_TUNE;
+            TRAIN_TUNE = TDT_TUNE;
+            window._tdTuneSwapped = true;
+        }
+        function _exitTdTune() {
+            if (!window._tdTuneSwapped) return;
+            TRAIN_TUNE = window._tuneSavedRef;
+            window._tdTuneSwapped = false;
+        }
 
         const ENHANCED_WEAPONS = [
             { name: '⚔️ 烈焰手枪', baseWeapon: 'pistol', damageMult: 2.2, fireRateMult: 0.85, color: '#ff3838', icon: '🔥' },
@@ -5423,6 +5463,7 @@
                 screenShake = { x: 0, y: 0, intensity: 0, duration: 0, color: '' };
                 deathFreeze = { active: false, timer: 0 };
                 camera = { x: 0, y: 0, zoom: 1 };
+                _enterTdTune();
                 loadTrainTune();
                 score = data.score || 0; kills = data.kills || 0; combo = data.combo || 0;
                 maxCombo = data.maxCombo || 0; wave = data.wave || 1;
@@ -5436,8 +5477,8 @@
                 ai = new Player((data.ai && data.ai.x) || TD.W - 160, (data.ai && data.ai.y) || TD.H / 2, true);
                 _applyEntity(ai, data.ai);
                 player._tdRadius = 22; ai._tdRadius = 22;
-                player._tdEnergy = _num(data.td && data.td.pEnergy, TD.energyMax);
-                ai._tdEnergy = _num(data.td && data.td.aEnergy, TD.energyMax);
+                player._tdEnergy = _num(data.td && data.td.pEnergy, tdEnergyMaxOf(player));
+                ai._tdEnergy = _num(data.td && data.td.aEnergy, tdEnergyMaxOf(ai));
                 player._tdSwordCharge = 0; ai._tdSwordCharge = 0;
                 player._tdKbVX = 0; player._tdKbVY = 0; ai._tdKbVX = 0; ai._tdKbVY = 0;
                 player._tdInvUntil = Date.now() + 1200; ai._tdInvUntil = Date.now() + 1200;
@@ -11074,7 +11115,11 @@
             { key: 'healMult', label: '治疗倍率' },
             { key: 'shieldMult', label: '护盾倍率' },
             { key: 'healResist', label: '抗治疗(%)', pct: true },
-            { key: 'healDecayBase', label: '每秒减疗(%)', pct: true }
+            { key: 'healDecayBase', label: '每秒减疗(%)', pct: true },
+            { key: 'energyMax', label: '初始最大能量', tdOnly: true },
+            { key: 'energyRegen', label: '每秒能量增长', tdOnly: true },
+            { key: 'growth.energyMaxPerRound', label: '每回合能量上限成长', tdOnly: true },
+            { key: 'growth.energyRegenPerRound', label: '每回合每秒能量成长', tdOnly: true }
         ];
         const TRAIN_TUNE_AI_FIELDS = [
             { key: 'aiRound', label: '模拟回合' },
@@ -11172,6 +11217,7 @@
 
             let html = '<div class="tt-sec">基础</div><div class="tt-grid">';
             TRAIN_TUNE_FIELDS.forEach(function (f) {
+                if (f.tdOnly && !window._tdTuneSwapped) return;
                 const raw = _tuneGet(t, f.key);
                 const val = f.pct ? raw * 100 : raw;
                 html += '<div class="tt-field"><span>' + f.label + '</span>' +
@@ -11184,6 +11230,7 @@
             html += '<div class="tt-sec">' + (trainTuneSide === 'enemy' ? 'AI 成长 (仅训练场靶子生效)' : '成长 (训练场按模拟回合结算)') + '</div><div class="tt-grid">';
             TRAIN_TUNE_AI_FIELDS.forEach(function (f) {
                 if (f.only && f.only !== trainTuneSide) return;
+                if (f.tdOnly && !window._tdTuneSwapped) return;
                 const raw = _tuneGet(t, f.key);
                 const val = f.pct ? raw * 100 : raw;
                 html += '<div class="tt-field"><span>' + f.label + '</span>' +
@@ -11388,6 +11435,12 @@
 
         // 让数值在训练场即时生效: 双方各自「重建 + applyTrainTune + 重放卡牌」
         function applyTuneToTraining() {
+            if (gameState === 'tdtraining') {
+                if (player) applyTrainTune(player, 'mine');
+                if (ai) applyTuneWeapons(ai, 'enemy');
+                updateUI();
+                return;
+            }
             if (gameState !== 'training') return;
             if (player) trainApplyLoadout('mine');
             if (ai) trainApplyLoadout('enemy');
@@ -11395,7 +11448,8 @@
 
         function saveTrainTune() {
             try {
-                localStorage.setItem('shooter_train_tune_v1', JSON.stringify(TRAIN_TUNE));
+                const _tk = window._tdTuneSwapped ? 'shooter_td_tune_v1' : 'shooter_train_tune_v1';
+                localStorage.setItem(_tk, JSON.stringify(TRAIN_TUNE));
                 applyTuneToTraining();   // 若正在训练场, 保存后立即把数值重新套到双方
                 return true;
             } catch (err) {
@@ -11407,7 +11461,7 @@
         function loadTrainTune() {
             let data = null;
             try {
-                const raw = localStorage.getItem('shooter_train_tune_v1');
+                const raw = localStorage.getItem(window._tdTuneSwapped ? 'shooter_td_tune_v1' : 'shooter_train_tune_v1');
                 if (raw) data = JSON.parse(raw);
             } catch (err) { data = null; }
             const def = { mine: _trainDefaultTune('mine'), enemy: _trainDefaultTune('enemy') };
@@ -11682,7 +11736,7 @@
         function updateFullStatus() {
             const panel = _DOM.hudFullStatus;
             if (!panel) return;
-            if (gameState !== 'playing' && gameState !== 'topdown') { panel.style.display = 'none'; return; }
+            if (gameState !== 'playing' && gameState !== 'topdown' && gameState !== 'tdtraining') { panel.style.display = 'none'; return; }
             panel.style.display = 'block';
 
             const w = player.weapon;
@@ -11745,7 +11799,7 @@
             const as = _DOM.aiStatus;
             if (!panel || !ps || !as) return;
 
-            if (gameState !== 'playing' && gameState !== 'topdown') {
+            if (gameState !== 'playing' && gameState !== 'topdown' && gameState !== 'tdtraining') {
                 panel.style.display = 'none';
                 return;
             }
@@ -11812,7 +11866,7 @@
         function updateTopStatusPanel() {
             const panel = _DOM.topStatusPanel;
             if (!panel) return;
-            if ((gameState !== 'playing' && gameState !== 'topdown') || !player) {
+            if ((gameState !== 'playing' && gameState !== 'topdown' && gameState !== 'tdtraining') || !player) {
                 panel.style.display = 'none';
                 return;
             }
@@ -11940,7 +11994,10 @@
                     '俯视新增 E 键切换战刃（在战刃与上一把远程武器之间切换），底部键位说明同步；受击闪白、护盾光圈已补齐',
                     '俯视补齐炙热长袍 90px 灼烧光圈与连杀数字显示',
                     '俯视补齐声音同步：射击音效按武器区分（手枪 / 步枪 / 霰弹 / 冲锋 / 狙击）、挥刀音效、受伤音效、换弹与选卡提示音、失败音效均与横版一致',
-                    '俯视显示与横版对齐：命中屏幕震动已生效、头顶血量只显示当前值、护盾条以最大生命为基数（与左上 HUD 同源）'
+                    '俯视显示与横版对齐：命中屏幕震动已生效、头顶血量只显示当前值、护盾条以最大生命为基数（与左上 HUD 同源）',
+                    '新增「俯视训练场」入口：数值面板与普通训练场完全独立（各自一份本地存储），互不影响；训练场 AI 为静止靶子，打空 2 秒后满血重置',
+                    '俯视数值面板新增：双方初始最大能量、每秒能量增长、每回合能量上限成长、每回合每秒能量成长（两项成长默认 0）',
+                    '能量条移到左下 / 右下；角色外圈新增当前能量占比环（能量越高越满）'
                 ]
             },
             {
@@ -12382,6 +12439,7 @@
             if (mode === 'pvp') startPvP();
             else if (mode === 'training') startTraining();
             else if (mode === 'topdown') startTopdown();
+            else if (mode === 'tdtraining') startTopdownTraining();
             else startGame();
         }
 
@@ -12389,6 +12447,7 @@
         // 原实现跳转 '../index.html' 指向不存在的 games/index.html, file:// 下报 ERR_BLOCKED_BY_CLIENT;
         // 现改为直接切回本页主菜单, 不跨目录跳转
         function goHomeMenu(saveFirst) {
+            _exitTdTune();
             try {
                 _leaveTrainModeUI();
                 if (saveFirst !== false) autoSaveGame();
@@ -12512,16 +12571,30 @@
             const sc = tdScale();
             return { x: (sx - sc.ox) / sc.s, y: (sy - sc.oy) / sc.s };
         }
+        function tdEnergyMaxOf(ent) {
+            const t = (typeof TRAIN_TUNE !== 'undefined' && TRAIN_TUNE) ? (TRAIN_TUNE[ent && ent.isAI ? 'enemy' : 'mine'] || {}) : {};
+            const g = t.growth || {};
+            const _round = (gameState === 'tdtraining') ? Math.max(1, Math.round(t.aiRound || 1)) : Math.max(1, wave || 1);
+            const base = (t.energyMax != null) ? t.energyMax : 100;
+            return Math.max(1, base + (g.energyMaxPerRound || 0) * (_round - 1));
+        }
+        function tdRegenOf(ent) {
+            const t = (typeof TRAIN_TUNE !== 'undefined' && TRAIN_TUNE) ? (TRAIN_TUNE[ent && ent.isAI ? 'enemy' : 'mine'] || {}) : {};
+            const g = t.growth || {};
+            const _round = (gameState === 'tdtraining') ? Math.max(1, Math.round(t.aiRound || 1)) : Math.max(1, wave || 1);
+            const base = (t.energyRegen != null) ? t.energyRegen : 15;
+            return Math.max(0, base + (g.energyRegenPerRound || 0) * (_round - 1));
+        }
         function tdEnergy(ent) {
             if (!ent) return 0;
-            if (typeof ent._tdEnergy !== 'number') ent._tdEnergy = TD.energyMax;
+            if (typeof ent._tdEnergy !== 'number') ent._tdEnergy = tdEnergyMaxOf(ent);
             return ent._tdEnergy;
         }
         function tdWeaponKey(ent) { return (ent && ent.currentWeapon) ? ent.currentWeapon : 'rifle'; }
         function tdWeaponCost(ent) { return TD_COST[tdWeaponKey(ent)] || 10; }
         function tdRegen(ent, dt) {
             if (!ent) return;
-            ent._tdEnergy = Math.min(TD.energyMax, tdEnergy(ent) + TD.regen * dt);
+            ent._tdEnergy = Math.min(tdEnergyMaxOf(ent), tdEnergy(ent) + tdRegenOf(ent) * dt);
         }
         function tdEnemyOf(ent) { return ent === player ? ai : player; }
 
@@ -12701,7 +12774,7 @@
             player.invincible = false; player.invincibleEnd = 0;
             player.x = 150; player.y = TD.H / 2;
             player._tdKbVX = 0; player._tdKbVY = 0;
-            player._tdEnergy = TD.energyMax;
+            player._tdEnergy = tdEnergyMaxOf(player);
             player._tdInvUntil = Date.now() + 1500;
             TD.pDeadAt = 0; TD.pRespawnAt = 0;
             Object.keys(player.weapons).forEach(function (k) {
@@ -12718,7 +12791,7 @@
             ai.x = TD.W - 160; ai.y = TD.H / 2;
             ai.vx = 0; ai.vy = 0; ai.isOnGround = false;
             ai._tdKbVX = 0; ai._tdKbVY = 0;
-            ai._tdEnergy = TD.energyMax;
+            ai._tdEnergy = tdEnergyMaxOf(ai);
             ai._tdInvUntil = Date.now() + 1500;
             ai._tdSwordCharge = 0;
             ai.lastShot = 0;
@@ -12943,6 +13016,23 @@
 
         function tdUpdateAI(now) {
             if (!ai) return;
+            // === 俯视训练场: AI 为静止靶子, 不移动不还手; 打空 2 秒后满血重置 ===
+            if (gameState === 'tdtraining') {
+                TD.aMoveX = 0; TD.aMoveY = 0;
+                if (ai.health <= 0) {
+                    if (!TD.aDeadAt) TD.aDeadAt = now;
+                    if (now - TD.aDeadAt > 2000) {
+                        ai.health = ai.maxHealth; ai.shield = 0;
+                        ai._tdEnergy = tdEnergyMaxOf(ai);
+                        TD.aDeadAt = 0;
+                    }
+                } else {
+                    tdRegen(ai, TD.dt || 0);
+                    ai.updateReload();
+                    ai._tdAim = Math.atan2(player.y - ai.y, player.x - ai.x);
+                }
+                return;
+            }
             if (ai.health <= 0) {
                 if (!TD.aDeadAt) {
                     TD.aDeadAt = now;
@@ -13075,6 +13165,16 @@
         function tdDrawEntity(ent, color, now) {
             const aim = ent._tdAim || 0;
             const r = ent._tdRadius || TD.radius;
+            // 能量占比圈: 紧贴角色外圈
+            {
+                const _emax = Math.max(1, tdEnergyMaxOf(ent));
+                const _er = Math.max(0, Math.min(1, tdEnergy(ent) / _emax));
+                ctx.strokeStyle = 'rgba(255,255,255,0.16)';
+                ctx.lineWidth = 3;
+                ctx.beginPath(); ctx.arc(ent.x, ent.y, r + 5, 0, Math.PI * 2); ctx.stroke();
+                ctx.strokeStyle = ent.isAI ? '#ffb86b' : '#55efc4';
+                ctx.beginPath(); ctx.arc(ent.x, ent.y, r + 5, -Math.PI / 2, -Math.PI / 2 + Math.PI * 2 * _er); ctx.stroke();
+            }
             // 炙热长袍: 90px 灼烧范围光圈 (与横版 drawRobeAura 一致)
             if (ent.equip && ent.equip.robeCount > 0) {
                 ctx.fillStyle = 'rgba(255,120,40,0.10)';
@@ -13208,11 +13308,12 @@
             ctx.textBaseline = 'alphabetic';
         }
 
-        function tdDrawEnergyRing(cx, cy, val, color) {
+        function tdDrawEnergyRing(cx, cy, val, max, color) {
+            const _max = Math.max(1, max || 100);
             const r = 34, lw = 7;
             ctx.beginPath(); ctx.arc(cx, cy, r, 0, Math.PI * 2);
             ctx.strokeStyle = 'rgba(255,255,255,0.14)'; ctx.lineWidth = lw; ctx.stroke();
-            const ratio = Math.max(0, Math.min(1, val / TD.energyMax));
+            const ratio = Math.max(0, Math.min(1, val / _max));
             ctx.beginPath(); ctx.arc(cx, cy, r, -Math.PI / 2, -Math.PI / 2 + Math.PI * 2 * ratio);
             ctx.strokeStyle = color; ctx.lineWidth = lw; ctx.lineCap = 'round'; ctx.stroke();
             ctx.fillStyle = 'rgba(0,0,0,0.42)';
@@ -13224,7 +13325,7 @@
             ctx.fillText(Math.floor(val) + '', cx, cy - 6);
             ctx.font = '10px Arial';
             ctx.fillStyle = 'rgba(255,255,255,0.55)';
-            ctx.fillText('/' + TD.energyMax, cx, cy + 11);
+            ctx.fillText('/' + Math.round(_max), cx, cy + 11);
             ctx.textBaseline = 'alphabetic';
         }
 
@@ -13288,13 +13389,13 @@
             // 横版 HUD 已完整照搬 (血条 / 护盾 / 武器 / 状态 / 分数 / 命数),
             // 这里只补俯视专属: 双方能量环 (底部中央左右对称) + 刀蓄力 + 准星
             const ringY = canvas.height - 250;
-            tdDrawEnergyRing(92, ringY, tdEnergy(player), '#55efc4');
-            tdDrawEnergyRing(canvas.width - 92, 250, tdEnergy(ai), '#ffb86b');
+            tdDrawEnergyRing(92, ringY, tdEnergy(player), tdEnergyMaxOf(player), '#55efc4');
+            tdDrawEnergyRing(canvas.width - 92, canvas.height - 250, tdEnergy(ai), tdEnergyMaxOf(ai), '#ffb86b');
             ctx.textAlign = 'center';
             ctx.font = '11px Arial';
             ctx.fillStyle = 'rgba(255,255,255,0.6)';
             ctx.fillText('我方能量', 92, ringY + 54);
-            ctx.fillText('敌方能量', canvas.width - 92, 304);
+            ctx.fillText('敌方能量', canvas.width - 92, canvas.height - 196);
 
             if (TD.mouseX > 0 && TD.mouseY > 0) {
                 const mx = TD.mouseX, my = TD.mouseY;
@@ -13314,6 +13415,76 @@
                 ctx.fillText('能量不足', 92, ringY - 52);
             }
             // 失败界面已改为照搬横版 #gameOver 面板, 不再自绘
+        }
+
+        function startTopdownTraining() {
+            _initDOMCache();
+            window._lastGameMode = 'tdtraining';
+            closeStartChoice();
+            _enterTdTune();
+            loadTrainTune();
+            if (_DOM.menu) _DOM.menu.classList.add('hidden');
+            if (_DOM.gameOver) _DOM.gameOver.classList.add('hidden');
+            if (_DOM.victoryPanel) _DOM.victoryPanel.style.display = 'none';
+            if (_DOM.pvpWeaponDisplayA) _DOM.pvpWeaponDisplayA.style.display = 'none';
+            if (_DOM.pvpWeaponDisplayB) _DOM.pvpWeaponDisplayB.style.display = 'none';
+            if (_DOM.livesInfo) _DOM.livesInfo.style.display = 'none';
+            const _ov = document.getElementById('draftOverlay'); if (_ov) _ov.style.display = 'none';
+            const _fp = document.getElementById('freePickOverlay'); if (_fp) _fp.style.display = 'none';
+            resizeCanvas();
+            bullets = []; particles = [];
+            timeScale = 1;
+            screenShake = { x: 0, y: 0, intensity: 0, duration: 0, color: '' };
+            deathFreeze = { active: false, timer: 0 };
+            camera = { x: 0, y: 0, zoom: 1 };
+            gameState = 'tdtraining';
+            player = new Player(360, TD.H / 2, false);
+            ai = new Player(TD.W - 360, TD.H / 2, true);
+            try { ensureEquipObj(player); ensureFx(player); ensureEquipObj(ai); ensureFx(ai); } catch (e) { }
+            applyTrainTune(player, 'mine');
+            applyTuneWeapons(ai, 'enemy');
+            player.shield = 0; ai.shield = 0;
+            player.lives = 99; player.maxLives = 99;
+            ai.lives = 99; ai.maxLives = 99;
+            player._tdRadius = 22; ai._tdRadius = 22;
+            [player, ai].forEach(function (ent) {
+                Object.keys(ent.weapons).forEach(function (k) {
+                    const w = ent.weapons[k];
+                    if (!w || w.isMelee) return;
+                    w.ammo = w.maxAmmo; w.reserve = 9999;
+                });
+            });
+            TD.wave = 1; TD.kills = 0; TD.score = 0; TD.lives = 99;
+            TD.over = false; TD.pDeadAt = 0; TD.aDeadAt = 0; TD.pRespawnAt = 0; TD.aRespawnAt = 0;
+            TD.aThinkAt = 0; TD.aWeaponAt = 0; TD.aMeleeAt = 0; TD.aMeleeUntil = 0;
+            TD.fireHeld = false; TD.firePressed = false; TD.aThreat = 0; TD._achAt = 0;
+            TD.lastNow = Date.now(); TD.dt = 0; TD._noEnergyAt = 0;
+            player._tdAim = 0; ai._tdAim = Math.PI;
+            player.lastShot = 0; ai.lastShot = 0;
+            player._tdEnergy = tdEnergyMaxOf(player); ai._tdEnergy = tdEnergyMaxOf(ai);
+            isPaused = false; isDrafting = false; statPanelOpen = false; isAwardShowing = false;
+            TD._hidden = [];
+            const _ctrl = document.getElementById('controls');
+            if (_ctrl) {
+                if (!TD._ctrlHTML) TD._ctrlHTML = _ctrl.innerHTML;
+                _ctrl.innerHTML = '<div><span class="key">WASD</span> 移动</div>' +
+                    '<div><span class="key">鼠标</span> 瞄准 / 射击</div>' +
+                    '<div><span class="key">空格</span> 能量位移</div>' +
+                    '<div><span class="key">R</span> 换弹</div>' +
+                    '<div><span class="key">1-5</span> 武器</div>' +
+                    '<div><span class="key">E / 6</span> 战刃</div>';
+            }
+            const _hfs = document.getElementById('hudFullStatus');
+            if (_hfs) {
+                if (!TD._hfsPos) TD._hfsPos = { top: _hfs.style.top, left: _hfs.style.left };
+                _hfs.style.top = '224px'; _hfs.style.left = '12px';
+            }
+            const _li = document.getElementById('livesInfo');
+            if (_li) { if (!TD._livesPos) TD._livesPos = _li.style.top; _li.style.top = '150px'; }
+            TD.started = true;
+            updateUI();
+            try { GameAudio.init(); } catch (e) { }
+            showFloatingText('🥊 俯视训练场', '#2ed573');
         }
 
         function startTopdown() {
@@ -13361,6 +13532,7 @@
             deathFreeze = { active: false, timer: 0 };
             camera = { x: 0, y: 0, zoom: 1 };
 
+            _enterTdTune();
             loadTrainTune();
             player = new Player(160, TD.H / 2, false);
             ai = new Player(TD.W - 160, TD.H / 2, true);
@@ -13374,7 +13546,7 @@
             ai.lives = CONFIG.MAX_LIVES;
             tdRespawnAI(true);          // AI 按无尽成长公式出生
             tdRespawnPlayer();          // 玩家按训练面板生命出生（会设置 1.5 秒出生无敌）
-            player._tdEnergy = TD.energyMax; ai._tdEnergy = TD.energyMax;
+            player._tdEnergy = tdEnergyMaxOf(player); ai._tdEnergy = tdEnergyMaxOf(ai);
             player.currentWeapon = 'rifle'; ai.currentWeapon = 'rifle';
             [player, ai].forEach(function (ent) {
                 Object.keys(ent.weapons).forEach(function (k) {
@@ -13415,6 +13587,7 @@
         }
 
         function tdExit() {
+            _exitTdTune();
             TD.started = false;
             TD.fireHeld = false;
             TD.pCharging = false;
@@ -13492,6 +13665,7 @@
 
         function startGame() {
             _initDOMCache();
+            _exitTdTune();
             window._lastGameMode = 'playing';
             if (autoSaveIntervalId) clearInterval(autoSaveIntervalId);
             _beginNewRun();
@@ -14694,7 +14868,7 @@
                 }
             }
 
-            if (gameState === 'topdown') {
+            if (gameState === 'topdown' || gameState === 'tdtraining') {
                 try {
                     const _tdNow = Date.now();
                     const _tdDt = Math.min(0.1, Math.max(0, (_tdNow - (TD.lastNow || _tdNow)) / 1000));
@@ -14889,7 +15063,7 @@
             }
             // === 透明暂停: CapsLock 切换 (无任何暂停提示, 仅飘一行「暂停游戏」) ===
             if (e.key === 'CapsLock') {
-                if (gameState === 'playing' || gameState === 'pvp' || gameState === 'training' || gameState === 'topdown') {
+                if (gameState === 'playing' || gameState === 'pvp' || gameState === 'training' || gameState === 'topdown' || gameState === 'tdtraining') {
                     _tpTogglePause();
                 }
                 return;
@@ -14903,7 +15077,7 @@
             // === Task 6: Tab 全属性面板 —— 游戏进行中按 Tab 打开 (暂停实体更新), 再按 Tab/Esc 关闭恢复 ===
             // 复用暂停机制但不弹暂停菜单; 与 isDrafting 互斥 (选卡期间不响应)
             if ((e.key === 'Tab' || (e.key === 'Escape' && statPanelOpen)) &&
-                (gameState === 'playing' || gameState === 'training' || gameState === 'pvp' || gameState === 'topdown') && !isDrafting) {
+                (gameState === 'playing' || gameState === 'training' || gameState === 'pvp' || gameState === 'topdown' || gameState === 'tdtraining') && !isDrafting) {
                 e.preventDefault();
                 statPanelOpen = !statPanelOpen;
                 const sp = document.getElementById('statPanel');
@@ -14916,7 +15090,7 @@
             keys[e.key] = true;
 
             // 按 ESC 键切换暂停状态
-            if (e.key === 'Escape' && (gameState === 'playing' || gameState === 'training' || gameState === 'pvp' || gameState === 'topdown')) {
+            if (e.key === 'Escape' && (gameState === 'playing' || gameState === 'training' || gameState === 'pvp' || gameState === 'topdown' || gameState === 'tdtraining')) {
                 if (gameState === 'topdown' && TD.over) { tdExit(); return; }
                 if (isDrafting) return; // 选卡期间禁止 ESC 打断 (isDrafting 独立于 isPaused)
                 if (isAwardShowing) return; // AI 装备获取动画期间同样不响应 ESC
