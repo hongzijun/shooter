@@ -2399,10 +2399,9 @@ body.low-perf #menu::before { filter: none; opacity: .18; }
                         <label style="font-size:12px;color:#8fa6c8;display:flex;flex-direction:column;gap:4px;">每波毒圈减疗（% / 次缩圈）<input id="envDecayPerShrink" type="number" min="0" max="95" step="1" style="background:rgba(0,0,0,0.35);border:1px solid rgba(255,159,67,0.45);border-radius:8px;color:#fff;padding:8px 10px;font-size:14px;outline:none;"></label>
                     </div>
                     <div style="display:flex;gap:8px;margin-top:14px;">
-                        <button onclick="saveTdEnv()" style="flex:1;background:linear-gradient(45deg,#8a5cff,#c084ff);border:none;color:#fff;padding:11px;border-radius:9px;font-size:14px;font-weight:bold;cursor:pointer;">保存并生效</button>
-                        <button onclick="resetTdEnv()" style="background:rgba(255,255,255,0.1);border:1px solid rgba(255,255,255,0.2);color:#cfe0ff;padding:11px 14px;border-radius:9px;font-size:13px;cursor:pointer;">恢复默认</button>
+                        <button onclick="resetTdEnv()" style="flex:1;background:rgba(255,255,255,0.1);border:1px solid rgba(255,255,255,0.2);color:#cfe0ff;padding:11px 14px;border-radius:9px;font-size:13px;cursor:pointer;">恢复默认</button>
                     </div>
-                    <div id="tdEnvTip" style="font-size:11px;color:#8fa6c8;margin-top:9px;line-height:1.5;">参数保存在本机并随账号同步；保存后立即重置毒圈并应用于正式俯视与俯视训练场。</div>
+                    <div id="tdEnvTip" style="font-size:11px;color:#8fa6c8;margin-top:9px;line-height:1.5;">修改后立即生效于当前对局；只有点暂停菜单「💾 保存数值」才会写入全局存档（与其它数值一致）。</div>
                 </div>
             </div>
             <!-- === 训练场数值设置 (人物 / AI 独立, 回车生效, 手动保存) === -->
@@ -12640,6 +12639,8 @@ body.low-perf #menu::before { filter: none; opacity: .18; }
             try {
                 const _tk = window._tdTuneSwapped ? 'shooter_td_tune_v1' : 'shooter_train_tune_v1';
                 localStorage.setItem(_tk, JSON.stringify(TRAIN_TUNE));
+                // 毒圈 / 环境参数与数值一起保存 (平时改完即时生效, 点这里才带到全局)
+                try { if (typeof TD_ENV !== 'undefined') localStorage.setItem('shooter_td_env_v1', JSON.stringify(TD_ENV)); } catch (e2) { }
                 applyTuneToTraining();   // 若正在训练场, 保存后立即把数值重新套到双方
                 return true;
             } catch (err) {
@@ -13257,7 +13258,10 @@ body.low-perf #menu::before { filter: none; opacity: .18; }
                     '手游按键默认透明度从 90% 调整为 70%（不透明度 0.1→0.3），设置里的透明度滑杆默认也显示 70%，旧键位存档会自动迁移',
                     '电脑端新增「自动瞄准」开关（设置面板，仅电脑端显示）：开启后俯视枪战会自动锁定敌人并按子弹速度预判走位提前量，2D 枪战会自动保持面向敌人；开关状态跟随账号同步，默认关闭',
                     '俯视模式减疗改为「每波毒圈」结算：每次缩圈双方减疗直接 +15%（默认，上限 95%），不再按每秒累加；数值在「环境设置 → 每波毒圈减疗（%/次缩圈）」里可调，保存后下一次缩圈立即生效，属性面板「减疗(对敌)」同步显示',
-                    '移除顶部状态效果条（紫色「剩余秒数 + 图标 + 效果名」那一列），横版与俯视都不再显示；状态仍可在左上武器面板与角色脚下的状态图标中查看'
+                    '移除顶部状态效果条（紫色「剩余秒数 + 图标 + 效果名」那一列），横版与俯视都不再显示；状态仍可在左上武器面板与角色脚下的状态图标中查看',
+                    '修复毒圈提前重置：AI 掉一条命复活时不再把毒圈重置回初始大圈，会一直保持当前（最小）圈，直到一整波命数打完才重置',
+                    '环境设置去掉「保存并生效」按钮：改完参数立即作用于当前对局，不再自动重置毒圈；只有点暂停菜单「💾 保存数值」才写入全局存档（与其它数值一致），「恢复默认」同样需再点保存才生效到全局',
+                    '俯视训练场命数：人物 3 条命、靶子 2 条命（HUD 显示 ❤×N）。掉命后原地复活并保留毒圈；任意一方命数用完则整套重置（双方满血满命、靶子回原位、毒圈与减疗累计清零）'
                 ]
             },
             {
@@ -13993,6 +13997,19 @@ body.low-perf #menu::before { filter: none; opacity: .18; }
                 if (isFinite(v)) TD_ENV[map[id]] = v;
             });
         }
+        // 输入即生效 (不写盘, 不重置毒圈)
+        function _applyTdEnvLive() {
+            try { readTdEnvInputs(); } catch (e) { }
+        }
+        (function _bindTdEnvInputs() {
+            ['envPoisonPct', 'envPoisonGrowth', 'envShrinkSec', 'envStep', 'envMinR', 'envEdgePct', 'envInitR', 'envDecayPerShrink'].forEach(function (id) {
+                var el = document.getElementById(id);
+                if (!el) return;
+                el.addEventListener('input', _applyTdEnvLive);
+                el.addEventListener('change', _applyTdEnvLive);
+            });
+        })();
+
         function saveTdEnv() {
             readTdEnvInputs();
             TD_ENV.poisonPctPerSec = Math.max(0, Math.min(100, Number(TD_ENV.poisonPctPerSec) || 0));
@@ -14011,9 +14028,10 @@ body.low-perf #menu::before { filter: none; opacity: .18; }
             setTimeout(function () { if (tip) { tip.style.color = '#8fa6c8'; } }, 1600);
         }
         function resetTdEnv() {
-            TD_ENV = Object.assign({}, TD_ENV_DEFAULT);
+            // 只恢复默认并即时生效, 不写盘 (与「修改即生效」规则一致)
+            Object.assign(TD_ENV, TD_ENV_DEFAULT);
             openTdEnvPanel();
-            saveTdEnv();
+            try { showFloatingText('已恢复默认（点「保存数值」才写入全局）', '#8fa6c8'); } catch (e) { }
         }
         const TD_COST = { pistol: 10, rifle: 6, shotgun: 30, smg: 4, sniper: 35, sword: 40 };
         const TD_RANGE = { pistol: 440, rifle: 600, shotgun: 220, smg: 380, sniper: 1000, sword: 110 };
@@ -14268,6 +14286,38 @@ body.low-perf #menu::before { filter: none; opacity: .18; }
             });
         }
 
+        // 训练场整轮重置: 人物 3 命 / 靶子 2 命 / 满血 / 回原位 / 毒圈与减疗累计全部重置
+        function _resetTdTrainingRound() {
+            if (!player || !ai) return;
+            player.health = player.maxHealth; player.shield = 0;
+            player.lives = 3; player.maxLives = 3;
+            player.activeEffects = []; player.slowEffect = null;
+            player.burningStacks = 0; player.burnStacks = [];
+            player.dotDamage = null; player.frozen = false;
+            player.x = 360; player.y = TD.H / 2;
+            player._tdKbVX = 0; player._tdKbVY = 0;
+            player._tdEnergy = tdEnergyMaxOf(player);
+            player.lastShot = 0;
+            ai.health = ai.maxHealth; ai.shield = 0;
+            ai.lives = 2; ai.maxLives = 2;
+            ai.activeEffects = []; ai.slowEffect = null;
+            ai.burningStacks = 0; ai.burnStacks = [];
+            ai.dotDamage = null; ai.frozen = false;
+            ai._trainDmgTotal = 0; ai._trainDmgStart = 0; ai._trainDmgLast = 0;
+            ai._tdEnergy = tdEnergyMaxOf(ai);
+            ai._tdMeleeAt = 0; ai.lastShot = 0;
+            ai._tdKbVX = 0; ai._tdKbVY = 0;
+            const _hx = (typeof TD._tdTargetHomeX === 'number') ? TD._tdTargetHomeX : ai.x;
+            const _hy = (typeof TD._tdTargetHomeY === 'number') ? TD._tdTargetHomeY : ai.y;
+            ai.x = tdClamp(_hx, TD.MARGIN, TD.W - TD.MARGIN);
+            ai.y = tdClamp(_hy, TD.MARGIN, TD.H - TD.MARGIN);
+            TD.aDeadAt = 0; TD.pDeadAt = 0; TD.pRespawnAt = 0; TD.aRespawnAt = 0;
+            TD.lives = 3;
+            try { resetAtkPerSecBonus(); } catch (e) { }
+            resetTdZone();
+            try { showFloatingText('🔄 训练场已重置', '#ffd700'); } catch (e) { }
+        }
+
         function tdRespawnAI(full) {
             if (!ai) return;
             if (full) ai.respawnFull(); else ai.respawn();
@@ -14284,12 +14334,37 @@ body.low-perf #menu::before { filter: none; opacity: .18; }
             TD.aWeaponSince = Date.now();
             // 关键: 重生后必须清空死亡标记, 否则下一次死亡不会被结算
             TD.aDeadAt = 0; TD.aRespawnAt = 0;
-            resetTdZone();   // 一波结束 (AI 阵亡) 重置毒圈
+            // 只掉了一条命: 毒圈保持当前大小 (不重置), 直到整波命数用完
         }
 
         function tdUpdatePlayer(now) {
             if (!player) return;
             if (player.health <= 0) {
+                // 训练场: 人物 3 条命, 用完重置整套训练场 (不进失败界面)
+                if (gameState === 'tdtraining') {
+                    if (!TD.pDeadAt) {
+                        TD.pDeadAt = now;
+                        player.lives = Math.max(0, (player.lives || 0) - 1);
+                        TD.lives = player.lives;
+                        try { resetAtkPerSecBonus(); } catch (e) { }
+                    }
+                    if (player.lives <= 0) {
+                        _resetTdTrainingRound();
+                    } else if (now >= (TD.pRespawnAt || 0)) {
+                        TD.pRespawnAt = now + 1400;
+                        player.health = player.maxHealth; player.shield = 0;
+                        player.activeEffects = []; player.slowEffect = null;
+                        player.burningStacks = 0; player.burnStacks = [];
+                        player.dotDamage = null; player.frozen = false;
+                        player.x = 360; player.y = TD.H / 2;
+                        player._tdKbVX = 0; player._tdKbVY = 0;
+                        player._tdEnergy = tdEnergyMaxOf(player);
+                        player._tdInvUntil = now + 1200;
+                        TD.pDeadAt = 0; TD.pRespawnAt = 0;
+                        try { showFloatingText('❤ 复活 · 剩余 ' + player.lives + ' 命', '#4f8eff'); } catch (e) { }
+                    }
+                    return;
+                }
                 if (!TD.pDeadAt) {
                     TD.pDeadAt = now;
                     try { resetAtkPerSecBonus(); } catch (e) { }
@@ -14612,23 +14687,32 @@ body.low-perf #menu::before { filter: none; opacity: .18; }
                 ai.y = tdClamp(ai.y, TD.MARGIN, TD.H - TD.MARGIN);
                 if (_moved) { TD._tdTargetHomeX = ai.x; TD._tdTargetHomeY = ai.y; }
                 if (ai.health <= 0) {
-                    if (!TD.aDeadAt) { TD.aDeadAt = now; try { resetAtkPerSecBonus(); } catch (e) { } }
+                    if (!TD.aDeadAt) {
+                        TD.aDeadAt = now;
+                        ai.lives = Math.max(0, (ai.lives || 0) - 1);   // 靶子扣一条命
+                        try { resetAtkPerSecBonus(); } catch (e) { }
+                    }
                     if (now - TD.aDeadAt > 2000) {
-                        ai.health = ai.maxHealth; ai.shield = 0;
-                        ai.activeEffects = []; ai.slowEffect = null;
-                        ai.burningStacks = 0; ai.burnStacks = [];
-                        ai.dotDamage = null; ai.frozen = false;
-                        ai._trainDmgTotal = 0; ai._trainDmgStart = 0; ai._trainDmgLast = 0;
-                        ai._tdEnergy = tdEnergyMaxOf(ai);
-                        ai._tdMeleeAt = 0; ai.lastShot = 0;
-                        ai._tdKbVX = 0; ai._tdKbVY = 0;
-                        // 回到靶位原位 (而非默认角落)
-                        const _hx = (typeof TD._tdTargetHomeX === 'number') ? TD._tdTargetHomeX : ai.x;
-                        const _hy = (typeof TD._tdTargetHomeY === 'number') ? TD._tdTargetHomeY : ai.y;
-                        ai.x = tdClamp(_hx, TD.MARGIN, TD.W - TD.MARGIN);
-                        ai.y = tdClamp(_hy, TD.MARGIN, TD.H - TD.MARGIN);
-                        TD.aDeadAt = 0;
-                        resetTdZone();
+                        if (ai.lives <= 0) {
+                            // 靶子 2 条命用完: 重置整套训练场 (生命/毒圈/减疗等)
+                            _resetTdTrainingRound();
+                        } else {
+                            ai.health = ai.maxHealth; ai.shield = 0;
+                            ai.activeEffects = []; ai.slowEffect = null;
+                            ai.burningStacks = 0; ai.burnStacks = [];
+                            ai.dotDamage = null; ai.frozen = false;
+                            ai._trainDmgTotal = 0; ai._trainDmgStart = 0; ai._trainDmgLast = 0;
+                            ai._tdEnergy = tdEnergyMaxOf(ai);
+                            ai._tdMeleeAt = 0; ai.lastShot = 0;
+                            ai._tdKbVX = 0; ai._tdKbVY = 0;
+                            // 回到靶位原位 (而非默认角落); 毒圈保持不动
+                            const _hx = (typeof TD._tdTargetHomeX === 'number') ? TD._tdTargetHomeX : ai.x;
+                            const _hy = (typeof TD._tdTargetHomeY === 'number') ? TD._tdTargetHomeY : ai.y;
+                            ai.x = tdClamp(_hx, TD.MARGIN, TD.W - TD.MARGIN);
+                            ai.y = tdClamp(_hy, TD.MARGIN, TD.H - TD.MARGIN);
+                            TD.aDeadAt = 0;
+                            try { showFloatingText('🎯 靶子复命 · 剩余 ' + ai.lives, '#ffd700'); } catch (e) { }
+                        }
                     }
                 } else {
                     tdRegen(ai, TD.dt || 0);
@@ -14684,6 +14768,7 @@ body.low-perf #menu::before { filter: none; opacity: .18; }
                         try { addKillFeed('Player', (player && player.weapon && player.weapon.name) || 'rifle', 100); } catch (e) { }
                         kills++; combo++; maxCombo = Math.max(maxCombo, combo);
                         wave++;
+                        try { resetTdZone(); } catch (e) { }   // 一整波命数打完, 新一波才重置毒圈
                         try { growEntityPerRound(player, 'mine', false); } catch (e) { }
                         try { resetAtkPerSecBonus(); } catch (e) { }
                         ai.lives = CONFIG.MAX_LIVES;
@@ -15197,8 +15282,8 @@ body.low-perf #menu::before { filter: none; opacity: .18; }
             applyTrainTune(player, 'mine');
             applyTuneWeapons(ai, 'enemy');
             player.shield = 0; ai.shield = 0;
-            player.lives = 99; player.maxLives = 99;
-            ai.lives = 99; ai.maxLives = 99;
+            player.lives = 3; player.maxLives = 3;   // 训练场: 人物 3 条命
+            ai.lives = 2; ai.maxLives = 2;           // 靶子 2 条命
             player._tdRadius = 22; ai._tdRadius = 22;
             [player, ai].forEach(function (ent) {
                 Object.keys(ent.weapons).forEach(function (k) {
@@ -15207,7 +15292,7 @@ body.low-perf #menu::before { filter: none; opacity: .18; }
                     w.ammo = w.maxAmmo; w.reserve = 9999;
                 });
             });
-            TD.wave = 1; TD.kills = 0; TD.score = 0; TD.lives = 99;
+            TD.wave = 1; TD.kills = 0; TD.score = 0; TD.lives = 3;
             runSeconds = 0; runDeaths = 0;
             TD.over = false; TD.pDeadAt = 0; TD.aDeadAt = 0; TD.pRespawnAt = 0; TD.aRespawnAt = 0;
             TD.aThinkAt = 0; TD.aWeaponAt = 0; TD.aMeleeAt = 0; TD.aMeleeUntil = 0;
