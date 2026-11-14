@@ -3593,9 +3593,10 @@
                     const t = Math.max(0, Math.min(1, (0.3 - r) / 0.3));
                     v *= (1 + fx.lowHpHealBonus * t);
                 }
-                // 坚忍之志: 治疗增强 = (最大生命 ÷ 当前生命 - 1) × 100%, 每张叠加
+                // 坚忍之志: 治疗增强 = (最大生命 ÷ 当前生命 - 1) × 100%, 每张叠加, 上限 +200% (治疗倍率最多 ×3)
                 if ((fx.endureHealStacks || 0) > 0 && p.maxHealth > 0 && p.health > 0) {
-                    v *= (1 + Math.max(0, p.maxHealth / p.health - 1) * fx.endureHealStacks);
+                    const _endureBoost = Math.max(0, p.maxHealth / p.health - 1) * fx.endureHealStacks;
+                    v *= (1 + Math.min(2, _endureBoost));
                 }
             }
             // 抗治疗: 相当于 治疗倍率 - 抗治疗 (撼地重斧的减疗并入抗治疗)
@@ -4212,7 +4213,7 @@
               apply(p) { const f = ensureFx(p); f.extraMagicPctOfAtk += 0.50; f.atkSpeed += 0.10; } },
             { id: 'fx_shieldconvert_e', name: '护盾转换', icon: '🔄', type: 'effect', rarity: 'epic', desc: '回合开始扣除25%生命并获得55%最大生命护盾',
               apply(p) { const f = ensureFx(p); f.hpCostTurnPct += 0.25; f.shieldTurnMaxHpPct += 0.55; } },
-            { id: 'fx_endure_e', name: '坚忍之志', icon: '🗿', type: 'effect', rarity: 'epic', desc: '每5秒回复60点生命；治疗增强 = (最大生命 ÷ 当前生命 − 1) × 100%（可叠加）',
+            { id: 'fx_endure_e', name: '坚忍之志', icon: '🗿', type: 'effect', rarity: 'epic', desc: '每5秒回复60点生命；治疗增强 = (最大生命 ÷ 当前生命 − 1) × 100%（可叠加，上限 +200%）',
               apply(p) { const f = ensureFx(p); f.healPer5s += 60; f.heal5Src.push({ id: 'fx_endure_e', name: '坚忍之志', amt: 60, lastAt: srcPhase(5000) }); f.endureHealStacks = (f.endureHealStacks || 0) + 1; } },
             { id: 'fx_adamant_e', name: '金刚不坏', icon: '🗿', type: 'effect', rarity: 'epic', desc: '获得550生命值，但造成的伤害降低8%',
               apply(p) { const f = ensureFx(p); p.maxHealth += 550; p.health = Math.min(p.maxHealth, p.health + 550); f.dmgPct -= 0.08; } },
@@ -8609,7 +8610,9 @@
             const baseX = isRight ? (W - 14 - FW) : 14;
             // 上排顶部对齐 HUD 下方; 下排底部贴屏幕下沿, 上下各留出空隙避免互相压盖
             // PvP 左下/右下有武器栏 DOM (bottom:60px 起, 约 100px 高), 下排需上移避开
-            const bottomGap = (gameState === 'pvp') ? 200 : 70;
+            // 俯视: 左下 / 右下角留给能量环, 下排效果面板整排上移, 避免与能量环重叠
+            const _tdMode = (gameState === 'topdown' || gameState === 'tdtraining');
+            const bottomGap = (gameState === 'pvp') ? 200 : (_tdMode ? 210 : 70);
             const edgeY = isBottom ? (H - bottomGap) : 150;
             const MAX_ROWS = Math.max(3, Math.min(6, Math.floor((H / 2 - 110) / ROW_H)));
 
@@ -9409,7 +9412,10 @@
                     if (fx.critDmgPerAtk) permLines.push('每点物攻 +' + fmtPct(fx.critDmgPerAtk) + ' 暴击伤害');
                     if (fx.lifestealPerAtk) permLines.push('每点物攻 +' + fmtPct(fx.lifestealPerAtk) + ' 吸血');
                     if (fx.lowHpHealBonus) permLines.push('生命越低受到治疗越高 (最低血时 +' + fmtPct(fx.lowHpHealBonus) + ')');
-                    if (fx.endureHealStacks) permLines.push('坚忍之志 ×' + fx.endureHealStacks + '：治疗增强 (最大生命÷当前生命−1)×' + fmtPct(fx.endureHealStacks));
+                    if (fx.endureHealStacks) {
+                        const _endureNow = Math.min(2, Math.max(0, (e.maxHealth > 0 ? e.maxHealth / Math.max(1, e.health) - 1 : 0) * fx.endureHealStacks));
+                        permLines.push('坚忍之志 ×' + fx.endureHealStacks + '：治疗增强 +' + fmtPct(_endureNow) + '（上限 +200%）');
+                    }
                     if (fx.highHpCrit) permLines.push('生命高于 ' + fmtPct(fx.highHpThresh || 0.8) + ' 时 +' + fmtPct(fx.highHpCrit) + ' 暴击率');
                     if (fx.highHpCritDmg) permLines.push('生命高于 ' + fmtPct(fx.highHpThresh || 0.8) + ' 时 +' + fmtPct(fx.highHpCritDmg) + ' 暴击伤害');
                     if (fx.critShieldPct) permLines.push('暴击时获得 伤害×' + fmtPct(fx.critShieldPct) + ' 的护盾');
@@ -12010,6 +12016,13 @@
         // === 更新公告: 每次对话完成后在 UPDATE_LOG 顶部追加一条 (日期 + 分点内容) ===
         const UPDATE_LOG = [
             {
+                date: '2026-11-14',
+                items: [
+                    '俯视能量环移到画面左下 / 右下角，名称标签改到环上方；「正面 / 负面效果」面板在俯视下整排上移，给角落让出位置，两者不再互相遮挡；能量不足提示同步移到环下方',
+                    '「坚忍之志」新增治疗增强上限：最多 +200%（治疗倍率最高 ×3），超出部分不再继续放大治疗；卡牌描述与属性面板（显示当前实际增强值）同步'
+                ]
+            },
+            {
                 date: '2026-11-13',
                 items: [
                     '新增实验模式「俯视 PVE」（主菜单底部绿色按钮）：一屏全图的平面战场，WASD 八向自由移动、鼠标独立瞄准，取消重力与跳跃，操作维度从 2 个提升到 4 个（平移 x/y + 位移 + 瞄准角）',
@@ -13555,15 +13568,16 @@
 
         function tdDrawHUD(now) {
             // 横版 HUD 已完整照搬 (血条 / 护盾 / 武器 / 状态 / 分数 / 命数),
-            // 这里只补俯视专属: 双方能量环 (底部中央左右对称) + 刀蓄力 + 准星
-            const ringY = canvas.height - 250;
-            tdDrawEnergyRing(92, ringY, tdEnergy(player), tdEnergyMaxOf(player), '#55efc4');
-            tdDrawEnergyRing(canvas.width - 92, canvas.height - 250, tdEnergy(ai), tdEnergyMaxOf(ai), '#ffb86b');
+            // 这里只补俯视专属: 双方能量环 (贴左下 / 右下角, 避开跟随角色的效果状态栏) + 刀蓄力 + 准星
+            const ringY = canvas.height - 110;
+            const ringLX = 96, ringRX = canvas.width - 96;
+            tdDrawEnergyRing(ringLX, ringY, tdEnergy(player), tdEnergyMaxOf(player), '#55efc4');
+            tdDrawEnergyRing(ringRX, ringY, tdEnergy(ai), tdEnergyMaxOf(ai), '#ffb86b');
             ctx.textAlign = 'center';
             ctx.font = '11px Arial';
             ctx.fillStyle = 'rgba(255,255,255,0.6)';
-            ctx.fillText('我方能量', 92, ringY + 54);
-            ctx.fillText('敌方能量', canvas.width - 92, canvas.height - 196);
+            ctx.fillText('我方能量', ringLX, ringY - 52);
+            ctx.fillText('敌方能量', ringRX, ringY - 52);
 
             if (TD.mouseX > 0 && TD.mouseY > 0) {
                 const mx = TD.mouseX, my = TD.mouseY;
@@ -13580,7 +13594,7 @@
                 ctx.fillStyle = 'rgba(255,120,120,0.9)';
                 ctx.font = 'bold 14px Arial';
                 ctx.textAlign = 'center';
-                ctx.fillText('能量不足', 92, ringY - 52);
+                ctx.fillText('能量不足', ringLX, ringY + 58);
             }
             // 失败界面已改为照搬横版 #gameOver 面板, 不再自绘
         }
