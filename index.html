@@ -1852,9 +1852,8 @@
                 ✅ <b>连杀系统+击杀面板+小地图</b><br>
                 ✅ <b>波次递进+成就系统+自动存档</b><br>
                 ✅ <b>特殊弹药(穿甲/燃烧/冰冻)</b></p>
-            <!-- v2 版本: 本文件是独立代码分支; "开始游戏" 跳回 v1(index.html), "开始游戏2" 在本文件开局 -->
-            <button class="btn" id="btnStartGame" onclick="goToGameV1()">开始游戏</button>
-            <button class="btn" id="btnStartGame2" onclick="askStartGame()" style="background:linear-gradient(45deg,#ff9f43,#ee5253);margin-left:10px;">开始游戏 2 (v2)</button>
+            <!-- v2 版本: 本文件是独立代码分支; 旧版跳转按钮「开始游戏」已移除, 统一用「开始游戏 2 (v2)」在本文件开局 -->
+            <button class="btn" id="btnStartGame2" onclick="askStartGame()" style="background:linear-gradient(45deg,#ff9f43,#ee5253);">开始游戏 2 (v2)</button>
             <button id="btnPvP" onclick="askStartPvP()" style="background:linear-gradient(135deg,#6c5ce7,#a29bfe);border:none;color:white;padding:14px 40px;border-radius:10px;font-size:18px;cursor:pointer;margin:10px;font-weight:bold;">⚔️ 双人对战</button>
             <button class="btn" id="btnTraining" onclick="startTraining()" style="background:linear-gradient(45deg,#2ed573,#1abc9c);">训练场</button>
             <button class="btn" id="btnTopdown" onclick="askStartTopdown()" style="background:linear-gradient(45deg,#00b894,#55efc4);color:#07231c;margin-top:8px;">🎯 俯视 PVE（实验）</button>
@@ -12116,7 +12115,8 @@
                     '俯视能量环移到画面左下 / 右下角，名称标签改到环上方；「正面 / 负面效果」面板在俯视下整排上移，给角落让出位置，两者不再互相遮挡；能量不足提示同步移到环下方',
                     '「坚忍之志」新增治疗增强上限：最多 +200%（治疗倍率最高 ×3），超出部分不再继续放大治疗；卡牌描述与属性面板（显示当前实际增强值）同步',
                     '俯视模式（含俯视训练场）取消换弹：双方弹匣无限、开火不消耗弹药、不再进入换弹状态，AI 与玩家一致；R 键不再换弹，左上 HUD 弹药显示为 ∞，底部键位说明同步移除「R 换弹」',
-                    '俯视模式手机端适配：左下移动盘改为 360° 平滑摇杆（可上下左右任意方向），跳跃键变为「位移」键（点击向摇杆方向突进），发射键按住连发，手机端自动锁定敌方、无需瞄准；暂停键与属性面板键在俯视模式同样可用；手机端能量环缩小并贴到最角，避免与摇杆 / 位移键重叠'
+                    '俯视模式手机端适配：左下移动盘改为 360° 平滑摇杆（可上下左右任意方向），跳跃键变为「位移」键（点击向摇杆方向突进），发射键按住连发，手机端自动锁定敌方、无需瞄准；暂停键与属性面板键在俯视模式同样可用；手机端能量环缩小并贴到最角，避免与摇杆 / 位移键重叠',
+                    '主菜单移除「开始游戏」（跳转旧版 v1）按钮，统一使用「开始游戏 2（v2）」进入当前版本，避免误点跳到旧版'
                 ]
             },
             {
