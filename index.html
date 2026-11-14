@@ -25,8 +25,13 @@
         }
 
         #gameContainer {
+            position: fixed;
+            top: 0;
+            left: 0;
             width: 100vw;
             height: 100vh;
+            height: 100dvh;
+            overflow: hidden;
             display: flex;
             align-items: center;
             justify-content: center;
@@ -1928,6 +1933,20 @@ body.cm-menu #trainToggle { display: none !important; }
     backdrop-filter: blur(10px) saturate(1.15);
     -webkit-backdrop-filter: blur(10px) saturate(1.15);
 }
+/* 手机端: HUD 面板不再实时模糊背景 (视觉接近, 但省掉每帧全屏重绘合成) */
+body[data-device="touch"] #hud,
+body[data-device="touch"] #hudFullStatus,
+body[data-device="touch"] #score,
+body[data-device="touch"] #killFeedPanel,
+body[data-device="touch"] #livesInfo,
+body[data-device="touch"] #topStatusPanel,
+body[data-device="touch"] #statusPanel,
+body[data-device="touch"] #unifiedStatusPanel,
+body[data-device="touch"] #cmRunTimer {
+    backdrop-filter: none !important;
+    -webkit-backdrop-filter: none !important;
+    box-shadow: 0 6px 18px rgba(0,0,0,.5), inset 0 1px 0 rgba(255,255,255,.08) !important;
+}
 #score { text-shadow: 0 0 12px rgba(255,215,0,.35); }
 #livesInfo { text-shadow: 0 0 10px rgba(255,71,87,.35); }
 #killFeedPanel { border-left: 2px solid rgba(34,230,255,.45) !important; }
@@ -2488,19 +2507,12 @@ body.low-perf #menu::before { filter: none; opacity: .18; }
         function resizeCanvas() {
             // 手机/平板: 铺满可视区 (消除上下留黑); 桌面: 保留 4%/8% 边距
             const _dev = (document.body && document.body.getAttribute('data-device')) || '';
-            const _vv = window.visualViewport;
-            // 布局视口优先: visualViewport 在地址栏收放/缩放/输入法弹出时会返回异常小值,
-            // 曾导致 canvas 只显示在左上角一小块. 取布局视口与 visualViewport 的较大值更稳.
-            let _vw = Math.max(
-                (document.documentElement && document.documentElement.clientWidth) || 0,
-                window.innerWidth || 0,
-                (_vv && _vv.width) ? Math.round(_vv.width) : 0
-            );
-            let _vh = Math.max(
-                (document.documentElement && document.documentElement.clientHeight) || 0,
-                window.innerHeight || 0,
-                (_vv && _vv.height) ? Math.round(_vv.height) : 0
-            );
+            // 直接以 #gameContainer 的实际尺寸为准 (它固定铺满可视区, 不受地址栏/缩放影响)
+            const _box = document.getElementById('gameContainer');
+            let _vw = (_box && _box.clientWidth) ? _box.clientWidth : 0;
+            let _vh = (_box && _box.clientHeight) ? _box.clientHeight : 0;
+            if (!_vw) _vw = Math.max((document.documentElement && document.documentElement.clientWidth) || 0, window.innerWidth || 0);
+            if (!_vh) _vh = Math.max((document.documentElement && document.documentElement.clientHeight) || 0, window.innerHeight || 0);
             if (!_vw) _vw = 360;
             if (!_vh) _vh = 640;
             let _cw, _ch;
@@ -2531,6 +2543,15 @@ body.low-perf #menu::before { filter: none; opacity: .18; }
             }
             window.addEventListener('resize', _rsSoon);
             window.addEventListener('orientationchange', _rsSoon);
+            try {
+                if (typeof ResizeObserver !== 'undefined' && document.getElementById('gameContainer')) {
+                    let _roT = 0;
+                    new ResizeObserver(function () {
+                        clearTimeout(_roT);
+                        _roT = setTimeout(function () { try { resizeCanvas(); } catch (e) { } }, 80);
+                    }).observe(document.getElementById('gameContainer'));
+                }
+            } catch (e) { }
         })();
 
         /* ==================================================================
@@ -11240,7 +11261,14 @@ body.low-perf #menu::before { filter: none; opacity: .18; }
                     }
                 }
 
-                ctx.shadowColor = b.color || '#fff'; ctx.shadowBlur = 28;
+                const _lowBulletFx = (document.body && document.body.getAttribute('data-device') === 'touch');
+                if (_lowBulletFx) {
+                    ctx.globalAlpha = 0.22;
+                    ctx.fillStyle = b.color || '#fff'; ctx.beginPath(); ctx.arc(sx, sy, Math.max(2, b.size * 2.1), 0, Math.PI * 2); ctx.fill();
+                    ctx.globalAlpha = 1;
+                } else {
+                    ctx.shadowColor = b.color || '#fff'; ctx.shadowBlur = 28;
+                }
                 ctx.fillStyle = b.color || '#fff'; ctx.beginPath(); ctx.arc(sx, sy, Math.max(1, b.size), 0, Math.PI * 2); ctx.fill();
                 ctx.shadowBlur = 0;
                 ctx.fillStyle = '#fff'; ctx.beginPath(); ctx.arc(sx, sy, Math.max(1, b.size * 0.48), 0, Math.PI * 2); ctx.fill();
@@ -12762,7 +12790,11 @@ body.low-perf #menu::before { filter: none; opacity: .18; }
                     '修复手机端画布只显示在左上角一小块（其余黑屏）的问题：画布显示尺寸改为显式铺满布局视口，并对地址栏收放 / 旋转做防抖重算',
                     '手机端性能优化（不影响外观）：自动存档间隔 300ms→1.5s、伤害飘字更快合并（同屏上限 16→10）、粒子数量减半、HUD 刷新降至每 3 帧、毒圈发光改用双描边替代 shadowBlur',
                     '手机端长按不再选中按钮文字或弹出复制/分享菜单（触控层与画布阻止默认选择行为）',
-                    '触控按键文字改为图案：发射 🔫、跳跃 ⤒ / 俯视位移 💨、属性 📊'
+                    '触控按键文字改为图案：发射 🔫、跳跃 ⤒ / 俯视位移 💨、属性 📊',
+                    '再次修复部分黑屏：游戏容器改为固定铺满动态视口（100dvh），画布尺寸直接跟随容器并加 ResizeObserver，地址栏收放/旋转/缩放后都不会再缩成小块',
+                    '手机端持续优化：自动存档放宽到 3 秒，子弹光晕与能量环发光改用双层描边（去掉 shadowBlur），子弹密集时帧率更稳',
+                    '进一步减负：手机端 HUD 面板不再实时模糊背景（保留渐变/霓虹边框与发光，观感接近），HUD 数值仅在变化时写 DOM，省掉每帧无效排版',
+                    '新增自适应画质：手机端连续 3 秒低于 26 帧自动进入低性能模式（关闭模糊/重阴影/部分动效），帧率恢复到 52 以上并持续 8 秒后自动还原'
                 ]
             },
             {
@@ -13087,7 +13119,10 @@ body.low-perf #menu::before { filter: none; opacity: .18; }
             try {
                 const wpn = player.weapon;
                 const hpBar = _DOM.hpBar, shieldBar = _DOM.shieldBar;
-                if (hpBar) hpBar.style.width = (player.health / Math.max(1, player.maxHealth) * 100) + '%';
+                if (hpBar) {
+                    const _hpw = (player.health / Math.max(1, player.maxHealth) * 100).toFixed(1) + '%';
+                    if (hpBar.style.width !== _hpw) hpBar.style.width = _hpw;
+                }
                 // 护盾条: 每条满格 = 最大生命; 超过后向上叠加新条 (最多 5 条)
                 const shBase = Math.max(1, player.maxHealth);
                 const shVal = Math.max(0, player.shield || 0);
@@ -13108,15 +13143,18 @@ body.low-perf #menu::before { filter: none; opacity: .18; }
                     const txt = Math.floor(shVal) + '';
                     if (_DOM.shieldText.textContent !== txt) _DOM.shieldText.textContent = txt;
                 }
-                if (shieldBar) shieldBar.style.width = (shVal / shBase * 100) + '%';
+                if (shieldBar) {
+                    const _shw = (shVal / shBase * 100).toFixed(1) + '%';
+                    if (shieldBar.style.width !== _shw) shieldBar.style.width = _shw;
+                }
                 const wn = _DOM.weaponName;
                 if (wn && wpn) wn.textContent = '🔫 ' + wpn.name;
                 const at = _DOM.ammoText;
                 if (at && wpn) at.textContent = wpn.isMelee ? '— 近战' : `${wpn.ammo} / ${wpn.reserve}`;
-                const st = _DOM.scoreText; if (st) st.textContent = score;
-                const kt = _DOM.killsText; if (kt) kt.textContent = kills;
-                const ct = _DOM.comboText; if (ct) ct.textContent = combo;
-                const wt = _DOM.waveText; if (wt) wt.textContent = wave;
+                const st = _DOM.scoreText; if (st && st.textContent !== String(score)) st.textContent = score;
+                const kt = _DOM.killsText; if (kt && kt.textContent !== String(kills)) kt.textContent = kills;
+                const ct = _DOM.comboText; if (ct && ct.textContent !== String(combo)) ct.textContent = combo;
+                const wt = _DOM.waveText; if (wt && wt.textContent !== String(wave)) wt.textContent = wave;
                 const et = _DOM.entityText; if (et) et.textContent = bullets.length + particles.length;
                 const pl = _DOM.playerLives; if (pl && player) pl.innerHTML = '❤️'.repeat(Math.max(0, player.lives)) + '🖤'.repeat(Math.max(0, player.maxLives - player.lives));
                 const al = _DOM.aiLives; if (al && ai) al.innerHTML = '❤️'.repeat(Math.max(0, ai.lives)) + '🖤'.repeat(Math.max(0, ai.maxLives - ai.lives));
@@ -14457,7 +14495,15 @@ body.low-perf #menu::before { filter: none; opacity: .18; }
             const ratio = Math.max(0, Math.min(1, val / _max));
             ctx.beginPath(); ctx.arc(cx, cy, r, -Math.PI / 2, -Math.PI / 2 + Math.PI * 2 * ratio);
             ctx.strokeStyle = color; ctx.lineWidth = lw; ctx.lineCap = 'round';
-            ctx.shadowBlur = Math.max(8, r * 0.42); ctx.shadowColor = color;
+            if (document.body && document.body.getAttribute('data-device') === 'touch') {
+                ctx.globalAlpha = 0.25;
+                ctx.lineWidth = lw * 2.2;
+                ctx.stroke();
+                ctx.globalAlpha = 1;
+                ctx.lineWidth = lw;
+            } else {
+                ctx.shadowBlur = Math.max(8, r * 0.42); ctx.shadowColor = color;
+            }
             ctx.stroke();
             ctx.shadowBlur = 0;
             ctx.fillStyle = 'rgba(0,0,0,0.42)';
@@ -15982,13 +16028,23 @@ body.low-perf #menu::before { filter: none; opacity: .18; }
             frameCount++; time++;
             _tickCameraDt(); // 相机平滑用的帧步长 (帧率无关)
             // === 实时存档: 每 300ms 写一次盘 (>=3次/秒); 暂停/选卡期间状态不变故跳过 ===
-            const _saveGap = (document.body && document.body.getAttribute('data-device') === 'touch') ? 1500 : 700;
+            const _saveGap = (document.body && document.body.getAttribute('data-device') === 'touch') ? 3000 : 700;
             if ((gameState === 'playing' || gameState === 'pvp' || gameState === 'topdown') && !isPaused && !isDrafting
                 && frameStart - _lastSaveAt >= _saveGap) {
                 autoSaveGame();
             }
             const now = Date.now();
-            if (now - lastTime >= 1000) { fps = frameCount; frameCount = 0; lastTime = now; const _fp = _DOM.fpsText; if (_fp) _fp.textContent = fps }
+            if (now - lastTime >= 1000) {
+                fps = frameCount; frameCount = 0; lastTime = now; const _fp = _DOM.fpsText; if (_fp) _fp.textContent = fps;
+                // 自适应降级: 手机端连续 3 秒低于 26 帧 → 自动进入 low-perf; 回到 52 帧以上 8 秒后恢复
+                if (document.body && document.body.getAttribute('data-device') === 'touch') {
+                    if (fps > 0 && fps < 26) { window.__lowPerfStreak = (window.__lowPerfStreak || 0) + 1; }
+                    else if (fps >= 52) { window.__lowPerfStreak = 0; window.__goodPerfStreak = (window.__goodPerfStreak || 0) + 1; }
+                    else { window.__lowPerfStreak = 0; window.__goodPerfStreak = 0; }
+                    if ((window.__lowPerfStreak || 0) >= 3) document.body.classList.add('low-perf');
+                    else if ((window.__goodPerfStreak || 0) >= 8) { document.body.classList.remove('low-perf'); window.__goodPerfStreak = 0; }
+                }
+            }
 
             if (Diag.enabled) Diag.lastFrameTime = frameStart;
 
