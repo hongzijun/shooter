@@ -1141,7 +1141,7 @@
            ================================================================== */
         :root {
             --ui-scale: 1;
-            --touch-opacity: 1;
+            --touch-opacity: 0.1;
             --touch-scale: 1;
             --move-scale: 1;
             --fire-scale: 1;
@@ -1442,7 +1442,7 @@
             border: 1.5px solid rgba(120,170,255,0.6);
             box-shadow: 0 0 14px rgba(79,142,255,0.35);
             transform: translate(-50%, -50%);
-            opacity: var(--touch-opacity);
+            opacity: max(0.35, var(--touch-opacity));
             pointer-events: auto;
             cursor: grab;
             touch-action: none;
@@ -1756,7 +1756,7 @@ body[data-device="touch"] #statusPanel { display: none !important; }
 .cm-sql { width: 100%; box-sizing: border-box; background: rgba(0,0,0,0.4); border: 1px solid rgba(120,170,255,0.22); border-radius: 8px; color: #b9cbe6; font-size: 11px; padding: 8px; font-family: Consolas, monospace; resize: vertical; }
 
 @media (max-width: 560px) {
-    body[data-device="touch"] #topStatusPanel { top: calc(12px + 150px * var(--ui-scale)) !important; width: min(92vw, 320px) !important; }
+    body[data-device="touch"] #topStatusPanel { top: calc(10px + 46px * var(--ui-scale)) !important; width: min(92vw, 320px) !important; }
 }
 
 /* 未登录: 游戏入口锁定 + 顶部提示 */
@@ -2206,7 +2206,7 @@ body.low-perf #menu::before { filter: none; opacity: .18; }
             </div>
 
             <!-- 状态面板: 仅在存在状态时显示; 无状态时整块隐藏 (不再显示"无状态效果"占位) -->
-            <div id="topStatusPanel" style="position: fixed; top: 10px; left: 50%; transform: translateX(-50%); z-index: 500; display: none; flex-direction: column; justify-content: flex-start; align-items: stretch; gap: 8px; background: rgba(0, 0, 0, 0.1); border-radius: 12px; padding: 12px; width: 200px;"></div>
+            <div id="topStatusPanel" style="position: fixed; top: 58px; left: 50%; transform: translateX(-50%); z-index: 500; display: none; flex-direction: column; justify-content: flex-start; align-items: stretch; gap: 8px; background: rgba(0, 0, 0, 0.1); border-radius: 12px; padding: 12px; width: 200px;"></div>
 
             <div id="livesInfo" style="display: flex;">
                 <div class="life-side">
@@ -2357,7 +2357,7 @@ body.low-perf #menu::before { filter: none; opacity: .18; }
                     <button id="touchSettingsClose" type="button">×</button>
                 </div>
                 <div class="tsc-tip">拖动圆点调整位置 · 当前编辑: <span id="touchSettingsTargetLabel">移动盘</span></div>
-                <div class="tsc-row"><label>透明度</label><input id="touchOpacityRange" type="range" min="20" max="100" step="1" value="100"><span id="touchOpacityVal">100%</span></div>
+                <div class="tsc-row"><label>透明度</label><input id="touchOpacityRange" type="range" min="0" max="100" step="1" value="90"><span id="touchOpacityVal">90%</span></div>
                 <div class="tsc-row"><label>大小</label><input id="touchSizeRange" type="range" min="70" max="160" step="1" value="100"><span id="touchSizeVal">100%</span></div>
                 <div class="tsc-row"><label>X 位置</label><input id="touchXRange" type="range" min="0" max="100" step="1" value="17"><span id="touchXVal">17%</span></div>
                 <div class="tsc-row"><label>Y 位置</label><input id="touchYRange" type="range" min="0" max="100" step="1" value="80"><span id="touchYVal">80%</span></div>
@@ -2597,8 +2597,8 @@ body.low-perf #menu::before { filter: none; opacity: .18; }
 
         const TOUCH_CFG_KEY = 'shooter_touch_cfg_v1';
         const TOUCH_DEFAULT_CFG = {
-            version: 1,
-            opacity: 1,
+            version: 2,
+            opacity: 0.1,          // 实际不透明度: 0.1 = 90% 透明 (设置里的 0% = 不透明)
             scale: 1,                       // legacy 顶层缩放, 仅作旧存档 fallback
             move: { x: 0.17, y: 0.84, scale: 1 },
             fire: { x: 0.84, y: 0.30, scale: 1 },
@@ -2620,9 +2620,11 @@ body.low-perf #menu::before { filter: none; opacity: .18; }
             const src = (raw && typeof raw === 'object') ? raw : {};
             // 旧存档只有顶层 scale: 作为三个控件的 fallback; 新存档以 per-key 为准
             const legacyScale = clampNumber(src.scale, 0.7, 1.6, TOUCH_DEFAULT_CFG.scale);
+            const _ver = Number(src.version) || 1;
             return {
-                version: 1,
-                opacity: clampNumber(src.opacity, 0.2, 1.0, TOUCH_DEFAULT_CFG.opacity),
+                version: 2,
+                // 旧存档(version<2)统一迁移到新的默认「90% 透明」; 新存档保留玩家自己调的值
+                opacity: (_ver < 2) ? TOUCH_DEFAULT_CFG.opacity : clampNumber(src.opacity, 0, 1, TOUCH_DEFAULT_CFG.opacity),
                 scale: legacyScale,
                 move: _normTouchCtrl(src.move, TOUCH_DEFAULT_CFG.move, legacyScale),
                 fire: _normTouchCtrl(src.fire, TOUCH_DEFAULT_CFG.fire, legacyScale),
@@ -2748,8 +2750,9 @@ body.low-perf #menu::before { filter: none; opacity: .18; }
             });
             const op = document.getElementById('touchOpacityRange');
             const opv = document.getElementById('touchOpacityVal');
-            if (op) op.value = String(Math.round(touchCfg.opacity * 100));
-            if (opv) opv.textContent = Math.round(touchCfg.opacity * 100) + '%';
+            const _opPct = Math.round((1 - touchCfg.opacity) * 100);   // 滑杆显示「透明程度」: 0% = 不透明
+            if (op) op.value = String(_opPct);
+            if (opv) opv.textContent = _opPct + '%';
             const sc = document.getElementById('touchSizeRange');
             const scv = document.getElementById('touchSizeVal');
             const _selScale = (touchCfg[_touchSettingsTarget] || touchCfg.move).scale || 1;
@@ -2820,8 +2823,10 @@ body.low-perf #menu::before { filter: none; opacity: .18; }
             }
             const op = document.getElementById('touchOpacityRange');
             if (op) op.addEventListener('input', function () {
-                touchCfg.opacity = clampNumber(Number(this.value) / 100, 0.2, 1.0, 1);
+                // 滑杆 = 透明程度: 0 = 不透明, 100 = 完全透明
+                touchCfg.opacity = clampNumber(1 - Number(this.value) / 100, 0, 1, TOUCH_DEFAULT_CFG.opacity);
                 applyTouchConfig();
+                _syncTouchSettingsUI();
             });
             const sc = document.getElementById('touchSizeRange');
             if (sc) sc.addEventListener('input', function () {
@@ -3048,6 +3053,30 @@ body.low-perf #menu::before { filter: none; opacity: .18; }
             if (_tjLabel && _tjLabel.textContent !== (_tdTouch ? '💨' : '⤒')) _tjLabel.textContent = _tdTouch ? '💨' : '⤒';
             const _padEl = document.getElementById('touchMovePad');
             if (_padEl) _padEl.classList.toggle('td-stick', _tdTouch);
+            // 缩圈条基准线: 量底部「属性」键的上沿 (每 400ms 一次, 避免每帧 reflow)
+            try {
+                if (document.body.getAttribute('data-device') === 'touch' && (gameState === 'topdown' || gameState === 'tdtraining')) {
+                    var _bn = performance.now();
+                    if (!window.__tdBarAt || _bn - window.__tdBarAt > 400) {
+                        window.__tdBarAt = _bn;
+                        var _stEl = document.getElementById('touchStats');
+                        if (_stEl) {
+                            var _sr = _stEl.getBoundingClientRect();
+                            if (_sr.height > 0) window.__tdBarY = Math.round(_sr.top - 12);
+                        }
+                        var _mvEl = document.getElementById('touchMovePad');
+                        if (_mvEl) {
+                            var _mr = _mvEl.getBoundingClientRect();
+                            if (_mr.width > 0) window.__tdBarL = Math.round(_mr.right + 8);
+                        }
+                        var _jpEl = document.getElementById('touchJump');
+                        if (_jpEl) {
+                            var _jr = _jpEl.getBoundingClientRect();
+                            if (_jr.width > 0) window.__tdBarR = Math.round(_jr.left - 8);
+                        }
+                    }
+                }
+            } catch (e) { }
             // 单局游玩时长 (右上分数下方, 仅正式战斗显示)
             var _rt = document.getElementById('cmRunTimer');
             if (_rt) {
@@ -12848,7 +12877,9 @@ body.low-perf #menu::before { filter: none; opacity: .18; }
                     '手游固定像素适配：毒圈进度条（宽度 / 厚度 / 纵向位置 / 字号）改为按画布尺寸比例取值，竖屏与横屏都不再压住移动盘和位移键；右上「本局时长」改为跟随分数面板实时定位，屏幕旋转、缩放后不再重叠或悬空',
                     '修复左上角两块 HUD（血量面板与武器 / 状态面板）都用固定坐标、互相叠在一起看不清的问题：武器状态面板现在自动排在血量面板正下方并在缩放 / 屏幕旋转后重新对齐；训练场的「训练调试」入口同样自动避开血量面板',
                     '伤害飘字字号改为按屏幕短边比例（手机约 12~14px、桌面 20px 左右），不再固定 20~30px；卡牌图标与上飘距离同步按字号换算，小屏不再被大字糊住',
-                    '俯视 AI 位移大幅优化：原来几乎不会用位移（判定阈值过高且能量被开火打空）。现在 0.3 秒内会被击中、或走位仍要吃掉大半伤害时就位移闪避；新增残血反向脱战位移、距离过远时位移追击、明显在毒圈外时位移回圈；开火会保留一部分能量，确保随时闪得出来'
+                    '俯视 AI 位移大幅优化：原来几乎不会用位移（判定阈值过高且能量被开火打空）。现在 0.3 秒内会被击中、或走位仍要吃掉大半伤害时就位移闪避；新增残血反向脱战位移、距离过远时位移追击、明显在毒圈外时位移回圈；开火会保留一部分能量，确保随时闪得出来',
+                    '手游布局：双方生命（玩家 / 敌人）固定到屏幕最上方居中，状态效果面板自动排到它下方；缩圈进度条移到屏幕最底部（底部暂停 / 属性键上沿之上），不再横在画面中间',
+                    '手游按键默认 90% 透明：设置里的「透明度」滑杆现在 0% = 不透明、100% = 完全透明，默认 90%；旧键位存档会自动迁移到新默认（想变实心把滑杆拉回 0% 即可）'
                 ]
             },
             {
@@ -14727,10 +14758,20 @@ body.low-perf #menu::before { filter: none; opacity: .18; }
                 const _pct = Math.max(0, Math.min(1, 1 - _left / _total));
                 const _touchUi2 = (document.body.getAttribute('data-device') === 'touch');
                 // 比例化: 手机上条宽 / 条高 / 纵向位置 / 字号全部按画布尺寸取值, 竖屏与横屏都不会压住触控键
-                const _bw = _touchUi2 ? Math.min(canvas.width * 0.62, 460) : Math.min(340, canvas.width * 0.46);
+                let _bw = Math.min(340, canvas.width * 0.46);
+                if (_touchUi2) {
+                    const _safeL = (typeof window.__tdBarL === 'number') ? window.__tdBarL : canvas.width * 0.18;
+                    const _safeR = (typeof window.__tdBarR === 'number') ? window.__tdBarR : canvas.width * 0.82;
+                    _bw = Math.min(canvas.width * 0.62, 460, Math.max(140, _safeR - _safeL));
+                }
                 const _bh = _touchUi2 ? Math.max(6, Math.round(canvas.height * 0.012)) : 9;
                 const _bx = (canvas.width - _bw) / 2;
-                const _by = _touchUi2 ? Math.round(canvas.height * 0.70) : (canvas.height - 64);
+                // 手机: 贴到屏幕最下方, 上限取底部暂停 / 属性键的上沿 (每 400ms 实测一次)
+                let _by = canvas.height - 64;
+                if (_touchUi2) {
+                    const _lim = (typeof window.__tdBarY === 'number' && window.__tdBarY > 0) ? window.__tdBarY : (canvas.height - 96);
+                    _by = Math.round(Math.max(canvas.height * 0.55, Math.min(canvas.height - 40, _lim)));
+                }
                 const _fs = _touchUi2 ? Math.max(10, Math.min(17, Math.round(canvas.width * 0.027))) : 11;
                 ctx.fillStyle = 'rgba(0,0,0,0.55)';
                 ctx.fillRect(_bx - 2, _by - 2, _bw + 4, _bh + 4);
@@ -14826,7 +14867,8 @@ body.low-perf #menu::before { filter: none; opacity: .18; }
                 try { layoutHudPanels(); } catch (e) { }
             }
             const _li = document.getElementById('livesInfo');
-            if (_li) { if (!TD._livesPos) TD._livesPos = _li.style.top; _li.style.top = '150px'; }
+            // 双方生命: 固定屏幕最上方居中 (不再下移 150px)
+            if (_li) { if (!TD._livesPos) TD._livesPos = _li.style.top; _li.style.top = ''; }
             TD.started = true;
             const _tg = document.getElementById('trainToggle');
             if (_tg) _tg.style.display = 'flex';
@@ -14858,7 +14900,7 @@ body.low-perf #menu::before { filter: none; opacity: .18; }
             const _li = document.getElementById('livesInfo');
             if (_li) {
                 if (!TD._livesPos) TD._livesPos = _li.style.top;
-                _li.style.top = '150px';
+                _li.style.top = '';
             }
             if (_hfs) {
                 if (!TD._hfsPos) TD._hfsPos = { top: _hfs.style.top, left: _hfs.style.left };
