@@ -1303,6 +1303,33 @@
             letter-spacing: 2px;
             pointer-events: none;
         }
+        /* 俯视模式: 移动盘切换为 360° 摇杆 (中央摇杆头 + 圆形轨道) */
+        #touchMovePad.td-stick .tmp-half { display: none; }
+        #touchMovePad.td-stick #touchMoveDiamond {
+            width: 62%;
+            height: 62%;
+            border-radius: 50%;
+            transform: none;
+            border-color: rgba(120,190,255,0.42);
+            background: rgba(79,142,255,0.10);
+            box-shadow: none;
+        }
+        #touchMovePad .tmp-knob {
+            position: absolute;
+            left: 50%;
+            top: 50%;
+            width: 46%;
+            height: 46%;
+            border-radius: 50%;
+            transform: translate(-50%, -50%);
+            background: radial-gradient(circle at 34% 28%, rgba(190,230,255,0.95), rgba(79,142,255,0.78) 58%, rgba(30,70,150,0.82));
+            border: 2px solid rgba(210,235,255,0.75);
+            box-shadow: 0 0 14px rgba(120,190,255,0.75);
+            pointer-events: none;
+            opacity: 0;
+            transition: opacity 0.12s ease;
+        }
+        #touchMovePad.td-stick .tmp-knob { opacity: 1; }
 
         /* ===== 右下 1-6 武器轮盘 (按住跳跃按钮左滑展开) ===== */
         #touchJump .tj-label { transition: opacity 0.12s ease; }
@@ -1764,6 +1791,7 @@
                 <div class="tmp-half tmp-left"></div>
                 <div class="tmp-half tmp-right"></div>
                 <div id="touchMoveDiamond"></div>
+                <div class="tmp-knob"></div>
                 <div class="tmp-hint">移动</div>
             </div>
             <!-- 右上开火按钮: 按住持续射击 -->
@@ -2059,7 +2087,7 @@
         // __TOUCH_TEST_END__
 
         const TOUCH_WHEEL_TO_WEAPON = { 1: 'pistol', 2: 'rifle', 3: 'shotgun', 4: 'smg', 5: 'sniper', 6: 'sword' };
-        const touchState = { left: false, right: false, fire: false, jumpQueued: false };
+        const touchState = { left: false, right: false, fire: false, jumpQueued: false, mx: 0, my: 0 };
         const _touchPointers = new Map();
         const _touchFirePointers = new Set();
         let _touchJumpPointer = null;
@@ -2281,6 +2309,56 @@
             pad.classList.toggle('lean-right', touchState.right);
         }
 
+        /** 是否俯视模式 (触屏摇杆 / 位移键生效) */
+        function _isTdTouchMode() {
+            return gameState === 'topdown' || gameState === 'tdtraining';
+        }
+
+        /** 俯视摇杆: 以盘心为原点, 输出 360° 平滑移动向量 (mx/my, -1..1) */
+        function _updateStickFromPointer(pad, clientX, clientY) {
+            const r = pad.getBoundingClientRect();
+            const cx = r.left + r.width / 2, cy = r.top + r.height / 2;
+            const dx = clientX - cx, dy = clientY - cy;
+            const R = Math.max(1, Math.min(r.width, r.height) * 0.38);
+            const len = Math.hypot(dx, dy);
+            const dead = Math.max(5, R * 0.16);
+            if (len < dead) {
+                touchState.mx = 0; touchState.my = 0;
+            } else {
+                const c = Math.min(1, len / R);
+                touchState.mx = (dx / len) * c;
+                touchState.my = (dy / len) * c;
+            }
+            // 横版兼容字段同步 (俯视不用)
+            touchState.left = touchState.mx < -0.01;
+            touchState.right = touchState.mx > 0.01;
+            pad.classList.toggle('lean-left', touchState.left);
+            pad.classList.toggle('lean-right', touchState.right);
+            const knob = pad.querySelector('.tmp-knob');
+            if (knob) {
+                const c = Math.min(1, len / R);
+                const ux = len > 1e-6 ? dx / len : 0, uy = len > 1e-6 ? dy / len : 0;
+                knob.style.transform = 'translate(calc(-50% + ' + (ux * c * R) + 'px), calc(-50% + ' + (uy * c * R) + 'px))';
+            }
+        }
+
+        /** 摇杆归位 */
+        function _resetStickKnob(pad) {
+            touchState.mx = 0; touchState.my = 0;
+            const knob = pad && pad.querySelector('.tmp-knob');
+            if (knob) knob.style.transform = 'translate(-50%, -50%)';
+        }
+
+        /** 移动盘输入分派: 横版左右半区 / 俯视 360° 摇杆 */
+        function _updateMoveInput(pad, clientX, clientY) {
+            if (_isTdTouchMode()) {
+                _updateStickFromPointer(pad, clientX, clientY);
+            } else {
+                _updateMoveFromClientX(pad, clientX);
+                touchState.mx = 0; touchState.my = 0;
+            }
+        }
+
         function _highlightWheel(weapon) {
             const wheel = document.getElementById('touchWheel');
             if (!wheel) return;
@@ -2311,11 +2389,12 @@
             touchState.right = false;
             touchState.fire = false;
             touchState.jumpQueued = false;
+            touchState.mx = 0; touchState.my = 0;
             _touchPointers.clear();
             _touchFirePointers.clear();
             _touchJumpPointer = null;
             const pad = document.getElementById('touchMovePad');
-            if (pad) pad.classList.remove('pressed', 'lean-left', 'lean-right');
+            if (pad) { _resetStickKnob(pad); pad.classList.remove('pressed', 'lean-left', 'lean-right'); }
             const fire = document.getElementById('touchFire');
             if (fire) fire.classList.remove('pressed');
             const jump = document.getElementById('touchJump');
@@ -2325,7 +2404,7 @@
 
         /** 触控暂停: 复用现有暂停菜单 (含训练场「保存数值」按钮状态) */
         function touchTogglePause() {
-            if (gameState !== 'playing' && gameState !== 'pvp' && (gameState !== 'training' && gameState !== 'tdtraining')) return;
+            if (!['playing', 'pvp', 'training', 'tdtraining', 'topdown'].includes(gameState)) return;
             if (isDrafting || isAwardShowing) return;
             clearTouchInputState();
             isPaused = !isPaused;
@@ -2338,7 +2417,7 @@
 
         /** 触控打开/关闭全属性面板; 打开时冻结游戏并显示右上角关闭键 */
         function touchToggleStats() {
-            if (gameState !== 'playing' && gameState !== 'pvp' && (gameState !== 'training' && gameState !== 'tdtraining')) return;
+            if (!['playing', 'pvp', 'training', 'tdtraining', 'topdown'].includes(gameState)) return;
             if (isPaused || isDrafting || isAwardShowing) return;
             if (statPanelOpen) { touchCloseStats(); return; }
             clearTouchInputState();
@@ -2382,7 +2461,7 @@
                         const _shopOpen = _touchOverlayShown(document.getElementById('trainShop'));
                         const _tuneOpen = _touchOverlayShown(document.getElementById('trainTune'));
                         show = !(_shopOpen || _tuneOpen)
-                            && (gameState === 'playing' || gameState === 'pvp' || (gameState === 'training' || gameState === 'tdtraining'))
+                            && (gameState === 'playing' || gameState === 'pvp' || (gameState === 'training' || gameState === 'tdtraining') || gameState === 'topdown')
                             && !isPaused && !isDrafting && !isAwardShowing && !statPanelOpen;
                     }
                 }
@@ -2399,6 +2478,12 @@
                 const _isTouch = (document.body.getAttribute('data-device') === 'touch');
                 _statsClose.style.display = (_isTouch && statPanelOpen) ? 'flex' : 'none';
             }
+            // 俯视: 跳跃键改为「位移」, 移动盘切换为 360° 摇杆外观
+            const _tdTouch = (gameState === 'topdown' || gameState === 'tdtraining');
+            const _tjLabel = document.querySelector('#touchJump .tj-label');
+            if (_tjLabel && _tjLabel.textContent !== (_tdTouch ? '位移' : '跳')) _tjLabel.textContent = _tdTouch ? '位移' : '跳';
+            const _padEl = document.getElementById('touchMovePad');
+            if (_padEl) _padEl.classList.toggle('td-stick', _tdTouch);
         }
 
         /** 绑定触控层: Pointer Events + pointerId 所有权 + setPointerCapture */
@@ -2417,12 +2502,12 @@
                 _touchPointers.set(e.pointerId, { control: 'move' });
                 try { pad.setPointerCapture(e.pointerId); } catch (err) { }
                 pad.classList.add('pressed');
-                _updateMoveFromClientX(pad, e.clientX);
+                _updateMoveInput(pad, e.clientX, e.clientY);
             });
             pad.addEventListener('pointermove', function (e) {
                 const rec = _touchPointers.get(e.pointerId);
                 if (!rec || rec.control !== 'move') return;
-                _updateMoveFromClientX(pad, e.clientX);
+                _updateMoveInput(pad, e.clientX, e.clientY);
             });
             const endMove = function (e) {
                 const rec = _touchPointers.get(e.pointerId);
@@ -2433,6 +2518,7 @@
                 if (!still) {
                     touchState.left = false;
                     touchState.right = false;
+                    _resetStickKnob(pad);
                     pad.classList.remove('pressed', 'lean-left', 'lean-right');
                 }
             };
@@ -2445,6 +2531,7 @@
                 _touchPointers.set(e.pointerId, { control: 'fire' });
                 _touchFirePointers.add(e.pointerId);
                 touchState.fire = true;
+                if (_isTdTouchMode()) TD.firePressed = true;   // 俯视: 刀剑按一下即挥
                 fire.classList.add('pressed');
                 try { fire.setPointerCapture(e.pointerId); } catch (err) { }
             });
@@ -2502,6 +2589,11 @@
                 _highlightWheel(0);
                 if (jp.wheelMode) {
                     if (jp.weapon > 0) _switchWeaponByWheel(jp.weapon);
+                } else if (_isTdTouchMode() && player) {
+                    // 俯视: 跳跃键改为能量位移 (方向 = 摇杆方向, 未推摇杆则朝瞄准方向)
+                    let dx = touchState.mx || 0, dy = touchState.my || 0;
+                    if (Math.abs(dx) + Math.abs(dy) < 0.01) { dx = Math.cos(player._tdAim || 0); dy = Math.sin(player._tdAim || 0); }
+                    if (tdDash(player, dx, dy, Date.now())) TD.pDashLock = Date.now() + 350;
                 } else {
                     touchState.jumpQueued = true;
                 }
@@ -12023,7 +12115,8 @@
                 items: [
                     '俯视能量环移到画面左下 / 右下角，名称标签改到环上方；「正面 / 负面效果」面板在俯视下整排上移，给角落让出位置，两者不再互相遮挡；能量不足提示同步移到环下方',
                     '「坚忍之志」新增治疗增强上限：最多 +200%（治疗倍率最高 ×3），超出部分不再继续放大治疗；卡牌描述与属性面板（显示当前实际增强值）同步',
-                    '俯视模式（含俯视训练场）取消换弹：双方弹匣无限、开火不消耗弹药、不再进入换弹状态，AI 与玩家一致；R 键不再换弹，左上 HUD 弹药显示为 ∞，底部键位说明同步移除「R 换弹」'
+                    '俯视模式（含俯视训练场）取消换弹：双方弹匣无限、开火不消耗弹药、不再进入换弹状态，AI 与玩家一致；R 键不再换弹，左上 HUD 弹药显示为 ∞，底部键位说明同步移除「R 换弹」',
+                    '俯视模式手机端适配：左下移动盘改为 360° 平滑摇杆（可上下左右任意方向），跳跃键变为「位移」键（点击向摇杆方向突进），发射键按住连发，手机端自动锁定敌方、无需瞄准；暂停键与属性面板键在俯视模式同样可用；手机端能量环缩小并贴到最角，避免与摇杆 / 位移键重叠'
                 ]
             },
             {
@@ -12938,6 +13031,7 @@
                 return;
             }
             tdRegen(player, TD.dt || 0);
+            const _isTouchNow = (document.body.getAttribute('data-device') === 'touch');
             const wp = tdScreenToWorld(TD.mouseX, TD.mouseY);
             let mx = 0, my = 0;
             const k = TD.keys;
@@ -12945,11 +13039,21 @@
             if (k['s']) my += 1;
             if (k['a']) mx -= 1;
             if (k['d']) mx += 1;
+            // 手机端: 摇杆 360° 平滑移动 (键盘有输入时以键盘为准)
+            if (_isTouchNow && typeof touchState !== 'undefined' && (mx === 0 && my === 0)
+                && (Math.abs(touchState.mx || 0) + Math.abs(touchState.my || 0) > 0.01)) {
+                mx = touchState.mx; my = touchState.my;
+            }
             const px0 = player.x, py0 = player.y;
             tdMove(player, mx, my, tdMoveSpeedOf(player), now);
             player._tdVX = player.x - px0;
             player._tdVY = player.y - py0;
-            player._tdAim = Math.atan2(wp.y - player.y, wp.x - player.x);
+            // 瞄准: 手机端自动锁定敌方, PC 端仍由鼠标决定
+            if (_isTouchNow && ai && ai.health > 0) {
+                player._tdAim = Math.atan2(ai.y - player.y, ai.x - player.x);
+            } else {
+                player._tdAim = Math.atan2(wp.y - player.y, wp.x - player.x);
+            }
             const w = player.weapon;
             if (w && w.isMelee) {
                 // 刀剑为内置蓄力: 点一下左键立即按当前蓄力挥砍, 用完清零
@@ -12959,7 +13063,7 @@
                         player._tdSwordCharge = 0;
                     }
                 }
-            } else if (TD.fireHeld) {
+            } else if (TD.fireHeld || (_isTouchNow && typeof touchState !== 'undefined' && touchState.fire)) {
                 tdFire(player, player._tdAim, now);
             }
             TD.firePressed = false;
@@ -13488,9 +13592,9 @@
             ctx.textBaseline = 'alphabetic';
         }
 
-        function tdDrawEnergyRing(cx, cy, val, max, color) {
+        function tdDrawEnergyRing(cx, cy, val, max, color, radius) {
             const _max = Math.max(1, max || 100);
-            const r = 34, lw = 7;
+            const r = radius || 34, lw = radius ? Math.max(3, radius * 0.22) : 7;
             ctx.beginPath(); ctx.arc(cx, cy, r, 0, Math.PI * 2);
             ctx.strokeStyle = 'rgba(255,255,255,0.14)'; ctx.lineWidth = lw; ctx.stroke();
             const ratio = Math.max(0, Math.min(1, val / _max));
@@ -13499,13 +13603,13 @@
             ctx.fillStyle = 'rgba(0,0,0,0.42)';
             ctx.beginPath(); ctx.arc(cx, cy, r - lw / 2 - 1, 0, Math.PI * 2); ctx.fill();
             ctx.fillStyle = '#ffffff';
-            ctx.font = 'bold 16px Arial';
+            ctx.font = 'bold ' + Math.max(11, Math.round(r * 0.47)) + 'px Arial';
             ctx.textAlign = 'center';
             ctx.textBaseline = 'middle';
-            ctx.fillText(Math.floor(val) + '', cx, cy - 6);
-            ctx.font = '10px Arial';
+            ctx.fillText(Math.floor(val) + '', cx, cy - r * 0.18);
+            ctx.font = Math.max(7, Math.round(r * 0.29)) + 'px Arial';
             ctx.fillStyle = 'rgba(255,255,255,0.55)';
-            ctx.fillText('/' + Math.round(_max), cx, cy + 11);
+            ctx.fillText('/' + Math.round(_max), cx, cy + r * 0.33);
             ctx.textBaseline = 'alphabetic';
         }
 
@@ -13572,15 +13676,20 @@
         function tdDrawHUD(now) {
             // 横版 HUD 已完整照搬 (血条 / 护盾 / 武器 / 状态 / 分数 / 命数),
             // 这里只补俯视专属: 双方能量环 (贴左下 / 右下角, 避开跟随角色的效果状态栏) + 刀蓄力 + 准星
-            const ringY = canvas.height - 110;
-            const ringLX = 96, ringRX = canvas.width - 96;
-            tdDrawEnergyRing(ringLX, ringY, tdEnergy(player), tdEnergyMaxOf(player), '#55efc4');
-            tdDrawEnergyRing(ringRX, ringY, tdEnergy(ai), tdEnergyMaxOf(ai), '#ffb86b');
-            ctx.textAlign = 'center';
-            ctx.font = '11px Arial';
-            ctx.fillStyle = 'rgba(255,255,255,0.6)';
-            ctx.fillText('我方能量', ringLX, ringY - 52);
-            ctx.fillText('敌方能量', ringRX, ringY - 52);
+            // 手机端: 触屏摇杆 / 位移键占用底部两角, 能量环缩小并进一步贴角
+            const _touchUi = (document.body.getAttribute('data-device') === 'touch');
+            const ringY = _touchUi ? (canvas.height - 100) : (canvas.height - 110);
+            const ringLX = _touchUi ? 36 : 96, ringRX = _touchUi ? (canvas.width - 36) : (canvas.width - 96);
+            const _ringR = _touchUi ? 22 : 34;
+            tdDrawEnergyRing(ringLX, ringY, tdEnergy(player), tdEnergyMaxOf(player), '#55efc4', _ringR);
+            tdDrawEnergyRing(ringRX, ringY, tdEnergy(ai), tdEnergyMaxOf(ai), '#ffb86b', _ringR);
+            if (!_touchUi) {
+                ctx.textAlign = 'center';
+                ctx.font = '11px Arial';
+                ctx.fillStyle = 'rgba(255,255,255,0.6)';
+                ctx.fillText('我方能量', ringLX, ringY - 52);
+                ctx.fillText('敌方能量', ringRX, ringY - 52);
+            }
 
             if (TD.mouseX > 0 && TD.mouseY > 0) {
                 const mx = TD.mouseX, my = TD.mouseY;
@@ -13597,7 +13706,7 @@
                 ctx.fillStyle = 'rgba(255,120,120,0.9)';
                 ctx.font = 'bold 14px Arial';
                 ctx.textAlign = 'center';
-                ctx.fillText('能量不足', ringLX, ringY + 58);
+                ctx.fillText('能量不足', ringLX, ringY + (_touchUi ? 38 : 58));
             }
             // 失败界面已改为照搬横版 #gameOver 面板, 不再自绘
         }
@@ -13810,7 +13919,7 @@
             if ((gameState !== 'topdown' && gameState !== 'tdtraining') || e.button !== 0) return;
             // 点击任何 UI 面板/按钮/输入框时不应触发射击
             const _tg = e.target;
-            if (_tg && _tg.closest && _tg.closest('button, input, textarea, select, #trainPanel, #trainToggle, #trainShop, #trainTunePanel, #pauseMenu, #statPanel, #draftOverlay, #freePickOverlay, #startChoice, #gameOver')) return;
+            if (_tg && _tg.closest && _tg.closest('button, input, textarea, select, #trainPanel, #trainToggle, #trainShop, #trainTunePanel, #pauseMenu, #statPanel, #draftOverlay, #freePickOverlay, #startChoice, #gameOver, #touchLayer, #touchStatsClose')) return;
             TD.fireHeld = true;
             TD.firePressed = true;
         });
