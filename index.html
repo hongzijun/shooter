@@ -12375,7 +12375,8 @@ body.cm-menu #trainToggle { display: none !important; }
                     '新增「⚙ 设置」面板，原「按键设置」按钮移入设置；设置中显示账号状态与云端连接状态',
                     '手游体验修复：主菜单可上下滑动、长按按钮不再触发文字选择/复制/系统菜单、手机横竖屏铺满屏幕无留黑、HUD 与触控按钮收进安全区',
                     '社区数据接入 Supabase（可选）：填入项目地址与 anon key 后账号/榜单/留言全服同步；未配置时自动使用本机存储并在设置中提示',
-                    '登录注册改为强制要求：未登录时主菜单显示「🔒 请先登录 / 注册后再开始游戏」，开始游戏 / 双人对战 / 训练场 / 俯视 PVE / 俯视训练场均会先要求登录；登录后自动解锁，退出登录会重新要求登录'
+                    '登录注册改为强制要求：未登录时主菜单显示「🔒 请先登录 / 注册后再开始游戏」，开始游戏 / 双人对战 / 训练场 / 俯视 PVE / 俯视训练场均会先要求登录；登录后自动解锁，退出登录会重新要求登录',
+                    '账号数据改为跟随账号（不再只存本机）：登录 / 自动登录时从云端拉取该账号的键位设置、训练场数值、成就与多槽存档并覆盖本机；此后的修改每 15 秒（以及退出模式 / 关闭页面时）自动同步回该账号，换设备或换账号登录都能带回自己的数据'
                 ]
             },
             {
@@ -15807,6 +15808,11 @@ body.cm-menu #trainToggle { display: none !important; }
     var rankTab = 'pve';
     var clockStarted = false;
     var lastFlushAt = 0;
+    // 账号数据: 键位 / 训练场数值 / 成就 / 多槽存档 (跟随账号, 不再只存本机)
+    var SYNC_KEYS = ['shooter_touch_cfg_v1', 'shooter_train_tune_v1', 'shooter_td_tune_v1', 'gunfight_achievements', 'gunfight_save_index'];
+    var SYNC_PREFIX = 'gunfight_save_';
+    var lastSyncSnap = '';
+    var autoSyncStarted = false;
 
     // ===================== 基础工具 =====================
     function cloudOn() { return !!(SUPABASE_URL && SUPABASE_ANON_KEY); }
@@ -15917,6 +15923,82 @@ body.cm-menu #trainToggle { display: none !important; }
             .catch(function () { return false; });
     }
 
+    // ===== 账号数据同步 (键位 / 数值 / 成就 / 存档) =====
+    function collectProfile() {
+        var o = {};
+        SYNC_KEYS.forEach(function (k) {
+            var v = null;
+            try { v = localStorage.getItem(k); } catch (e) { }
+            if (v != null) o[k] = v;
+        });
+        try {
+            for (var i = 0; i < localStorage.length; i++) {
+                var k = localStorage.key(i);
+                if (k && k.indexOf(SYNC_PREFIX) === 0) {
+                    var v2 = localStorage.getItem(k);
+                    if (v2 != null) o[k] = v2;
+                }
+            }
+        } catch (e) { }
+        return o;
+    }
+    function applyProfile(prof) {
+        if (!prof || typeof prof !== 'object') return false;
+        var n = 0;
+        Object.keys(prof).forEach(function (k) {
+            if (SYNC_KEYS.indexOf(k) < 0 && k.indexOf(SYNC_PREFIX) !== 0) return;
+            try { localStorage.setItem(k, String(prof[k])); n++; } catch (e) { }
+        });
+        if (!n) return false;
+        // 立即应用: 键位与训练场数值
+        try {
+            if (typeof loadTouchConfig === 'function' && typeof applyTouchConfig === 'function') {
+                touchCfg = loadTouchConfig();
+                applyTouchConfig();
+            }
+        } catch (e) { }
+        try { if (typeof loadTrainTune === 'function') loadTrainTune(); } catch (e) { }
+        try { if (typeof updateUI === 'function') updateUI(); } catch (e) { }
+        return true;
+    }
+    function pushProfile(force) {
+        if (!current || !cloudOn()) return Promise.resolve(false);
+        var prof = collectProfile();
+        var snap = JSON.stringify(prof);
+        if (!force && snap === lastSyncSnap) return Promise.resolve(false);
+        // 体积保护: 存档过大时只同步设置类数据
+        if (snap.length > 900000) {
+            var slim = {};
+            SYNC_KEYS.forEach(function (k) { if (prof[k] != null) slim[k] = prof[k]; });
+            prof = slim;
+            snap = JSON.stringify(prof);
+        }
+        lastSyncSnap = snap;
+        return patchUser(current.id, { extra: { profile: prof } })
+            .then(function () { return true; })
+            .catch(function () { return false; });
+    }
+    function syncFromAccount(user) {
+        if (!cloudOn() || !user) return Promise.resolve(false);
+        var prof = (user.extra && user.extra.profile) ? user.extra.profile : null;
+        if (prof && typeof prof === 'object' && Object.keys(prof).length) {
+            applyProfile(prof);
+            lastSyncSnap = JSON.stringify(collectProfile());
+            setTimeout(function () {
+                try { showToast('☁ 已同步账号数据（键位 / 数值 / 存档）'); } catch (e) { }
+            }, 2800);
+            return Promise.resolve(true);
+        }
+        // 云端还没有该账号的数据: 用本机当前数据作为初始
+        lastSyncSnap = '';
+        return pushProfile(true);
+    }
+    function startAutoSync() {
+        if (autoSyncStarted) return;
+        autoSyncStarted = true;
+        setInterval(function () { if (current && cloudOn()) pushProfile(false); }, 15000);
+    }
+
     // ===================== 账号 =====================
     function showToast(msg) {
         ensureDom();
@@ -15942,6 +16024,7 @@ body.cm-menu #trainToggle { display: none !important; }
         startClock();
         showToast('✅ 已登录 ' + user.username);
         updateLockUI();
+        syncFromAccount(user);
         return patchUser(user.id, { last_login_at: nowISO() }).catch(function () { })
             .then(function () { return track(type || 'login', ''); })
             .then(function () { return user; });
@@ -15962,6 +16045,7 @@ body.cm-menu #trainToggle { display: none !important; }
             updateAccountBtn(); startClock(); updateLockUI();
             try { GameAudio.play('pickup'); } catch (e) { }
             showToast('✅ 注册成功，已登录 ' + u.username);
+            syncFromAccount(u);
             return track('register', '').then(function () {
                 return track('login', '').then(function () {
                     return patchUser(u.id, { last_login_at: nowISO() }).catch(function () { });
@@ -15980,6 +16064,7 @@ body.cm-menu #trainToggle { display: none !important; }
         return track('logout', '').then(function () {
             current = null;
             playBase = 0; playSec = 0;
+            lastSyncSnap = '';
             try { localStorage.removeItem(LS_LAST); } catch (e) { }
             updateAccountBtn(); updateLockUI();
             showToast('已退出登录');
@@ -16005,6 +16090,7 @@ body.cm-menu #trainToggle { display: none !important; }
             playSec = 0;
             updateAccountBtn(); startClock(); updateLockUI();
             showToast('✅ 已登录 ' + u.username + '（本机自动登录）');
+            syncFromAccount(u);
             return track('auto_login', '').then(function () {
                 return patchUser(u.id, { last_login_at: nowISO() }).catch(function () { });
             });
@@ -16036,6 +16122,7 @@ body.cm-menu #trainToggle { display: none !important; }
         var total = playBase + playSec;
         patchUser(current.id, { play_seconds: total, last_mode: curMode || '' }).catch(function () { });
         if (merge) { playBase = total; playSec = 0; }
+        pushProfile(false);
     }
     function checkGameover() {
         var g = (typeof gameState !== 'undefined') ? gameState : '';
@@ -16579,6 +16666,7 @@ body.cm-menu #trainToggle { display: none !important; }
         syncMenuClass();
         setInterval(syncMenuClass, 250);
 
+        startAutoSync();
         autoLogin().then(function () {
             updateLockUI();
             if (!current) setTimeout(function () { try { openAuthRequired(); } catch (e) { } }, 450);
@@ -16596,6 +16684,7 @@ body.cm-menu #trainToggle { display: none !important; }
         current: function () { return current; },
         track: track,
         submitScore: submitScore,
+        syncNow: function () { return pushProfile(true); },
         config: function () { return { url: SUPABASE_URL, cloud: cloudOn() }; }
     };
 })();
