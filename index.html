@@ -1545,6 +1545,233 @@
         }
         body.low-perf #touchWheel .tw-sec { box-shadow: none !important; }
     </style>
+    <style>
+/* ================= 社区模块 (账号 / 排行榜 / 留言板 / 管理 / 设置) & 手游修复 ================= */
+
+/* --- 主菜单可滚动 (手机上下滑不灵敏 / 内容超出不可达) --- */
+#menu {
+    justify-content: flex-start !important;
+    overflow-y: auto !important;
+    overflow-x: hidden !important;
+    -webkit-overflow-scrolling: touch;
+    padding: calc(16px + env(safe-area-inset-top)) 12px calc(26px + env(safe-area-inset-bottom)) !important;
+    box-sizing: border-box;
+}
+#menu > * { flex: 0 0 auto; }
+body[data-device="touch"] #menu { touch-action: pan-y; }
+body[data-device="touch"] #menu > h1 { margin-top: 6px; margin-bottom: 6px; }
+
+/* --- 长按不触发文字选择 / 复制粘贴 / 系统菜单 --- */
+#touchLayer, #touchLayer *, #gameCanvas, #menu, #menu *, #cmModal, #cmModal *,
+#statPanel, #pauseMenu, #trainPanel, #trainShop, .btn, #hud, #hudFullStatus {
+    -webkit-touch-callout: none;
+    -webkit-user-select: none;
+    user-select: none;
+}
+#gameCanvas, #touchLayer { touch-action: none; }
+#cmModal input, #cmModal textarea { -webkit-user-select: text; user-select: text; -webkit-touch-callout: default; }
+
+/* --- 手机端 HUD 收紧, 避免越界/遮挡 --- */
+body[data-device="touch"] #controls { display: none !important; }
+body[data-device="touch"] #statusPanel { display: none !important; }
+@media (max-height: 520px) {
+    body[data-device="touch"] #hudFullStatus { transform: scale(0.82); transform-origin: 0 0; }
+    body[data-device="touch"] #hud { transform: scale(0.86); transform-origin: 0 0; }
+}
+
+/* --- 登录提示横幅 --- */
+#cmToast {
+    position: fixed;
+    top: calc(10px + env(safe-area-inset-top));
+    left: 50%;
+    transform: translate(-50%, -14px);
+    background: linear-gradient(135deg, rgba(46,213,115,0.96), rgba(26,158,87,0.96));
+    color: #fff;
+    font-size: 14px;
+    font-weight: bold;
+    padding: 10px 20px;
+    border-radius: 999px;
+    box-shadow: 0 8px 26px rgba(0,0,0,0.45);
+    z-index: 100000;
+    opacity: 0;
+    pointer-events: none;
+    transition: opacity 0.25s ease, transform 0.25s ease;
+    white-space: nowrap;
+    max-width: 92vw;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+#cmToast.show { opacity: 1; transform: translate(-50%, 0); }
+
+/* --- 通用弹窗 --- */
+#cmModal {
+    position: fixed;
+    inset: 0;
+    background: rgba(3, 5, 12, 0.72);
+    backdrop-filter: blur(6px);
+    -webkit-backdrop-filter: blur(6px);
+    z-index: 99990;
+    display: none;
+    align-items: center;
+    justify-content: center;
+    padding: 14px;
+    box-sizing: border-box;
+}
+#cmModal.show { display: flex; }
+#cmModal .cm-card {
+    width: min(760px, 96vw);
+    max-height: 88vh;
+    background: linear-gradient(160deg, rgba(20,26,46,0.98), rgba(10,14,26,0.99));
+    border: 1px solid rgba(79,142,255,0.38);
+    border-radius: 16px;
+    box-shadow: 0 20px 60px rgba(0,0,0,0.6);
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+    color: #e8f0ff;
+}
+#cmModal .cm-head {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 14px 18px;
+    font-size: 17px;
+    font-weight: bold;
+    border-bottom: 1px solid rgba(120,170,255,0.18);
+    background: rgba(79,142,255,0.10);
+    flex: 0 0 auto;
+}
+#cmModal .cm-head button {
+    background: rgba(255,255,255,0.10);
+    border: none;
+    color: #cfe0ff;
+    width: 30px;
+    height: 30px;
+    border-radius: 8px;
+    font-size: 18px;
+    line-height: 1;
+    cursor: pointer;
+}
+#cmModal .cm-body {
+    padding: 16px 18px 20px;
+    overflow-y: auto;
+    -webkit-overflow-scrolling: touch;
+    font-size: 13px;
+    line-height: 1.6;
+}
+#cmModal .cm-body h3 { font-size: 14px; margin: 14px 0 8px; color: #9fc0ff; }
+#cmModal .cm-body h3:first-child { margin-top: 0; }
+.cm-field { margin-bottom: 10px; }
+.cm-field label { display: block; font-size: 12px; color: #8fa6c8; margin-bottom: 5px; }
+.cm-field input {
+    width: 100%;
+    box-sizing: border-box;
+    background: rgba(0,0,0,0.35);
+    border: 1px solid rgba(120,170,255,0.32);
+    border-radius: 9px;
+    color: #fff;
+    padding: 10px 12px;
+    font-size: 14px;
+    outline: none;
+}
+.cm-field input:focus { border-color: rgba(120,190,255,0.8); }
+.cm-btn {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 6px;
+    border: none;
+    border-radius: 9px;
+    padding: 10px 16px;
+    font-size: 14px;
+    font-weight: bold;
+    color: #fff;
+    cursor: pointer;
+    background: linear-gradient(45deg, #4f8eff, #74b9ff);
+    margin: 4px 6px 4px 0;
+}
+.cm-btn.green { background: linear-gradient(45deg, #2ed573, #1abc9c); }
+.cm-btn.orange { background: linear-gradient(45deg, #ff9f43, #ee5253); }
+.cm-btn.gray { background: linear-gradient(45deg, #57606f, #2f3542); }
+.cm-btn:disabled { opacity: 0.45; cursor: not-allowed; }
+.cm-msg { min-height: 18px; font-size: 12px; color: #ff9f9f; margin: 6px 0 2px; }
+.cm-msg.ok { color: #7bed9f; }
+.cm-note { font-size: 11px; color: #7d8ba1; line-height: 1.5; }
+.cm-row { display: flex; justify-content: space-between; gap: 12px; padding: 7px 0; border-bottom: 1px dashed rgba(120,170,255,0.14); }
+.cm-row span:first-child { color: #8fa6c8; flex: 0 0 auto; }
+.cm-row span:last-child { text-align: right; word-break: break-all; }
+.cm-tabs { display: flex; gap: 8px; margin-bottom: 12px; flex-wrap: wrap; }
+.cm-tab {
+    padding: 8px 16px;
+    border-radius: 999px;
+    background: rgba(255,255,255,0.07);
+    border: 1px solid rgba(120,170,255,0.24);
+    color: #a9c1e6;
+    cursor: pointer;
+    font-size: 13px;
+}
+.cm-tab.on { background: linear-gradient(45deg, #4f8eff, #74b9ff); color: #fff; border-color: transparent; }
+.cm-table { width: 100%; border-collapse: collapse; font-size: 12px; }
+.cm-table th, .cm-table td { padding: 7px 6px; text-align: left; border-bottom: 1px solid rgba(120,170,255,0.12); }
+.cm-table th { color: #9fc0ff; font-weight: 600; font-size: 11px; }
+.cm-table tr.me td { background: rgba(46,213,115,0.10); }
+.cm-list { display: flex; flex-direction: column; gap: 8px; }
+.cm-item {
+    background: rgba(255,255,255,0.05);
+    border: 1px solid rgba(120,170,255,0.20);
+    border-radius: 10px;
+    padding: 10px 12px;
+    cursor: pointer;
+    transition: background 0.15s ease;
+}
+.cm-item:hover { background: rgba(79,142,255,0.16); }
+.cm-item-top { display: flex; justify-content: space-between; gap: 10px; font-weight: bold; }
+.cm-item-sub { font-size: 11px; color: #8fa6c8; margin-top: 3px; }
+.cm-msg-item { background: rgba(255,255,255,0.05); border-radius: 10px; padding: 9px 12px; border-left: 3px solid #4f8eff; }
+.cm-msg-head { display: flex; justify-content: space-between; font-size: 11px; color: #9fc0ff; margin-bottom: 4px; }
+.cm-msg-text { font-size: 13px; color: #e6eeff; white-space: pre-wrap; word-break: break-word; }
+.cm-timeline { position: relative; margin-left: 8px; padding-left: 16px; border-left: 2px solid rgba(79,142,255,0.28); }
+.cm-tl-item { position: relative; padding: 4px 0 10px; }
+.cm-tl-item::before { content: ''; position: absolute; left: -23px; top: 9px; width: 9px; height: 9px; border-radius: 50%; background: #4f8eff; box-shadow: 0 0 8px rgba(79,142,255,0.8); }
+.cm-tl-time { font-size: 11px; color: #8fa6c8; }
+.cm-tl-text { font-size: 13px; color: #dbe8ff; }
+.cm-tl-tag { display: inline-block; font-size: 10px; padding: 1px 7px; border-radius: 999px; background: rgba(79,142,255,0.22); color: #9fc0ff; margin-left: 6px; }
+.cm-empty { text-align: center; color: #7d8ba1; padding: 26px 10px; font-size: 13px; }
+.cm-setting-row { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 12px 0; border-bottom: 1px solid rgba(120,170,255,0.14); }
+.cm-setting-row:last-child { border-bottom: none; }
+.cm-setting-main { font-size: 14px; }
+.cm-setting-sub { font-size: 11px; color: #8fa6c8; margin-top: 2px; }
+.cm-sql { width: 100%; box-sizing: border-box; background: rgba(0,0,0,0.4); border: 1px solid rgba(120,170,255,0.22); border-radius: 8px; color: #b9cbe6; font-size: 11px; padding: 8px; font-family: Consolas, monospace; resize: vertical; }
+
+@media (max-width: 560px) {
+    body[data-device="touch"] #topStatusPanel { top: 132px !important; width: min(92vw, 320px) !important; }
+}
+
+/* 主菜单态: 隐藏游戏内 HUD, 保持标题与按钮干净 */
+body.cm-menu #hud, body.cm-menu #hudFullStatus, body.cm-menu #statusPanel,
+body.cm-menu #topStatusPanel, body.cm-menu #livesInfo, body.cm-menu #killFeedPanel,
+body.cm-menu #minimapContainer, body.cm-menu #controls, body.cm-menu #score,
+body.cm-menu #diagPanel, body.cm-menu #touchLayer, body.cm-menu #trainingDebug,
+body.cm-menu #trainToggle { display: none !important; }
+
+/* 桌面窄高屏: 压缩主菜单, 让全部入口尽量一屏可见 */
+@media (min-width: 700px) and (max-height: 980px) {
+    #menu h1 { font-size: clamp(30px, 5.2vh, 44px) !important; margin-bottom: 4px !important; }
+    #menu h2 { font-size: 13px !important; margin-bottom: 8px !important; }
+    #menu p { font-size: 11px !important; line-height: 1.45 !important; margin-bottom: 2px !important; }
+    #menu .btn { padding: 8px 32px !important; font-size: 15px !important; margin-top: 5px !important; margin-left: 0 !important; }
+}
+
+/* 手机端弹窗更紧凑 */
+@media (max-width: 520px) {
+    #cmModal { padding: 8px; }
+    #cmModal .cm-card { width: 100%; max-height: 92vh; border-radius: 14px; }
+    #cmModal .cm-head { padding: 12px 14px; font-size: 15px; }
+    #cmModal .cm-body { padding: 12px 14px 16px; }
+    .cm-table th, .cm-table td { padding: 6px 4px; font-size: 11px; }
+}
+
+    </style>
 </head>
 
 <body>
@@ -1976,8 +2203,18 @@
         const minimapCtx = minimapCanvas ? minimapCanvas.getContext('2d') : null;
 
         function resizeCanvas() {
-            canvas.width = Math.max(320, Math.min(window.innerWidth * 0.96, 3600));
-            canvas.height = Math.max(240, Math.min(window.innerHeight * 0.92, 2100));
+            // 手机/平板: 铺满可视区 (消除上下留黑); 桌面: 保留 4%/8% 边距
+            const _dev = (document.body && document.body.getAttribute('data-device')) || '';
+            const _vv = window.visualViewport;
+            const _vw = (_vv && _vv.width) ? _vv.width : window.innerWidth;
+            const _vh = (_vv && _vv.height) ? _vv.height : window.innerHeight;
+            if (_dev === 'touch') {
+                canvas.width = Math.max(320, Math.min(Math.round(_vw), 3600));
+                canvas.height = Math.max(240, Math.min(Math.round(_vh), 2100));
+            } else {
+                canvas.width = Math.max(320, Math.min(_vw * 0.96, 3600));
+                canvas.height = Math.max(240, Math.min(_vh * 0.92, 2100));
+            }
             // 尺寸变化后重算 HUD 缩放与触控按键位置 (需等触控系统初始化完成)
             if (window.__mobileUiReady) {
                 try { applyUiScale(); applyTouchConfig(); } catch (e) { }
@@ -2035,9 +2272,9 @@
             version: 1,
             opacity: 1,
             scale: 1,                       // legacy 顶层缩放, 仅作旧存档 fallback
-            move: { x: 0.17, y: 0.80, scale: 1 },
+            move: { x: 0.17, y: 0.84, scale: 1 },
             fire: { x: 0.84, y: 0.30, scale: 1 },
-            jump: { x: 0.84, y: 0.80, scale: 1 }
+            jump: { x: 0.84, y: 0.84, scale: 1 }
         };
 
         /** 控件位置 + 独立大小; 旧存档无 per-key scale 时使用顶层 legacyScale */
@@ -12116,7 +12353,14 @@
                     '「坚忍之志」新增治疗增强上限：最多 +200%（治疗倍率最高 ×3），超出部分不再继续放大治疗；卡牌描述与属性面板（显示当前实际增强值）同步',
                     '俯视模式（含俯视训练场）取消换弹：双方弹匣无限、开火不消耗弹药、不再进入换弹状态，AI 与玩家一致；R 键不再换弹，左上 HUD 弹药显示为 ∞，底部键位说明同步移除「R 换弹」',
                     '俯视模式手机端适配：左下移动盘改为 360° 平滑摇杆（可上下左右任意方向），跳跃键变为「位移」键（点击向摇杆方向突进），发射键按住连发，手机端自动锁定敌方、无需瞄准；暂停键与属性面板键在俯视模式同样可用；手机端能量环缩小并贴到最角，避免与摇杆 / 位移键重叠',
-                    '主菜单移除「开始游戏」（跳转旧版 v1）按钮，统一使用「开始游戏 2（v2）」进入当前版本，避免误点跳到旧版'
+                    '主菜单移除「开始游戏」（跳转旧版 v1）按钮，统一使用「开始游戏 2（v2）」进入当前版本，避免误点跳到旧版',
+                    '新增在线账号系统：注册 / 登录 / 本机自动登录（登录成功顶部提示当前账号）；注册后下次打开本机自动登录，并记录注册、登录、各模式进出、退出游戏与闲置超时',
+                    '新增管理员入口「🛠 管理」（密码保护）：账号列表 → 详情页可查看明文密码、各模式最高波次、累计游玩时长，以及精确到分钟的踪迹时间轴',
+                    '新增全服排行榜「🏆 排行榜」：普通 PVE / 俯视模式两个榜单，按最高波次取前 20，每个账号每个模式只记录最高成绩与达成时间',
+                    '新增「💬 留言板」：登录后可发表留言，所有人可查看（用户名 + 发布时间）',
+                    '新增「⚙ 设置」面板，原「按键设置」按钮移入设置；设置中显示账号状态与云端连接状态',
+                    '手游体验修复：主菜单可上下滑动、长按按钮不再触发文字选择/复制/系统菜单、手机横竖屏铺满屏幕无留黑、HUD 与触控按钮收进安全区',
+                    '社区数据接入 Supabase（可选）：填入项目地址与 anon key 后账号/榜单/留言全服同步；未配置时自动使用本机存储并在设置中提示'
                 ]
             },
             {
@@ -13770,7 +14014,8 @@
             const _hfs = document.getElementById('hudFullStatus');
             if (_hfs) {
                 if (!TD._hfsPos) TD._hfsPos = { top: _hfs.style.top, left: _hfs.style.left };
-                _hfs.style.top = '224px'; _hfs.style.left = '12px';
+                var _mobHfs = (document.body.getAttribute('data-device') === 'touch');
+                _hfs.style.top = _mobHfs ? '200px' : '224px'; _hfs.style.left = '12px';
             }
             const _li = document.getElementById('livesInfo');
             if (_li) { if (!TD._livesPos) TD._livesPos = _li.style.top; _li.style.top = '150px'; }
@@ -13809,7 +14054,8 @@
             }
             if (_hfs) {
                 if (!TD._hfsPos) TD._hfsPos = { top: _hfs.style.top, left: _hfs.style.left };
-                _hfs.style.top = '224px';
+                var _mobHfs2 = (document.body.getAttribute('data-device') === 'touch');
+                _hfs.style.top = _mobHfs2 ? '200px' : '224px';
                 _hfs.style.left = '12px';
             }
             const _ctrl = document.getElementById('controls');
@@ -15467,8 +15713,828 @@
             goHomeMenu(true);
         }
 
+        // === 社区模块 (账号 / 排行榜 / 留言板 / 管理 / 设置) ===
+/* ===================== 社区模块: 账号 / 排行榜 / 留言板 / 管理 / 设置 ===================== */
+/* 说明: 纯前端模块, 直连 Supabase REST; 未配置时自动降级为 LocalStorage 本机模式 */
+(function () {
+    'use strict';
+
+    // ====== 配置区: 填入 Supabase 项目地址与 anon key 后自动切云 ======
+    var SUPABASE_URL = '';          // 例: https://abcdefgh.supabase.co
+    var SUPABASE_ANON_KEY = '';     // 例: eyJhbGciOiJIUzI1NiIsInR5cCI6...
+    var ADMIN_PASSWORD = 'hong.2673558';
+    var LS_KEY = 'shooter_cloud_fallback_v1';
+    var LS_LAST = 'shooter_last_account_v1';
+
+    var MODE_LABEL = { pve: '普通 PVE', topdown: '俯视 PVE', training: '训练场', tdtraining: '俯视训练场', pvp: '双人对战' };
+    var TYPE_LABEL = {
+        register: '注册', login: '登录', auto_login: '自动登录', logout: '退出登录',
+        mode_enter: '进入模式', mode_exit: '退出模式', exit: '退出游戏',
+        idle_exit: '闲置超时', score: '刷新纪录'
+    };
+    var SQL_TEXT = [
+        '-- 在 Supabase SQL Editor 中执行一次',
+        'create table if not exists accounts (',
+        '  id uuid primary key default gen_random_uuid(),',
+        '  username text unique not null,',
+        '  password text not null,',
+        '  created_at timestamptz default now(),',
+        '  last_login_at timestamptz,',
+        '  play_seconds int default 0,',
+        '  last_mode text default \'\',',
+        '  extra jsonb default \'{}\'::jsonb',
+        ');',
+        'create table if not exists traces (',
+        '  id bigserial primary key,',
+        '  account_id uuid,',
+        '  username text,',
+        '  type text,',
+        '  detail text default \'\',',
+        '  created_at timestamptz default now()',
+        ');',
+        'create table if not exists scores (',
+        '  id bigserial primary key,',
+        '  account_id uuid,',
+        '  username text,',
+        '  mode text,',
+        '  max_wave int default 0,',
+        '  achieved_at timestamptz default now(),',
+        '  unique(account_id, mode)',
+        ');',
+        'create table if not exists messages (',
+        '  id bigserial primary key,',
+        '  account_id uuid,',
+        '  username text,',
+        '  content text,',
+        '  created_at timestamptz default now()',
+        ');',
+        'alter table accounts enable row level security;',
+        'alter table traces enable row level security;',
+        'alter table scores enable row level security;',
+        'alter table messages enable row level security;',
+        'create policy "anon accounts" on accounts for all using (true) with check (true);',
+        'create policy "anon traces" on traces for all using (true) with check (true);',
+        'create policy "anon scores" on scores for all using (true) with check (true);',
+        'create policy "anon messages" on messages for all using (true) with check (true);',
+        'grant all on table accounts, traces, scores, messages to anon;',
+        'grant all on sequence traces_id_seq, scores_id_seq, messages_id_seq to anon;'
+    ].join('\n');
+
+    var current = null;
+    var curMode = '';
+    var playBase = 0;
+    var playSec = 0;
+    var lastAct = Date.now();
+    var idleReported = false;
+    var lastGameover = false;
+    var adminUnlocked = false;
+    var rankTab = 'pve';
+    var clockStarted = false;
+    var lastFlushAt = 0;
+
+    // ===================== 基础工具 =====================
+    function cloudOn() { return !!(SUPABASE_URL && SUPABASE_ANON_KEY); }
+    function nowISO() { return new Date().toISOString(); }
+    function pad2(n) { return (n < 10 ? '0' : '') + n; }
+    function fmtTime(iso) {
+        if (!iso) return '-';
+        var d = new Date(iso);
+        if (isNaN(d.getTime())) return '-';
+        return d.getFullYear() + '-' + pad2(d.getMonth() + 1) + '-' + pad2(d.getDate()) + ' ' + pad2(d.getHours()) + ':' + pad2(d.getMinutes());
+    }
+    function fmtDuration(sec) {
+        sec = Math.max(0, Math.round(Number(sec) || 0));
+        var h = Math.floor(sec / 3600), m = Math.floor((sec % 3600) / 60);
+        if (h > 0) return h + ' 小时 ' + m + ' 分钟';
+        if (m > 0) return m + ' 分钟';
+        return sec + ' 秒';
+    }
+    function esc(s) {
+        return String(s == null ? '' : s).replace(/[&<>"']/g, function (c) {
+            return ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[c];
+        });
+    }
+    function uid() { return 'local-' + Date.now().toString(36) + '-' + Math.random().toString(36).slice(2, 8); }
+
+    // ===================== 数据层 =====================
+    function localDb() {
+        var o = null;
+        try { o = JSON.parse(localStorage.getItem(LS_KEY) || 'null'); } catch (e) { o = null; }
+        if (!o || typeof o !== 'object') o = {};
+        ['accounts', 'traces', 'scores', 'messages'].forEach(function (k) { if (!Array.isArray(o[k])) o[k] = []; });
+        return o;
+    }
+    function localSave(o) {
+        try { localStorage.setItem(LS_KEY, JSON.stringify(o)); } catch (e) { }
+    }
+    function api(path, opt) {
+        opt = opt || {};
+        var headers = {
+            'apikey': SUPABASE_ANON_KEY,
+            'Authorization': 'Bearer ' + SUPABASE_ANON_KEY,
+            'Content-Type': 'application/json'
+        };
+        if (opt.headers) { for (var k in opt.headers) { if (Object.prototype.hasOwnProperty.call(opt.headers, k)) headers[k] = opt.headers[k]; } }
+        var ctrl = (typeof AbortController !== 'undefined') ? new AbortController() : null;
+        var timer = ctrl ? setTimeout(function () { try { ctrl.abort(); } catch (e) { } }, 8000) : null;
+        var init = { method: opt.method || 'GET', headers: headers, keepalive: !!opt.keepalive };
+        if (opt.body !== undefined) init.body = opt.body;
+        if (ctrl) init.signal = ctrl.signal;
+        return fetch(SUPABASE_URL.replace(/\/+$/, '') + '/rest/v1/' + path, init).then(function (res) {
+            return res.text().then(function (t) {
+                var data = null;
+                try { data = t ? JSON.parse(t) : null; } catch (e) { data = t; }
+                if (!res.ok) {
+                    var msg = (data && (data.message || data.hint || data.details)) || ('HTTP ' + res.status);
+                    throw new Error(msg);
+                }
+                return data;
+            });
+        }).then(function (v) {
+            if (timer) clearTimeout(timer);
+            return v;
+        }, function (e) {
+            if (timer) clearTimeout(timer);
+            throw e;
+        });
+    }
+
+    function findUser(username) {
+        if (cloudOn()) {
+            return api('accounts?select=*&username=eq.' + encodeURIComponent(username) + '&limit=1')
+                .then(function (r) { return (r && r[0]) || null; });
+        }
+        var a = localDb().accounts.filter(function (x) { return x.username === username; })[0] || null;
+        return Promise.resolve(a);
+    }
+    function createUser(username, password) {
+        var row = { username: username, password: password, created_at: nowISO(), last_login_at: nowISO(), play_seconds: 0, last_mode: '', extra: {} };
+        if (cloudOn()) {
+            return api('accounts', { method: 'POST', headers: { 'Prefer': 'return=representation' }, body: JSON.stringify(row) })
+                .then(function (r) { return (r && r[0]) || null; });
+        }
+        row.id = uid();
+        var o = localDb(); o.accounts.push(row); localSave(o);
+        return Promise.resolve(row);
+    }
+    function patchUser(id, patch) {
+        if (!id) return Promise.resolve(false);
+        if (cloudOn()) {
+            return api('accounts?id=eq.' + encodeURIComponent(id), { method: 'PATCH', headers: { 'Prefer': 'return=minimal' }, body: JSON.stringify(patch) })
+                .then(function () { return true; });
+        }
+        var o = localDb();
+        var a = o.accounts.filter(function (x) { return x.id === id; })[0];
+        if (a) Object.assign(a, patch);
+        localSave(o);
+        return Promise.resolve(true);
+    }
+
+    function track(type, detail, keepalive) {
+        if (!current) return Promise.resolve(false);
+        var row = { account_id: current.id, username: current.username, type: type, detail: detail || '', created_at: nowISO() };
+        var o = localDb(); o.traces.push(row);
+        if (o.traces.length > 4000) o.traces = o.traces.slice(-4000);
+        localSave(o);
+        if (!cloudOn()) return Promise.resolve(true);
+        return api('traces', { method: 'POST', headers: { 'Prefer': 'return=minimal' }, body: JSON.stringify(row), keepalive: !!keepalive })
+            .catch(function () { return false; });
+    }
+
+    // ===================== 账号 =====================
+    function showToast(msg) {
+        ensureDom();
+        var t = document.getElementById('cmToast');
+        if (!t) return;
+        t.textContent = msg;
+        t.classList.add('show');
+        clearTimeout(showToast._t);
+        showToast._t = setTimeout(function () { t.classList.remove('show'); }, 2600);
+    }
+    function updateAccountBtn() {
+        var b = document.getElementById('btnAccount');
+        if (!b) return;
+        b.textContent = current ? ('👤 ' + current.username) : '👤 登录 / 注册';
+    }
+    function signIn(user, type) {
+        current = { id: user.id, username: user.username };
+        playBase = Number(user.play_seconds || 0);
+        playSec = 0;
+        try { localStorage.setItem(LS_LAST, JSON.stringify(current)); } catch (e) { }
+        updateAccountBtn();
+        startClock();
+        showToast('✅ 已登录 ' + user.username);
+        return patchUser(user.id, { last_login_at: nowISO() }).catch(function () { })
+            .then(function () { return track(type || 'login', ''); })
+            .then(function () { return user; });
+    }
+    function doRegister(username, password) {
+        return findUser(username).then(function (ex) {
+            if (ex) throw new Error('用户名已被占用');
+            return createUser(username, password);
+        }).then(function (u) {
+            if (!u) return findUser(username);
+            return u;
+        }).then(function (u) {
+            if (!u) throw new Error('注册失败，请稍后重试');
+            current = { id: u.id, username: u.username };
+            playBase = 0; playSec = 0;
+            try { localStorage.setItem(LS_LAST, JSON.stringify(current)); } catch (e) { }
+            updateAccountBtn(); startClock();
+            try { GameAudio.play('pickup'); } catch (e) { }
+            showToast('✅ 注册成功，已登录 ' + u.username);
+            return track('register', '').then(function () {
+                return track('login', '').then(function () {
+                    return patchUser(u.id, { last_login_at: nowISO() }).catch(function () { });
+                });
+            });
+        });
+    }
+    function doLogin(username, password) {
+        return findUser(username).then(function (u) {
+            if (!u) throw new Error('账号不存在');
+            if (u.password !== password) throw new Error('密码错误');
+            return signIn(u, 'login');
+        });
+    }
+    function doLogout() {
+        return track('logout', '').then(function () {
+            current = null;
+            playBase = 0; playSec = 0;
+            try { localStorage.removeItem(LS_LAST); } catch (e) { }
+            updateAccountBtn();
+            showToast('已退出登录');
+            closeModal();
+        });
+    }
+    function autoLogin() {
+        var rec = null;
+        try { rec = JSON.parse(localStorage.getItem(LS_LAST) || 'null'); } catch (e) { }
+        if (!rec || !rec.id) return Promise.resolve(false);
+        var p;
+        if (cloudOn()) {
+            p = api('accounts?select=*&id=eq.' + encodeURIComponent(rec.id) + '&limit=1')
+                .then(function (r) { return (r && r[0]) || null; });
+        } else {
+            p = Promise.resolve(localDb().accounts.filter(function (a) { return a.id === rec.id; })[0] || null);
+        }
+        return p.then(function (u) {
+            if (!u) { try { localStorage.removeItem(LS_LAST); } catch (e) { } return false; }
+            current = { id: u.id, username: u.username };
+            playBase = Number(u.play_seconds || 0);
+            playSec = 0;
+            updateAccountBtn(); startClock();
+            showToast('✅ 已登录 ' + u.username + '（本机自动登录）');
+            return track('auto_login', '').then(function () {
+                return patchUser(u.id, { last_login_at: nowISO() }).catch(function () { });
+            });
+        }).catch(function () { return false; });
+    }
+
+    // ===================== 足迹 / 时长 / 模式 =====================
+    function onModeEnter(mode) {
+        if (!mode) return;
+        if (curMode && curMode !== mode) onModeExit();
+        curMode = mode;
+        lastGameover = false;
+        if (current) {
+            track('mode_enter', MODE_LABEL[mode] || mode);
+            patchUser(current.id, { last_mode: mode }).catch(function () { });
+        }
+    }
+    function onModeExit() {
+        if (!curMode) return;
+        var mode = curMode;
+        curMode = '';
+        if (current) {
+            track('mode_exit', MODE_LABEL[mode] || mode);
+            flushPlayTime(true);
+        }
+    }
+    function flushPlayTime(merge) {
+        if (!current) return;
+        var total = playBase + playSec;
+        patchUser(current.id, { play_seconds: total, last_mode: curMode || '' }).catch(function () { });
+        if (merge) { playBase = total; playSec = 0; }
+    }
+    function checkGameover() {
+        var g = (typeof gameState !== 'undefined') ? gameState : '';
+        var over = (g === 'gameover');
+        if (over && !lastGameover) {
+            var mode = (window._lastGameMode === 'topdown') ? 'topdown' : 'pve';
+            var wv = (mode === 'topdown') ? ((typeof TD !== 'undefined' && TD) ? TD.wave : 0) : ((typeof wave !== 'undefined') ? wave : 0);
+            submitScore(mode, wv);
+        }
+        lastGameover = over;
+    }
+    function startClock() {
+        if (clockStarted) return;
+        clockStarted = true;
+        setInterval(function () {
+            if (!current) return;
+            var g = (typeof gameState !== 'undefined') ? gameState : '';
+            if (g === 'playing' || g === 'topdown' || g === 'training' || g === 'tdtraining' || g === 'pvp') {
+                playSec++;
+                if (Date.now() - lastFlushAt > 20000) { lastFlushAt = Date.now(); flushPlayTime(false); }
+            }
+            checkGameover();
+        }, 1000);
+        setInterval(function () {
+            if (!current) return;
+            if (document.visibilityState !== 'visible') return;
+            if (idleReported) return;
+            if (Date.now() - lastAct > 60000) {
+                idleReported = true;
+                track('idle_exit', '超过 1 分钟无操作');
+                onModeExit();
+            }
+        }, 5000);
+    }
+
+    // ===================== 排行榜 =====================
+    function submitScore(mode, waveNum) {
+        var wv = Math.max(1, Math.round(Number(waveNum) || 0));
+        if (!current || !wv) return Promise.resolve(false);
+        if (cloudOn()) {
+            return api('scores?select=*&account_id=eq.' + encodeURIComponent(current.id) + '&mode=eq.' + encodeURIComponent(mode) + '&limit=1')
+                .then(function (r) {
+                    var prev = r && r[0];
+                    if (prev && Number(prev.max_wave) >= wv) return null;
+                    if (prev) {
+                        return api('scores?id=eq.' + prev.id, {
+                            method: 'PATCH', headers: { 'Prefer': 'return=minimal' },
+                            body: JSON.stringify({ username: current.username, max_wave: wv, achieved_at: nowISO() })
+                        }).then(function () { return true; });
+                    }
+                    return api('scores', {
+                        method: 'POST', headers: { 'Prefer': 'return=minimal' },
+                        body: JSON.stringify({ account_id: current.id, username: current.username, mode: mode, max_wave: wv, achieved_at: nowISO() })
+                    }).then(function () { return true; });
+                })
+                .then(function (changed) {
+                    if (changed) track('score', (MODE_LABEL[mode] || mode) + ' 第 ' + wv + ' 波');
+                })
+                .catch(function () { });
+        }
+        var o = localDb();
+        var prev = o.scores.filter(function (s) { return s.account_id === current.id && s.mode === mode; })[0];
+        if (prev && Number(prev.max_wave) >= wv) return Promise.resolve(false);
+        if (prev) { prev.max_wave = wv; prev.username = current.username; prev.achieved_at = nowISO(); }
+        else o.scores.push({ id: uid(), account_id: current.id, username: current.username, mode: mode, max_wave: wv, achieved_at: nowISO() });
+        localSave(o);
+        track('score', (MODE_LABEL[mode] || mode) + ' 第 ' + wv + ' 波');
+        return Promise.resolve(true);
+    }
+    function getRanks(mode) {
+        if (cloudOn()) {
+            return api('scores?select=*&mode=eq.' + encodeURIComponent(mode) + '&order=max_wave.desc,achieved_at.asc&limit=20');
+        }
+        var o = localDb();
+        return Promise.resolve(o.scores.filter(function (s) { return s.mode === mode; }).sort(function (a, b) {
+            return (Number(b.max_wave) - Number(a.max_wave)) || String(a.achieved_at).localeCompare(String(b.achieved_at));
+        }).slice(0, 20));
+    }
+
+    // ===================== 留言板 =====================
+    function postMessage(text) {
+        if (!current) return Promise.reject(new Error('请先登录'));
+        var row = { account_id: current.id, username: current.username, content: text, created_at: nowISO() };
+        if (cloudOn()) {
+            return api('messages', { method: 'POST', headers: { 'Prefer': 'return=minimal' }, body: JSON.stringify(row) });
+        }
+        var o = localDb(); o.messages.push(row); localSave(o);
+        return Promise.resolve(true);
+    }
+    function getMessages() {
+        if (cloudOn()) return api('messages?select=*&order=created_at.desc&limit=100');
+        var o = localDb();
+        return Promise.resolve(o.messages.slice().reverse().slice(0, 100));
+    }
+
+    // ===================== 管理员 =====================
+    function adminAccounts() {
+        if (cloudOn()) return api('accounts?select=*&order=created_at.desc&limit=500');
+        return Promise.resolve(localDb().accounts.slice().sort(function (a, b) { return String(b.created_at).localeCompare(String(a.created_at)); }));
+    }
+    function adminScores() {
+        if (cloudOn()) return api('scores?select=*&limit=2000');
+        return Promise.resolve(localDb().scores);
+    }
+    function adminTraces(id) {
+        if (cloudOn()) return api('traces?select=*&account_id=eq.' + encodeURIComponent(id) + '&order=created_at.desc&limit=500');
+        return Promise.resolve(localDb().traces.filter(function (t) { return t.account_id === id; }).slice().reverse());
+    }
+
+    // ===================== 弹窗基础 =====================
+    function ensureDom() {
+        if (!document.getElementById('cmToast')) {
+            var t = document.createElement('div');
+            t.id = 'cmToast';
+            document.body.appendChild(t);
+        }
+        if (!document.getElementById('cmModal')) {
+            var m = document.createElement('div');
+            m.id = 'cmModal';
+            m.innerHTML = '<div class="cm-card"><div class="cm-head"><span id="cmTitle"></span><button id="cmClose" type="button">×</button></div><div class="cm-body" id="cmBody"></div></div>';
+            document.body.appendChild(m);
+            m.addEventListener('click', function (e) { if (e.target === m) closeModal(); });
+            var cb = m.querySelector('#cmClose');
+            if (cb) cb.addEventListener('click', closeModal);
+        }
+    }
+    function openModal(title, html) {
+        ensureDom();
+        document.getElementById('cmTitle').textContent = title;
+        document.getElementById('cmBody').innerHTML = html;
+        document.getElementById('cmModal').classList.add('show');
+    }
+    function closeModal() {
+        var m = document.getElementById('cmModal');
+        if (m) m.classList.remove('show');
+    }
+    function bodyEl() { return document.getElementById('cmBody'); }
+    function setMsg(id, text, ok) {
+        var el = document.getElementById(id);
+        if (!el) return;
+        el.textContent = text || '';
+        el.className = 'cm-msg' + (ok ? ' ok' : '');
+    }
+    function bind(id, ev, fn) {
+        var el = document.getElementById(id);
+        if (el) el.addEventListener(ev, fn);
+    }
+
+    // ===================== 菜单 =====================
+    function buildMenu() {
+        var menu = document.getElementById('menu');
+        if (!menu) return;
+        var oldTouch = document.getElementById('btnTouchSettings');
+        if (oldTouch && oldTouch.parentNode) oldTouch.parentNode.removeChild(oldTouch);
+        if (!document.getElementById('btnAccount')) {
+            var defs = [
+                { id: 'btnAccount', text: '👤 登录 / 注册', bg: 'linear-gradient(45deg,#4f8eff,#74b9ff)', fn: openAccount },
+                { id: 'btnRank', text: '🏆 排行榜', bg: 'linear-gradient(45deg,#ffd700,#ff9f43)', color: '#1a1a2e', fn: openRank },
+                { id: 'btnBoard', text: '💬 留言板', bg: 'linear-gradient(45deg,#6c5ce7,#a29bfe)', fn: openBoard },
+                { id: 'btnSettingsHub', text: '⚙ 设置', bg: 'linear-gradient(45deg,#57606f,#2f3542)', fn: openSettingsHub },
+                { id: 'btnAdmin', text: '🛠 管理', bg: 'linear-gradient(45deg,#e17055,#c0392b)', fn: openAdminGate }
+            ];
+            defs.forEach(function (d) {
+                var b = document.createElement('button');
+                b.className = 'btn';
+                b.id = d.id;
+                b.textContent = d.text;
+                b.style.background = d.bg;
+                b.style.marginTop = '8px';
+                if (d.color) b.style.color = d.color;
+                b.addEventListener('click', function () { try { d.fn(); } catch (e) { console.warn(e); } });
+                menu.appendChild(b);
+            });
+        }
+        updateAccountBtn();
+    }
+
+    // ===================== 账号视图 =====================
+    function openAccount() {
+        if (current) {
+            openModal('👤 我的账号',
+                '<div class="cm-row"><span>用户名</span><span style="color:#7bed9f">' + esc(current.username) + '</span></div>' +
+                '<div class="cm-row"><span>状态</span><span style="color:#7bed9f">已登录</span></div>' +
+                '<div class="cm-row"><span>累计游玩</span><span>' + fmtDuration(playBase + playSec) + '</span></div>' +
+                '<div style="margin-top:16px"><button class="cm-btn gray" id="cmLogoutBtn">退出登录</button></div>');
+            bind('cmLogoutBtn', 'click', doLogout);
+            return;
+        }
+        renderAuth('login');
+    }
+    function renderAuth(tab) {
+        var isLogin = (tab !== 'register');
+        openModal('👤 登录 / 注册',
+            '<div class="cm-tabs">' +
+            '<div class="cm-tab' + (isLogin ? ' on' : '') + '" id="cmTabLogin">登录</div>' +
+            '<div class="cm-tab' + (isLogin ? '' : ' on') + '" id="cmTabReg">注册</div>' +
+            '</div>' +
+            '<div class="cm-field"><label>用户名（2-16 字）</label><input id="cmUser" maxlength="16" autocomplete="username" placeholder="输入用户名"></div>' +
+            '<div class="cm-field"><label>密码（4-32 字）</label><input id="cmPwd" type="password" maxlength="32" autocomplete="current-password" placeholder="输入密码"></div>' +
+            '<div class="cm-msg" id="cmAuthMsg"></div>' +
+            '<button class="cm-btn ' + (isLogin ? '' : 'green') + '" id="cmAuthSubmit">' + (isLogin ? '登录' : '注册并登录') + '</button>' +
+            '<div class="cm-note" style="margin-top:10px">注册/登录后本机会记住账号，下次打开页面自动登录并提示当前账号。</div>' +
+            (cloudOn() ? '' : '<div class="cm-note" style="margin-top:6px;color:#ffb86b;">当前未配置云端，账号仅保存在本机。</div>'));
+        bind('cmTabLogin', 'click', function () { renderAuth('login'); });
+        bind('cmTabReg', 'click', function () { renderAuth('register'); });
+        bind('cmAuthSubmit', 'click', function () {
+            var u = (document.getElementById('cmUser') || {}).value || '';
+            var p = (document.getElementById('cmPwd') || {}).value || '';
+            u = u.trim(); p = p.trim();
+            if (u.length < 2 || u.length > 16) return setMsg('cmAuthMsg', '用户名需 2-16 字');
+            if (p.length < 4 || p.length > 32) return setMsg('cmAuthMsg', '密码需 4-32 字');
+            setMsg('cmAuthMsg', '处理中…', true);
+            var task = isLogin ? doLogin(u, p) : doRegister(u, p);
+            task.then(function () {
+                try { GameAudio.play('pickup'); } catch (e) { }
+                closeModal();
+            }).catch(function (e) {
+                setMsg('cmAuthMsg', (e && e.message) || '操作失败，请稍后重试');
+            });
+        });
+    }
+
+    // ===================== 排行榜视图 =====================
+    function openRank() {
+        rankTab = 'pve';
+        renderRank();
+    }
+    function renderRank() {
+        openModal('🏆 排行榜',
+            '<div class="cm-tabs">' +
+            '<div class="cm-tab' + (rankTab === 'pve' ? ' on' : '') + '" id="cmRankPve">普通 PVE</div>' +
+            '<div class="cm-tab' + (rankTab === 'topdown' ? ' on' : '') + '" id="cmRankTd">俯视模式</div>' +
+            '</div><div id="cmRankBody" class="cm-empty">加载中…</div>');
+        bind('cmRankPve', 'click', function () { rankTab = 'pve'; renderRank(); });
+        bind('cmRankTd', 'click', function () { rankTab = 'topdown'; renderRank(); });
+        getRanks(rankTab).then(function (rows) {
+            var el = document.getElementById('cmRankBody');
+            if (!el) return;
+            rows = rows || [];
+            if (!rows.length) { el.className = 'cm-empty'; el.textContent = '暂无记录'; return; }
+            el.className = '';
+            var h = '<table class="cm-table"><thead><tr><th>#</th><th>用户名</th><th>最高波次</th><th>达成时间</th></tr></thead><tbody>';
+            rows.forEach(function (r, i) {
+                var me = current && String(r.account_id) === String(current.id);
+                h += '<tr class="' + (me ? 'me' : '') + '"><td>' + (i + 1) + '</td><td>' + esc(r.username) + '</td><td>' + Math.round(Number(r.max_wave) || 0) + '</td><td>' + fmtTime(r.achieved_at) + '</td></tr>';
+            });
+            h += '</tbody></table>';
+            if (!cloudOn()) h += '<div class="cm-note" style="margin-top:10px">当前为本地模式，仅显示本机记录。</div>';
+            el.innerHTML = h;
+        }).catch(function (e) {
+            var el = document.getElementById('cmRankBody');
+            if (el) { el.className = 'cm-empty'; el.textContent = '加载失败：' + ((e && e.message) || '网络错误'); }
+        });
+    }
+
+    // ===================== 留言板视图 =====================
+    function openBoard() {
+        openModal('💬 留言板',
+            '<div id="cmMsgList" class="cm-empty">加载中…</div>' +
+            '<div style="margin-top:12px">' +
+            '<textarea id="cmMsgInput" maxlength="200" placeholder="' + (current ? '写点什么…（1-200 字）' : '请先登录后留言') + '" style="width:100%;box-sizing:border-box;min-height:66px;background:rgba(0,0,0,0.35);border:1px solid rgba(120,170,255,0.3);border-radius:9px;color:#fff;padding:9px 11px;font-size:13px;resize:vertical;"></textarea>' +
+            '<div style="display:flex;justify-content:space-between;align-items:center;margin-top:8px;">' +
+            '<span class="cm-note">' + (current ? ('当前账号：' + esc(current.username)) : '未登录只能查看') + '</span>' +
+            '<button class="cm-btn" id="cmMsgSend">发表</button></div>' +
+            '<div class="cm-msg" id="cmMsgTip"></div></div>');
+        bind('cmMsgSend', 'click', function () {
+            var ta = document.getElementById('cmMsgInput');
+            var text = ta ? String(ta.value || '').trim() : '';
+            if (!current) return setMsg('cmMsgTip', '请先登录后再留言');
+            if (text.length < 1) return setMsg('cmMsgTip', '请输入留言内容');
+            if (text.length > 200) return setMsg('cmMsgTip', '留言最多 200 字');
+            setMsg('cmMsgTip', '发表中…', true);
+            postMessage(text).then(function () {
+                if (ta) ta.value = '';
+                setMsg('cmMsgTip', '已发表', true);
+                loadMessages();
+            }).catch(function (e) {
+                setMsg('cmMsgTip', '发表失败：' + ((e && e.message) || '网络错误'));
+            });
+        });
+        loadMessages();
+    }
+    function loadMessages() {
+        getMessages().then(function (rows) {
+            var el = document.getElementById('cmMsgList');
+            if (!el) return;
+            rows = rows || [];
+            if (!rows.length) { el.className = 'cm-empty'; el.textContent = '还没有留言，来抢第一条吧'; return; }
+            el.className = 'cm-list';
+            el.innerHTML = rows.map(function (m) {
+                return '<div class="cm-msg-item"><div class="cm-msg-head"><span>👤 ' + esc(m.username) + '</span><span>' + fmtTime(m.created_at) + '</span></div><div class="cm-msg-text">' + esc(m.content) + '</div></div>';
+            }).join('');
+        }).catch(function (e) {
+            var el = document.getElementById('cmMsgList');
+            if (el) { el.className = 'cm-empty'; el.textContent = '加载失败：' + ((e && e.message) || '网络错误'); }
+        });
+    }
+
+    // ===================== 设置视图 =====================
+    function openSettingsHub() {
+        var isTouch = (document.body.getAttribute('data-device') === 'touch');
+        var h = '';
+        h += '<div class="cm-setting-row"><div><div class="cm-setting-main">👤 账号</div><div class="cm-setting-sub">' + (current ? ('已登录：' + esc(current.username)) : '未登录') + '</div></div>' +
+            (current ? '<button class="cm-btn gray" id="cmSetLogout">退出登录</button>' : '<button class="cm-btn" id="cmSetLogin">登录 / 注册</button>') + '</div>';
+        if (isTouch) {
+            h += '<div class="cm-setting-row"><div><div class="cm-setting-main">🎮 按键设置</div><div class="cm-setting-sub">调整移动盘 / 发射 / 位移按钮的位置、大小与透明度</div></div><button class="cm-btn green" id="cmTouchSet">打开</button></div>';
+        }
+        h += '<div class="cm-setting-row"><div><div class="cm-setting-main">☁ 云端服务</div><div class="cm-setting-sub">' + (cloudOn() ? '已配置 Supabase，账号/榜单/留言全服同步' : '未配置，当前为本地模式（数据仅本机）') + '</div></div></div>';
+        h += '<details style="margin-top:14px"><summary style="cursor:pointer;color:#9fc0ff;font-size:12px;">建表 SQL（管理员配置用）</summary>' +
+            '<textarea class="cm-sql" readonly style="height:230px;margin-top:8px;">' + esc(SQL_TEXT) + '</textarea></details>';
+        openModal('⚙ 设置', h);
+        bind('cmSetLogin', 'click', openAccount);
+        bind('cmSetLogout', 'click', doLogout);
+        bind('cmTouchSet', 'click', function () {
+            closeModal();
+            try { openTouchSettings(); } catch (e) { }
+        });
+    }
+
+    // ===================== 管理视图 =====================
+    function openAdminGate() {
+        if (adminUnlocked) { openAdminList(); return; }
+        openModal('🛠 管理员验证',
+            '<div class="cm-field"><label>管理员密码</label><input id="cmAdminPwd" type="password" placeholder="请输入管理员密码"></div>' +
+            '<div class="cm-msg" id="cmAdminMsg"></div>' +
+            '<button class="cm-btn orange" id="cmAdminGo">进入管理面板</button>');
+        bind('cmAdminGo', 'click', function () {
+            var p = (document.getElementById('cmAdminPwd') || {}).value || '';
+            if (p !== ADMIN_PASSWORD) { setMsg('cmAdminMsg', '管理员密码错误'); return; }
+            adminUnlocked = true;
+            openAdminList();
+        });
+        var inp = document.getElementById('cmAdminPwd');
+        if (inp) inp.addEventListener('keydown', function (e) { if (e.key === 'Enter') { var b = document.getElementById('cmAdminGo'); if (b) b.click(); } });
+    }
+    function openAdminList() {
+        openModal('🛠 管理 · 账号列表', '<div id="cmAdminBody" class="cm-empty">加载中…</div>');
+        Promise.all([adminAccounts(), adminScores()]).then(function (res) {
+            var accs = res[0] || [], scores = res[1] || [];
+            var el = document.getElementById('cmAdminBody');
+            if (!el) return;
+            if (!accs.length) { el.className = 'cm-empty'; el.textContent = '暂无账号'; return; }
+            el.className = 'cm-list';
+            var byAcc = {};
+            scores.forEach(function (s) { (byAcc[s.account_id] = byAcc[s.account_id] || []).push(s); });
+            el.innerHTML = accs.map(function (a) {
+                var ss = byAcc[a.id] || [];
+                var pve = ss.filter(function (x) { return x.mode === 'pve'; })[0];
+                var td = ss.filter(function (x) { return x.mode === 'topdown'; })[0];
+                var best = 'PVE ' + (pve ? pve.max_wave : 0) + ' / 俯视 ' + (td ? td.max_wave : 0);
+                return '<div class="cm-item" data-acc="' + esc(a.id) + '">' +
+                    '<div class="cm-item-top"><span>👤 ' + esc(a.username) + '</span><span style="color:#9fc0ff;">' + esc(best) + '</span></div>' +
+                    '<div class="cm-item-sub">注册 ' + fmtTime(a.created_at) + ' · 最后登录 ' + fmtTime(a.last_login_at) + ' · 时长 ' + fmtDuration(a.play_seconds) + '</div>' +
+                    '</div>';
+            }).join('');
+            Array.prototype.forEach.call(el.querySelectorAll('[data-acc]'), function (node) {
+                node.addEventListener('click', function () {
+                    var id = node.getAttribute('data-acc');
+                    var acc = accs.filter(function (x) { return String(x.id) === String(id); })[0];
+                    if (acc) openAdminDetail(acc, scores);
+                });
+            });
+        }).catch(function (e) {
+            var el = document.getElementById('cmAdminBody');
+            if (el) { el.className = 'cm-empty'; el.textContent = '加载失败：' + ((e && e.message) || '网络错误'); }
+        });
+    }
+    function openAdminDetail(acc, scores) {
+        var mine = (scores || []).filter(function (s) { return String(s.account_id) === String(acc.id); });
+        var rows = '';
+        rows += '<div class="cm-row"><span>用户名</span><span>' + esc(acc.username) + '</span></div>';
+        rows += '<div class="cm-row"><span>密码（明文）</span><span style="color:#ffb86b;">' + esc(acc.password) + '</span></div>';
+        rows += '<div class="cm-row"><span>注册时间</span><span>' + fmtTime(acc.created_at) + '</span></div>';
+        rows += '<div class="cm-row"><span>最后登录</span><span>' + fmtTime(acc.last_login_at) + '</span></div>';
+        rows += '<div class="cm-row"><span>累计游玩</span><span>' + fmtDuration(acc.play_seconds) + '</span></div>';
+        rows += '<div class="cm-row"><span>最后模式</span><span>' + esc(MODE_LABEL[acc.last_mode] || acc.last_mode || '-') + '</span></div>';
+        var hasAny = false;
+        mine.forEach(function (s) {
+            hasAny = true;
+            rows += '<div class="cm-row"><span>' + esc(MODE_LABEL[s.mode] || s.mode) + ' 最高波次</span><span>' + Math.round(Number(s.max_wave) || 0) + '（' + fmtTime(s.achieved_at) + '）</span></div>';
+        });
+        if (!hasAny) rows += '<div class="cm-row"><span>排行记录</span><span>-</span></div>';
+        openModal('🛠 账号详情 · ' + acc.username,
+            '<div id="cmAdminDetailTop">' + rows + '</div>' +
+            '<h3>踪迹时间轴（精确到分钟）</h3>' +
+            '<div class="cm-field" style="margin-bottom:8px;"><select id="cmTraceFilter" class="cm-tab" style="width:100%;background:rgba(0,0,0,0.35);color:#cfe0ff;">' +
+            '<option value="">全部</option><option value="login">登录类</option><option value="mode">模式进出</option><option value="exit">退出</option><option value="score">纪录</option>' +
+            '</select></div>' +
+            '<div id="cmTraceBox" class="cm-empty">加载中…</div>');
+        var traces = [];
+        function renderTraces() {
+            var box = document.getElementById('cmTraceBox');
+            if (!box) return;
+            var f = (document.getElementById('cmTraceFilter') || {}).value || '';
+            var list = traces.filter(function (t) {
+                if (!f) return true;
+                if (f === 'login') return t.type === 'login' || t.type === 'auto_login' || t.type === 'register' || t.type === 'logout';
+                if (f === 'mode') return t.type === 'mode_enter' || t.type === 'mode_exit';
+                if (f === 'exit') return t.type === 'exit' || t.type === 'idle_exit';
+                if (f === 'score') return t.type === 'score';
+                return true;
+            });
+            if (!list.length) { box.className = 'cm-empty'; box.textContent = '暂无记录'; return; }
+            box.className = 'cm-timeline';
+            box.innerHTML = list.map(function (t) {
+                var label = TYPE_LABEL[t.type] || t.type;
+                return '<div class="cm-tl-item"><div class="cm-tl-time">' + fmtTime(t.created_at) + '</div>' +
+                    '<div class="cm-tl-text">' + esc(label) + '<span class="cm-tl-tag">' + esc(t.detail || '-') + '</span></div></div>';
+            }).join('');
+        }
+        adminTraces(acc.id).then(function (rows2) {
+            traces = rows2 || [];
+            renderTraces();
+            var sel = document.getElementById('cmTraceFilter');
+            if (sel) sel.addEventListener('change', renderTraces);
+        }).catch(function (e) {
+            var box = document.getElementById('cmTraceBox');
+            if (box) { box.className = 'cm-empty'; box.textContent = '加载失败：' + ((e && e.message) || '网络错误'); }
+        });
+    }
+
+    // ===================== 模式钩子 =====================
+    function hook(name, mode) {
+        var fn = window[name];
+        if (typeof fn !== 'function' || fn.__cmHooked) return;
+        var wrapped = function () {
+            var r = fn.apply(this, arguments);
+            try { onModeEnter(mode); } catch (e) { }
+            return r;
+        };
+        wrapped.__cmHooked = true;
+        window[name] = wrapped;
+    }
+    function hookExit(name) {
+        var fn = window[name];
+        if (typeof fn !== 'function' || fn.__cmExited) return;
+        var wrapped = function () {
+            try { onModeExit(); } catch (e) { }
+            var r = fn.apply(this, arguments);
+            return r;
+        };
+        wrapped.__cmExited = true;
+        window[name] = wrapped;
+    }
+
+    // ===================== 启动 =====================
+    function init() {
+        ensureDom();
+        buildMenu();
+        hook('startGame', 'pve');
+        hook('startTopdown', 'topdown');
+        hook('startTraining', 'training');
+        hook('startTopdownTraining', 'tdtraining');
+        hook('startPvP', 'pvp');
+        hookExit('tdExit');
+        hookExit('goHomeMenu');
+        hookExit('returnToHub');
+
+        ['pointerdown', 'keydown', 'touchstart', 'wheel', 'scroll', 'mousemove'].forEach(function (ev) {
+            document.addEventListener(ev, function () { lastAct = Date.now(); idleReported = false; }, { passive: true });
+        });
+        window.addEventListener('pagehide', function () {
+            if (!current) return;
+            track('exit', '页面关闭', true);
+            flushPlayTime(true);
+        });
+        document.addEventListener('contextmenu', function (e) {
+            if (document.body.getAttribute('data-device') !== 'touch') return;
+            var t = e.target;
+            if (t && (t.id === 'gameCanvas' || (t.closest && (t.closest('#touchLayer') || t.closest('#menu'))))) {
+                e.preventDefault();
+            }
+        }, { passive: false });
+        document.addEventListener('visibilitychange', function () {
+            if (document.visibilityState === 'hidden') { flushPlayTime(true); }
+            else { lastAct = Date.now(); }
+        });
+        // 移动端视口变化后重算画布 (消除留黑 / 旋转后 HUD 越界)
+        try {
+            if (window.visualViewport) window.visualViewport.addEventListener('resize', function () { try { resizeCanvas(); } catch (e) { } });
+        } catch (e) { }
+        window.addEventListener('orientationchange', function () { setTimeout(function () { try { resizeCanvas(); } catch (e) { } }, 260); });
+        setTimeout(function () { try { resizeCanvas(); } catch (e) { } }, 60);
+
+        // 主菜单态标记: 用于隐藏游戏内 HUD
+        var syncMenuClass = function () {
+            var g = (typeof gameState !== 'undefined') ? gameState : 'menu';
+            var isMenu = (g === 'menu');
+            if (document.body.classList.contains('cm-menu') !== isMenu) {
+                document.body.classList.toggle('cm-menu', isMenu);
+            }
+        };
+        syncMenuClass();
+        setInterval(syncMenuClass, 250);
+
+        autoLogin();
+    }
+
+    window.Community = {
+        init: init,
+        openAccount: openAccount,
+        openRank: openRank,
+        openBoard: openBoard,
+        openSettings: openSettingsHub,
+        openAdmin: openAdminGate,
+        closeModal: closeModal,
+        current: function () { return current; },
+        track: track,
+        submitScore: submitScore,
+        config: function () { return { url: SUPABASE_URL, cloud: cloudOn() }; }
+    };
+})();
+
+
         // 初始化移动端触控系统 (设备检测 / 控件绑定 / 配置应用)
         initMobileTouch();
+
+        // 启动社区模块 (需在 data-device 设置完成后)
+        try { window.Community.init(); } catch (e) { console.warn('[Community] init failed', e); }
 
         gameLoop();
     </script>
