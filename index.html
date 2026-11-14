@@ -6311,6 +6311,7 @@ body.low-perf #menu::before { filter: none; opacity: .18; }
                     wave: data.wave || 1,
                     score: data.score || 0,
                     kills: data.kills || 0,
+                    seconds: (typeof data.runSeconds === 'number' && isFinite(data.runSeconds)) ? data.runSeconds : 0,
                     pvpRound: (data.pvp && data.pvp.round) || 1,
                     lives: data.player ? (data.player.lives || 0) : ((data.pvp && data.pvp.livesA) || 0),
                     hp: data.player ? Math.round(data.player.health || 0) : 0,
@@ -6704,6 +6705,9 @@ body.low-perf #menu::before { filter: none; opacity: .18; }
                 score = data.score || 0; kills = data.kills || 0; combo = data.combo || 0;
                 maxCombo = data.maxCombo || 0; wave = data.wave || 1;
                 killStreak = data.killStreak || 0;
+                // 双人存档也恢复自己的计时 / 死亡数 (原先沿用上一局的值)
+                runSeconds = _num(data.runSeconds, 0);
+                runDeaths = _num(data.runDeaths, 0);
 
                 const pv = data.pvp || {};
                 pvpLivesA = Math.min(2, Math.max(1, _num(pv.livesA, 2))); pvpLivesB = Math.min(2, Math.max(1, _num(pv.livesB, 2)));
@@ -6799,7 +6803,9 @@ body.low-perf #menu::before { filter: none; opacity: .18; }
                 const isTd = (s.state === 'topdown');
                 const kind = isPvp ? '双人对战' : (isTd ? '俯视 PVE' : '单人无尽');
                 const detail = isPvp ? ('第 ' + (s.pvpRound || 1) + ' 回合') : ('第 ' + (s.wave || 1) + ' 波');
-                const extra = isPvp ? ('比分 ' + (s.score || 0)) : ((s.score || 0) + ' 分');
+                const _secs = Math.max(0, Math.round(Number(s.seconds) || 0));
+                const _secTxt = _secs > 0 ? (' · ⏱ ' + Math.floor(_secs / 60) + ':' + ('0' + (_secs % 60)).slice(-2)) : '';
+                const extra = isPvp ? ('比分 ' + (s.score || 0) + _secTxt) : ((s.score || 0) + ' 分' + _secTxt);
                 const sid = String(s.id);
                 const nm = _escSaveName(s.name || '');
                 const mainSpan = nm
@@ -13242,7 +13248,8 @@ body.low-perf #menu::before { filter: none; opacity: .18; }
                     '毒圈倒计时条移到屏幕最上方（桌面 / 手机一致，改为 DOM 绘制），双方生命值紧贴其正下方；手机上血量 / 护盾与右上分数会自动让到生命值下方，顶部不再互相遮挡',
                     '手游新增底部「物品栏」换枪条（参考 Minecraft 快捷栏）：屏幕最下方 6 格对应 6 把武器，点哪格换哪把、左右滑动也能连续切换，当前武器金色高亮；暂停 / 属性键移到右侧中部给物品栏让位',
                     '手游武器轮盘从 180° 半环升级为 360° 全环：6 把武器按 60° 平均分布，按住跳跃键向左滑展开后，手指指向任意方向都能切到对应武器',
-                    '手游新注册账号会播放一次「新手教程」（视频样式，可跳过 / 上一步 / 下一步）：依次讲解移动盘、开火、跳跃与能量位移、底部物品栏换枪、360° 轮盘换枪以及顶部毒圈 / 生命、左上血量、右上分数'
+                    '手游新注册账号会播放一次「新手教程」（视频样式，可跳过 / 上一步 / 下一步）：依次讲解移动盘、开火、跳跃与能量位移、底部物品栏换枪、360° 轮盘换枪以及顶部毒圈 / 生命、左上血量、右上分数',
+                    '修复存档计时不独立：俯视枪战「新开一局」原先没有清零计时，会继承上一局的游玩时长；双人存档继续时也没有恢复自己的计时。现在每局计时 / 死亡数完全按存档独立，存档列表里每条也会显示各自的游玩时长'
                 ]
             },
             {
@@ -15227,6 +15234,8 @@ body.low-perf #menu::before { filter: none; opacity: .18; }
             window._lastGameMode = 'topdown';
             closeStartChoice();   // 修复: 俯视入口不会自动关闭开始弹窗
             _beginNewRun();   // 俯视独立存档槽, 不能覆盖横版存档
+            // 每局独立计时 / 死亡数 (原先这里漏了重置, 新开一局会沿用上一局的时间)
+            runSeconds = 0; runDeaths = 0;
             try { if (autoSaveIntervalId) clearInterval(autoSaveIntervalId); } catch (e) { }
             if (_DOM.menu) _DOM.menu.classList.add('hidden');
             if (_DOM.gameOver) _DOM.gameOver.classList.add('hidden');
