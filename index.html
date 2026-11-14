@@ -2077,7 +2077,7 @@ body.low-perf #menu::before { filter: none; opacity: .18; }
                     <button class="tp-btn" id="tpGodEnemy" onclick="toggleTrainGod('enemy')">🛡 无敌: 关</button>
                     <button class="tp-btn" onclick="resetTrainEnemy()">↺ 重置靶位</button>
                     <button class="tp-btn" onclick="askTrainTune()">⚙ 数值设置</button>
-                    <button class="tp-btn" onclick="openTdEnvPanel()">🌫 环境设置</button>
+                    <button class="tp-btn" type="button" onclick="openTdEnvPanel(event)">🌫 环境设置</button>
                 </div>
                 <button class="tp-shop" onclick="openTrainShop('shop')">🏪 装备 / 属性商店</button>
                 <button class="tp-shop" onclick="openStatPanelFromTrain()">📊 全属性面板</button>
@@ -2103,7 +2103,7 @@ body.low-perf #menu::before { filter: none; opacity: .18; }
             </div>
 
             <!-- === 俯视环境设置 (毒圈 / 边缘) === -->
-            <div id="tdEnvPanel" style="position:fixed;top:0;left:0;width:100%;height:100%;background:rgba(4,6,14,0.72);backdrop-filter:blur(6px);z-index:10002;display:none;align-items:center;justify-content:center;padding:16px;box-sizing:border-box;">
+            <div id="tdEnvPanel" style="position:fixed;top:0;left:0;width:100%;height:100%;background:rgba(4,6,14,0.72);backdrop-filter:blur(6px);z-index:10050;display:none;align-items:center;justify-content:center;padding:16px;box-sizing:border-box;pointer-events:auto;touch-action:manipulation;">
                 <div style="width:min(460px,94vw);max-height:88vh;overflow:auto;background:linear-gradient(165deg,rgba(22,32,54,0.98),rgba(9,14,26,0.99));border:1px solid rgba(196,120,255,0.4);border-radius:16px;padding:18px 18px 16px;box-shadow:0 24px 70px rgba(0,0,0,0.65),0 0 40px rgba(196,120,255,0.15);">
                     <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px;">
                         <b style="color:#d9b3ff;font-size:16px;">🌫 环境设置（毒圈 / 边缘）</b>
@@ -12631,7 +12631,10 @@ body.low-perf #menu::before { filter: none; opacity: .18; }
                     '训练场新增「🌫 环境设置」：可调毒圈伤害 / 缩圈间隔 / 每次缩圈半径 / 最小半径 / 撞边扣血百分比 / 初始半径，保存后立即生效并随账号同步',
                     '俯视 AI 更偏进攻：更少后撤（威胁阈值 0.025→0.06、位移阈值 0.04→0.09）、理想交战距离缩短 14%、开火命中率门槛降低；同时会把毒圈与边界作为软约束参与走位（圈外优先回圈、贴边时向内修正），而不是硬性禁止',
                     '双方数值面板的俯视能量默认值调整为：初始最大能量 1000、每秒能量 30（旧存档中仍是 100 / 15 的会自动迁移，自定义值保留）；调整后立即作用于正式俯视与俯视训练场',
-                    '俯视模式补齐：任意一方掉命（玩家被击倒 / AI 被击杀 / 训练场靶子被击空）时，双方的「每秒物理攻击力加成」与「每秒减疗」累计立即清零，不再跨命累积'
+                    '俯视模式补齐：任意一方掉命（玩家被击倒 / AI 被击杀 / 训练场靶子被击空）时，双方的「每秒物理攻击力加成」与「每秒减疗」累计立即清零，不再跨命累积',
+                    '撞墙击退力度加倍（8→18）并取消冷却：贴边即刻弹开；伤害仍按 0.5 秒结算一次',
+                    '毒圈初始半径默认 820（旧值 1200 自动迁移），下侧四角一开始就能看到毒圈边界；底部中央新增缩毒进度条，显示「第 N 次收缩 · 剩余秒数 / 间隔秒数」',
+                    '修复环境设置面板在手机端被触控层遮挡导致点击无反应：打开面板时自动隐藏触控层、提高层级并优化触屏点击'
                 ]
             },
             {
@@ -13234,8 +13237,8 @@ body.low-perf #menu::before { filter: none; opacity: .18; }
         };
         // === 俯视环境 (毒圈 / 边缘): 参数可在训练场「环境设置」中修改并保存 ===
         var TD_ENV_KEY = 'shooter_td_env_v1';
-        var TD_ENV_DEFAULT = { poisonDmg: 5, shrinkInterval: 20, shrinkStep: 90, minRadius: 260, edgeDmgPct: 3, initialRadius: 1200 };
-        var TD_ENV = { poisonDmg: 5, shrinkInterval: 20, shrinkStep: 90, minRadius: 260, edgeDmgPct: 3, initialRadius: 1200 };
+        var TD_ENV_DEFAULT = { poisonDmg: 5, shrinkInterval: 20, shrinkStep: 90, minRadius: 260, edgeDmgPct: 3, initialRadius: 820 };
+        var TD_ENV = { poisonDmg: 5, shrinkInterval: 20, shrinkStep: 90, minRadius: 260, edgeDmgPct: 3, initialRadius: 820 };
         function loadTdEnv() {
             try {
                 var o = JSON.parse(localStorage.getItem(TD_ENV_KEY) || 'null');
@@ -13244,6 +13247,8 @@ body.low-perf #menu::before { filter: none; opacity: .18; }
                         var v = Number(o[k]);
                         if (isFinite(v)) TD_ENV[k] = v;
                     });
+                    // 旧默认 1200 迁移为 820 (原值会让毒圈完全在地图外, 看不到)
+                    if (Number(TD_ENV.initialRadius) === 1200) TD_ENV.initialRadius = 820;
                 }
             } catch (e) { }
         }
@@ -13253,7 +13258,8 @@ body.low-perf #menu::before { filter: none; opacity: .18; }
                 cx: TD.W / 2, cy: TD.H / 2,
                 r: Math.max(200, Number(TD_ENV.initialRadius) || 1200),
                 nextShrink: Date.now() + Math.max(3, Number(TD_ENV.shrinkInterval) || 20) * 1000,
-                dmgAt: 0
+                dmgAt: 0,
+                shrinkCount: 0
             };
         }
         function tdZoneTick(now) {
@@ -13266,7 +13272,8 @@ body.low-perf #menu::before { filter: none; opacity: .18; }
                 z.nextShrink = now + interval;
                 if (z.r > minR) {
                     z.r = Math.max(minR, z.r - step);
-                    try { _floatSpawn(z.cx, z.cy - 20, '毒圈收缩', '#c084ff', { big: true }); } catch (e) { }
+                    z.shrinkCount = (z.shrinkCount || 0) + 1;
+                    try { _floatSpawn(z.cx, z.cy - 20, '毒圈收缩 · 第 ' + z.shrinkCount + ' 次', '#c084ff', { big: true }); } catch (e) { }
                 }
             }
             if (now - z.dmgAt >= 500) {
@@ -13288,7 +13295,6 @@ body.low-perf #menu::before { filter: none; opacity: .18; }
             if (edgePct > 0) {
                 [player, ai].forEach(function (ent) {
                     if (!ent || ent.health <= 0) return;
-                    if (now - (ent._tdEdgeAt || 0) < 600) return;
                     var r = ent._tdRadius || TD.radius;
                     var kbx = 0, kby = 0;
                     if (ent.x - r <= TD.MARGIN) kbx = 1;
@@ -13296,17 +13302,23 @@ body.low-perf #menu::before { filter: none; opacity: .18; }
                     if (ent.y - r <= TD.MARGIN) kby = 1;
                     else if (ent.y + r >= TD.H - TD.MARGIN) kby = -1;
                     if (!kbx && !kby) return;
+                    // 击退无冷却: 贴边立即弹开 (力度加倍)
                     ent._tdEdgeAt = now;
+                    ent._tdKbVX = kbx * 18;
+                    ent._tdKbVY = kby * 18;
+                    // 伤害限频 0.5 秒, 避免同一帧内多次结算瞬间暴毙
+                    if (now - (ent._tdEdgeDmgAt || 0) < 500) return;
+                    ent._tdEdgeDmgAt = now;
                     var edmg = Math.max(1, Math.round(ent.maxHealth * edgePct / 100));
                     ent.health -= edmg;
                     ent._tdHitAt = now;
-                    ent._tdKbVX = kbx * 8;
-                    ent._tdKbVY = kby * 8;
                     try { _floatSpawn(ent.x, ent.y - 34, '撞墙 -' + edmg, '#ffb3b3', { big: true }); } catch (e) { }
                 });
             }
         }
-        function openTdEnvPanel() {
+        function openTdEnvPanel(ev) {
+            if (ev && ev.stopPropagation) ev.stopPropagation();
+            try { var _tl = document.getElementById('touchLayer'); if (_tl) _tl.style.display = 'none'; } catch (e) { }
             var map = { envPoison: 'poisonDmg', envShrinkSec: 'shrinkInterval', envStep: 'shrinkStep', envMinR: 'minRadius', envEdgePct: 'edgeDmgPct', envInitR: 'initialRadius' };
             Object.keys(map).forEach(function (id) {
                 var el = document.getElementById(id);
@@ -13320,6 +13332,12 @@ body.low-perf #menu::before { filter: none; opacity: .18; }
         function closeTdEnvPanel() {
             var p = document.getElementById('tdEnvPanel');
             if (p) p.style.display = 'none';
+            try {
+                var _tl2 = document.getElementById('touchLayer');
+                if (_tl2) _tl2.style.display = '';
+                if (typeof _touchLayerLastDisplay !== 'undefined') _touchLayerLastDisplay = '';
+                if (typeof updateTouchLayerVisibility === 'function') updateTouchLayerVisibility();
+            } catch (e) { }
         }
         function readTdEnvInputs() {
             var map = { envPoison: 'poisonDmg', envShrinkSec: 'shrinkInterval', envStep: 'shrinkStep', envMinR: 'minRadius', envEdgePct: 'edgeDmgPct', envInitR: 'initialRadius' };
@@ -14399,6 +14417,36 @@ body.low-perf #menu::before { filter: none; opacity: .18; }
                 ctx.moveTo(mx, my - 9); ctx.lineTo(mx, my - 3);
                 ctx.moveTo(mx, my + 3); ctx.lineTo(mx, my + 9);
                 ctx.stroke();
+            }
+            // === 毒圈状态: 底部中央缩毒进度 + 次数 ===
+            if (TD.zone) {
+                const _z = TD.zone;
+                const _total = Math.max(3, Number(TD_ENV.shrinkInterval) || 20) * 1000;
+                const _left = Math.max(0, _z.nextShrink - now);
+                const _pct = Math.max(0, Math.min(1, 1 - _left / _total));
+                const _bw = Math.min(340, canvas.width * 0.46), _bh = 9;
+                const _bx = (canvas.width - _bw) / 2;
+                const _touchUi2 = (document.body.getAttribute('data-device') === 'touch');
+                const _by = canvas.height - (_touchUi2 ? 140 : 64);
+                ctx.fillStyle = 'rgba(0,0,0,0.55)';
+                ctx.fillRect(_bx - 2, _by - 2, _bw + 4, _bh + 4);
+                ctx.fillStyle = 'rgba(255,255,255,0.10)';
+                ctx.fillRect(_bx, _by, _bw, _bh);
+                const _gg = ctx.createLinearGradient(_bx, 0, _bx + _bw, 0);
+                _gg.addColorStop(0, '#8a5cff');
+                _gg.addColorStop(1, '#e0a6ff');
+                ctx.fillStyle = _gg;
+                ctx.fillRect(_bx, _by, _bw * _pct, _bh);
+                ctx.strokeStyle = 'rgba(196,120,255,0.75)';
+                ctx.lineWidth = 1;
+                ctx.strokeRect(_bx + 0.5, _by + 0.5, _bw - 1, _bh - 1);
+                ctx.textAlign = 'center';
+                ctx.textBaseline = 'alphabetic';
+                ctx.font = 'bold 11px Arial';
+                ctx.fillStyle = '#e6ccff';
+                const _nextNo = (_z.shrinkCount || 0) + 1;
+                ctx.fillText('毒圈 第 ' + _nextNo + ' 次收缩 · ' + Math.ceil(_left / 1000) + 's / ' + Math.round(_total / 1000) + 's', canvas.width / 2, _by - 6);
+                ctx.textAlign = 'left';
             }
             if (TD._noEnergyAt && now - TD._noEnergyAt < 500) {
                 ctx.fillStyle = 'rgba(255,120,120,0.9)';
