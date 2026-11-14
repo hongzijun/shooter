@@ -4272,7 +4272,7 @@ body.low-perf #menu::before { filter: none; opacity: .18; }
             },
             {
                 id: 'phasearm', name: '相位臂甲', icon: '💠', type: 'equip', rarity: 'purple',
-                desc: '法防+20，CDR+10%；每9秒免疫下一次受到的伤害',
+                desc: '法防+20，CDR+10%；每9秒免疫下一次受到的物理伤害（法术 / 真伤 / 特效伤害不免疫）',
                 apply(p) { const eq = ensureEquipObj(p); const fx = ensureFx(p); p.defenseM = (p.defenseM || 35) + 20; eq.defenseM += 20; eq.cdr += 0.10; fx.immuneEvery9s = (fx.immuneEvery9s || 0) + 1; fxInst(p, 'phasearm', fx.immuneEvery9s); }
             },
             {
@@ -8615,7 +8615,9 @@ body.low-perf #menu::before { filter: none; opacity: .18; }
                 let actualDamage = dmg;
 
                 // === 效果卡: 每9秒免疫下一次伤害 (相位臂甲) ===
-                if (this.fx && this.fx.immuneEvery9s > 0) {
+                // 限制: 只抵挡物理伤害; 法术 / 真伤 / 特效伤害 (isFxPass) 均不免疫
+                const _phType = damageType || 'phys';
+                if (this.fx && this.fx.immuneEvery9s > 0 && _phType === 'phys' && !isFxPass) {
                     const _phHit = fxInstPick(fxInst(this, 'phasearm', this.fx.immuneEvery9s), function (it) { return !!it.ready; });
                     if (_phHit) {
                         _phHit.ready = false;
@@ -13264,7 +13266,9 @@ body.low-perf #menu::before { filter: none; opacity: .18; }
                     '修复毒圈提前重置：AI 掉一条命复活时不再把毒圈重置回初始大圈，会一直保持当前（最小）圈，直到一整波命数打完才重置',
                     '环境设置去掉「保存并生效」按钮：改完参数立即作用于当前对局，不再自动重置毒圈；只有点暂停菜单「💾 保存数值」才写入全局存档（与其它数值一致），「恢复默认」同样需再点保存才生效到全局',
                     '俯视训练场命数：人物 3 条命、靶子 2 条命（HUD 显示 ❤×N）。掉命后原地复活并保留毒圈；任意一方命数用完则整套重置（双方满血满命、靶子回原位、毒圈与减疗累计清零）',
-                    '「每波毒圈减疗」改为双方各自可调：训练场数值面板的人物 / AI 页签各新增「每波毒圈减疗(%)」（默认 15%），每次缩圈按各自的数值累加、互不影响；环境设置里重复的那一项已移除，属性面板说明同步为「每波毒圈累加」'
+                    '「每波毒圈减疗」改为双方各自可调：训练场数值面板的人物 / AI 页签各新增「每波毒圈减疗(%)」（默认 15%），每次缩圈按各自的数值累加、互不影响；环境设置里重复的那一项已移除，属性面板说明同步为「每波毒圈累加」',
+                    '相位臂甲免疫限制：现在只抵挡物理伤害，法术 / 真伤 / 特效伤害不再被免疫（卡牌描述同步）；护盾获取本来就按累计减疗比例削减',
+                    '修复减疗累计「重新进场归零」：掉一条命复活时只清空每秒物攻加成，保留每波毒圈累计的减疗；只有一整波命数打完（新一波）、训练场整套重置或横版击杀时才连减疗一起清零'
                 ]
             },
             {
@@ -14352,7 +14356,7 @@ body.low-perf #menu::before { filter: none; opacity: .18; }
                         TD.pDeadAt = now;
                         player.lives = Math.max(0, (player.lives || 0) - 1);
                         TD.lives = player.lives;
-                        try { resetAtkPerSecBonus(); } catch (e) { }
+                        try { resetAtkPerSecBonus(true); } catch (e) { }   // 只清物攻, 保留毒圈减疗
                     }
                     if (player.lives <= 0) {
                         _resetTdTrainingRound();
@@ -14373,7 +14377,7 @@ body.low-perf #menu::before { filter: none; opacity: .18; }
                 }
                 if (!TD.pDeadAt) {
                     TD.pDeadAt = now;
-                    try { resetAtkPerSecBonus(); } catch (e) { }
+                    try { resetAtkPerSecBonus(true); } catch (e) { }   // 只清物攻, 保留毒圈减疗
                     // 起死回生: 消耗一次复活, 不减命, 立即以 30% 生命复活
                     if (player.cardPerks && player.cardPerks.reviveLeft > 0) {
                         player.cardPerks.reviveLeft--;
@@ -14696,7 +14700,7 @@ body.low-perf #menu::before { filter: none; opacity: .18; }
                     if (!TD.aDeadAt) {
                         TD.aDeadAt = now;
                         ai.lives = Math.max(0, (ai.lives || 0) - 1);   // 靶子扣一条命
-                        try { resetAtkPerSecBonus(); } catch (e) { }
+                        try { resetAtkPerSecBonus(true); } catch (e) { }   // 只清物攻, 保留毒圈减疗
                     }
                     if (now - TD.aDeadAt > 2000) {
                         if (ai.lives <= 0) {
@@ -14730,7 +14734,7 @@ body.low-perf #menu::before { filter: none; opacity: .18; }
             if (ai.health <= 0) {
                 if (!TD.aDeadAt) {
                     TD.aDeadAt = now;
-                    try { resetAtkPerSecBonus(); } catch (e) { }
+                    try { resetAtkPerSecBonus(true); } catch (e) { }   // 只清物攻, 保留毒圈减疗
                     // === 击杀奖励 (与横版 die() 同源) ===
                     if (player && player.equip && player.equip.bladeCount > 0 && player.health > 0) {
                         const lostHp = Math.max(0, player.maxHealth - player.health);
@@ -16405,13 +16409,15 @@ body.low-perf #menu::before { filter: none; opacity: .18; }
             return Math.max(0, Math.min(0.95, x + y * (z - 1)));
         }
 
-        // 每秒物理攻击力加成: 任何一方发生击杀时, 双方累计值都清零 (从零重新计时)
-        function resetAtkPerSecBonus() {
+        // 每秒物理攻击力加成: 发生击杀时双方累计值清零 (从零重新计时)
+        // keepDecay = true: 掉一条命只清物攻, 保留「每波毒圈减疗」累计 (与毒圈保持一致, 不再复活归零);
+        //                 整波命数打完 / 训练场整套重置 / 横版击杀时不传, 减疗一并清零
+        function resetAtkPerSecBonus(keepDecay) {
             const now = Date.now();
             [player, ai, playerA, playerB].forEach(function (e) {
                 if (!e) return;
                 e._atkPerSecBonus = 0;
-                e._healDecayBonus = 0;
+                if (!keepDecay) e._healDecayBonus = 0;
                 e._atkSecAt = now;
             });
         }
