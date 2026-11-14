@@ -397,11 +397,11 @@
             margin-right: 3px;
         }
         .dmg-icon {
-            width: 26px;
-            height: 26px;
+            width: 1.3em;
+            height: 1.3em;
             border-radius: 6px;
             object-fit: cover;
-            vertical-align: -7px;
+            vertical-align: -0.35em;
             margin-right: 2px;
         }
 
@@ -878,7 +878,7 @@
 
             100% {
                 opacity: 0;
-                transform: translateY(-70px) scale(1.4);
+                transform: translateY(-3.4em) scale(1.4);
             }
         }
 
@@ -895,7 +895,8 @@
         .damage-number {
             position: absolute;
             font-weight: bold;
-            font-size: 20px;
+            /* 比例字号: 手机上自动变小, 大屏自动变大 (JS 会再按画布短边精确覆盖) */
+            font-size: clamp(13px, 2.6vmin, 20px);
             pointer-events: none;
             /* 飘字动画: 1.6s → 1.12s (缩短 30%, 与 FLOAT_LIFE 同步) */
             animation: floatUp 1.12s ease-out forwards;
@@ -10468,11 +10469,13 @@ body.low-perf #menu::before { filter: none; opacity: .18; }
                     _sy = (y - camera.y - canvas.height / 2) * _z + canvas.height / 2;
                 }
                 div.style.color = color || '#fff';
-                // 字号: 普通 20~30px; 合计「总」条目 30~38px (更醒目)
-                const fs = opt.big ? (30 + Math.random() * 8) : (20 + Math.random() * 10);
+                // 字号: 按画布短边比例 (手机小屏自动变小), 不再写死 px; 合计「总」条目放大 1.5 倍更醒目
+                const _shortSide = Math.min(canvas.width, canvas.height) || 720;
+                const _fsBase = Math.max(12, Math.min(20, _shortSide * 0.026));
+                const fs = opt.big ? (_fsBase * 1.5 + Math.random() * 4) : (_fsBase + Math.random() * 3);
                 div.style.fontSize = fs + 'px';
                 // Task E: 防重叠布局 —— 在命中点附近挑一个与已有飘字重叠 ≤60% 的槽位
-                const _tw = Math.max(28, fullText.length * fs * 0.62 + _icons.length * 20);
+                const _tw = Math.max(28, fullText.length * fs * 0.62 + _icons.length * fs * 1.3);
                 const _th = fs * 1.25;
                 const _bx = _sx + (Math.random() - 0.5) * 16;
                 const _by = _sy - 20 + (Math.random() - 0.5) * 10;
@@ -10950,7 +10953,8 @@ body.low-perf #menu::before { filter: none; opacity: .18; }
                 div.style.left = Math.max(0, (player.x - camera.x + canvas.width / 2)) + 'px';
                 div.style.top = Math.max(0, (player.y - camera.y - 50)) + 'px';
                 div.style.color = color || '#fff';
-                div.style.fontSize = '18px';
+                const _ss2 = Math.min(canvas.width, canvas.height) || 720;
+                div.style.fontSize = Math.max(12, Math.min(20, _ss2 * 0.024)) + 'px';
                 const ui = document.getElementById('ui');
                 if (ui) ui.appendChild(div);
                 setTimeout(() => { try { if (div && div.parentNode) div.parentNode.removeChild(div); } catch (e) { } }, 900);
@@ -12842,7 +12846,9 @@ body.low-perf #menu::before { filter: none; opacity: .18; }
                     '新增自适应画质：手机端连续 3 秒低于 26 帧自动进入低性能模式（关闭模糊/重阴影/部分动效），帧率恢复到 52 以上并持续 8 秒后自动还原',
                     '顶部状态面板（横版 v2 与俯视）在没有任何状态时整块隐藏，不再显示「无状态效果」的空框；有灼烧 / 易伤 / 换弹等状态时才出现，且出现位置改为跟随 HUD 缩放比例',
                     '手游固定像素适配：毒圈进度条（宽度 / 厚度 / 纵向位置 / 字号）改为按画布尺寸比例取值，竖屏与横屏都不再压住移动盘和位移键；右上「本局时长」改为跟随分数面板实时定位，屏幕旋转、缩放后不再重叠或悬空',
-                    '修复左上角两块 HUD（血量面板与武器 / 状态面板）都用固定坐标、互相叠在一起看不清的问题：武器状态面板现在自动排在血量面板正下方并在缩放 / 屏幕旋转后重新对齐；训练场的「训练调试」入口同样自动避开血量面板'
+                    '修复左上角两块 HUD（血量面板与武器 / 状态面板）都用固定坐标、互相叠在一起看不清的问题：武器状态面板现在自动排在血量面板正下方并在缩放 / 屏幕旋转后重新对齐；训练场的「训练调试」入口同样自动避开血量面板',
+                    '伤害飘字字号改为按屏幕短边比例（手机约 12~14px、桌面 20px 左右），不再固定 20~30px；卡牌图标与上飘距离同步按字号换算，小屏不再被大字糊住',
+                    '俯视 AI 位移大幅优化：原来几乎不会用位移（判定阈值过高且能量被开火打空）。现在 0.3 秒内会被击中、或走位仍要吃掉大半伤害时就位移闪避；新增残血反向脱战位移、距离过远时位移追击、明显在毒圈外时位移回圈；开火会保留一部分能量，确保随时闪得出来'
                 ]
             },
             {
@@ -14031,8 +14037,8 @@ body.low-perf #menu::before { filter: none; opacity: .18; }
                 }
                 if (risk < bestRisk) { bestRisk = risk; bestDir = ang; }
             }
-            // 原地不动的风险
-            let standRisk = 0;
+            // 原地不动的风险 + 最近命中时间 (帧)
+            let standRisk = 0, urgentT = 1e9;
             for (let i = 0; i < bullets.length; i++) {
                 const b = bullets[i];
                 if (!b.active || b.owner === ai) continue;
@@ -14044,9 +14050,12 @@ body.low-perf #menu::before { filter: none; opacity: .18; }
                 const cx = b.x + b.vx * t - ai.x;
                 const cy = b.y + b.vy * t - ai.y;
                 const dmin = Math.hypot(cx, cy);
-                if (dmin < R) standRisk += (b.damage || 20) * (0.45 + 0.55 * ((R - dmin) / R)) / Math.max(1, ai.maxHealth);
+                if (dmin < R) {
+                    standRisk += (b.damage || 20) * (0.45 + 0.55 * ((R - dmin) / R)) / Math.max(1, ai.maxHealth);
+                    if (t < urgentT) urgentT = t;
+                }
             }
-            return { level: standRisk, walkRisk: bestRisk, dirX: Math.cos(bestDir), dirY: Math.sin(bestDir) };
+            return { level: standRisk, walkRisk: bestRisk, dirX: Math.cos(bestDir), dirY: Math.sin(bestDir), urgent: urgentT <= 18, urgentT: urgentT };
         }
 
         function tdAIThink(now) {
@@ -14085,15 +14094,21 @@ body.low-perf #menu::before { filter: none; opacity: .18; }
             if (ai.y > TD.H - _em) envY -= 1;
 
             let mx = 0, my = 0;
-            // 进攻优先: 只有明显威胁才转入躲避 (阈值提高)
-            if (threat.level >= 0.06) {
+            const _en = tdEnergy(ai);
+            // 位移可用性: 冷却 / 能量 / 被控 三者都满足
+            const _canDash = (now > (TD.aDashLock || 0)) && (_en >= TD.dashCost)
+                && !fxIsStunned(ai) && now >= (ai._tdNoDashUntil || 0);
+            let _wantDash = false, _dashX = 0, _dashY = 0;
+            const ideal = (TD_IDEAL[tdWeaponKey(ai)] || 380) * 0.86;
+            const nx = dx / dist, ny = dy / dist;
+            // 进攻优先: 有威胁才转入躲避 (阈值下调, 小口径子弹也会反应)
+            if (threat.level >= 0.015 || threat.urgent) {
                 mx = threat.dirX; my = threat.dirY;
-                if (threat.walkRisk >= 0.09 && tdEnergy(ai) >= TD.dashCost && now > TD.aDashLock) {
-                    if (tdDash(ai, threat.dirX, threat.dirY, now)) TD.aDashLock = now + 900;
+                // 保命位移: 0.3 秒内必中, 或走位后仍要吃掉一半以上伤害
+                if (_canDash && (threat.urgent || (threat.level > 0.02 && threat.walkRisk > threat.level * 0.55))) {
+                    _wantDash = true; _dashX = threat.dirX; _dashY = threat.dirY;
                 }
             } else {
-                const ideal = (TD_IDEAL[tdWeaponKey(ai)] || 380) * 0.86;
-                const nx = dx / dist, ny = dy / dist;
                 const err = dist - ideal;
                 if (err > 60) { mx += nx; my += ny; }
                 else if (err < -60) { mx -= nx; my -= ny; }
@@ -14104,6 +14119,23 @@ body.low-perf #menu::before { filter: none; opacity: .18; }
                     TD.aStrafeAt = now + 900 + Math.random() * 500;
                     if (Math.random() < 0.5) TD.aStrafeDir = -TD.aStrafeDir;
                 }
+                // 追击位移: 距理想射程还差很远且能量充裕, 位移贴近 (省时间抢节奏)
+                if (_canDash && err > Math.max(320, ideal * 1.1) && _en >= TD.dashCost * 2) {
+                    _wantDash = true; _dashX = nx; _dashY = ny;
+                }
+            }
+            // 残血脱战: 血量 < 35% 且被贴脸, 向反方向位移拉开距离
+            if (!_wantDash && _canDash && (ai.health / Math.max(1, ai.maxHealth)) < 0.35 && dist < 210) {
+                _wantDash = true; _dashX = -dx / dist; _dashY = -dy / dist;
+            }
+            // 圈外回圈: 已经明显在圈外才花位移 (圈内贴边只靠走位)
+            if (!_wantDash && _canDash && envUrgent && TD.zone) {
+                const _zd = Math.hypot(ai.x - TD.zone.cx, ai.y - TD.zone.cy) || 1;
+                if (_zd > TD.zone.r + 60) {
+                    _wantDash = true;
+                    _dashX = (TD.zone.cx - ai.x) / _zd;
+                    _dashY = (TD.zone.cy - ai.y) / _zd;
+                }
             }
             // 环境向量混合: 圈外优先回圈, 贴边时向内修正
             if (envX || envY) {
@@ -14113,6 +14145,7 @@ body.low-perf #menu::before { filter: none; opacity: .18; }
                 my += (envY / _el) * _w;
             }
             TD.aMoveX = mx; TD.aMoveY = my;
+            TD.aDashX = _dashX; TD.aDashY = _dashY; TD.aWantsDash = _wantDash;
         }
 
         // 武器选择: 按期望收益评分, 新枪需明显更优才换 (避免抖动)
@@ -14274,14 +14307,14 @@ body.low-perf #menu::before { filter: none; opacity: .18; }
                 const _key = tdWeaponKey(ai);
                 const _cost = TD_COST[_key] || 10;
                 // 动态保命储备: 只有近身且确有威胁时才留 30, 远程低威胁不预留
-                const _reserve = (TD.aThreat >= 0.05 && d < 320) ? TD.dashCost : 0;
+                const _reserve = (TD.aThreat >= 0.015 || d < 320) ? TD.dashCost : Math.round(TD.dashCost * 0.55);
                 if (ai.weapon && !ai.weapon.isMelee && tdHitChance(_key, d) >= 0.14 && (tdEnergy(ai) - _cost) >= _reserve) {
                     tdFire(ai, ai._tdAim, now);
                 }
             }
             if (TD.aWantsDash) {
                 TD.aWantsDash = false;
-                if (tdDash(ai, TD.aDashX, TD.aDashY, now)) TD.aDashLock = now + 900;
+                if (tdDash(ai, TD.aDashX, TD.aDashY, now)) TD.aDashLock = now + 850;
             }
         }
 
