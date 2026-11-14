@@ -11135,10 +11135,13 @@ body.low-perf #menu::before { filter: none; opacity: .18; }
                         const hd = Math.max(1, Math.sqrt(hitDirX * hitDirX + hitDirY * hitDirY));
                         if (!fxIsStunned(t)) {
                             if (gameState === 'topdown' || gameState === 'tdtraining') {
-                                // 俯视轻量击退: 约 120px/s 初速, 逐帧衰减; 位移无敌期间免疫 (训练场靶子同样生效)
+                                // 俯视轻量击退: 沿「子弹飞行方向」推开 (不再用射手→目标方向); 逐帧衰减, 位移无敌期间免疫
                                 if (!(Date.now() < (t._tdInvUntil || 0))) {
-                                    t._tdKbVX = (t._tdKbVX || 0) + (hitDirX / hd) * knockPower * 0.8;
-                                    t._tdKbVY = (t._tdKbVY || 0) + (hitDirY / hd) * knockPower * 0.8;
+                                    const _bv = Math.hypot(b.vx || 0, b.vy || 0);
+                                    const _kx = (_bv > 0.001) ? (b.vx / _bv) : (hitDirX / hd);
+                                    const _ky = (_bv > 0.001) ? (b.vy / _bv) : (hitDirY / hd);
+                                    t._tdKbVX = (t._tdKbVX || 0) + _kx * knockPower * 0.8;
+                                    t._tdKbVY = (t._tdKbVY || 0) + _ky * knockPower * 0.8;
                                 }
                             } else {
                                 t.vx += (hitDirX / hd) * knockPower * horizontalKbMult;
@@ -12719,7 +12722,8 @@ body.low-perf #menu::before { filter: none; opacity: .18; }
                     '排行榜新增两项统计：死亡次数（点击「继续游戏」复活 +1）与游玩时长（从第 1 波到本次最高波次，暂停 / 选卡不计）；榜单新增「死亡」「时长」两列',
                     '战斗时右上角显示本局游玩时长（精确到秒），暂停 / 选卡时冻结；存档会一并保存游玩时长、死亡次数与毒圈状态（半径 / 缩圈次数 / 下次缩圈倒计时），重进后继续累计',
                     '「环境设置」现在同样需要管理员密码（与数值设置共用一次解锁，会话内有效）',
-                    '毒圈伤害改为按最大生命百分比结算：默认每秒 5%（每 0.5 秒结算一半，秒伤不变），并新增「每波毒伤成长%」（默认每波 +5%），随波次线性提升'
+                    '毒圈伤害改为按最大生命百分比结算：默认每秒 5%（每 0.5 秒结算一半，秒伤不变），并新增「每波毒伤成长%」（默认每波 +5%），随波次线性提升',
+                    '俯视子弹击退方向改为沿子弹飞行方向推开（原先按射手→目标连线），擦边、散射与远距离命中时的推感更自然；横版击退保持不变'
                 ]
             },
             {
