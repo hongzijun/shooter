@@ -2396,6 +2396,7 @@ body.low-perf #menu::before { filter: none; opacity: .18; }
                         <label style="font-size:12px;color:#8fa6c8;display:flex;flex-direction:column;gap:4px;">最小毒圈半径<input id="envMinR" type="number" min="40" max="1200" step="1" style="background:rgba(0,0,0,0.35);border:1px solid rgba(120,170,255,0.3);border-radius:8px;color:#fff;padding:8px 10px;font-size:14px;outline:none;"></label>
                         <label style="font-size:12px;color:#8fa6c8;display:flex;flex-direction:column;gap:4px;">撞边扣血（% 最大生命）<input id="envEdgePct" type="number" min="0" max="100" step="0.5" style="background:rgba(0,0,0,0.35);border:1px solid rgba(120,170,255,0.3);border-radius:8px;color:#fff;padding:8px 10px;font-size:14px;outline:none;"></label>
                         <label style="font-size:12px;color:#8fa6c8;display:flex;flex-direction:column;gap:4px;">初始半径<input id="envInitR" type="number" min="200" max="4000" step="10" style="background:rgba(0,0,0,0.35);border:1px solid rgba(120,170,255,0.3);border-radius:8px;color:#fff;padding:8px 10px;font-size:14px;outline:none;"></label>
+                        <label style="font-size:12px;color:#8fa6c8;display:flex;flex-direction:column;gap:4px;">每波毒圈减疗（% / 次缩圈）<input id="envDecayPerShrink" type="number" min="0" max="95" step="1" style="background:rgba(0,0,0,0.35);border:1px solid rgba(255,159,67,0.45);border-radius:8px;color:#fff;padding:8px 10px;font-size:14px;outline:none;"></label>
                     </div>
                     <div style="display:flex;gap:8px;margin-top:14px;">
                         <button onclick="saveTdEnv()" style="flex:1;background:linear-gradient(45deg,#8a5cff,#c084ff);border:none;color:#fff;padding:11px;border-radius:9px;font-size:14px;font-weight:bold;cursor:pointer;">保存并生效</button>
@@ -2437,7 +2438,6 @@ body.low-perf #menu::before { filter: none; opacity: .18; }
             </div>
 
             <!-- 状态面板: 仅在存在状态时显示; 无状态时整块隐藏 (不再显示"无状态效果"占位) -->
-            <div id="topStatusPanel" style="position: fixed; top: 58px; left: 50%; transform: translateX(-50%); z-index: 500; display: none; flex-direction: column; justify-content: flex-start; align-items: stretch; gap: 8px; background: rgba(0, 0, 0, 0.1); border-radius: 12px; padding: 12px; width: 200px;"></div>
 
             <div id="livesInfo" style="display: flex;">
                 <div class="life-side">
@@ -7941,7 +7941,9 @@ body.low-perf #menu::before { filter: none; opacity: .18; }
             // 每秒物理攻击力加成: 每满 1 秒按本侧训练面板数值累积 (击杀后由 resetAtkPerSecBonus 清零)
             tickAtkPerSecGrowth() {
                 const _perSec = atkPerSecValue(this);   // 每秒物理攻击力 = x + y*(波次-1)
-                const _decay = healDecayValue(this);    // 每秒减疗% (对对方回血生效)
+                // 俯视模式: 减疗改为「每波毒圈 +N%」(在 tdZoneTick 缩圈时直接结算), 不再每秒累加
+                const _tdMode = (gameState === 'topdown' || gameState === 'tdtraining');
+                const _decay = _tdMode ? 0 : healDecayValue(this);
                 const _now = Date.now();
                 if (!this._atkSecAt) this._atkSecAt = _now;
                 if (_perSec <= 0 && _decay <= 0) { this._atkSecAt = _now; return; }
@@ -13253,7 +13255,9 @@ body.low-perf #menu::before { filter: none; opacity: .18; }
                     '能量位移调整：位移距离缩短 30%（300→210），速度保持不变，因此闪避 / 无敌时长同步缩短（250→175ms），消耗仍是 30 点能量',
                     '俯视 AI 闪避判定整体收紧一点：响应窗口 0.3→0.23 秒、原地威胁门槛 0.015→0.022、位移门槛 0.02→0.03 且要求走位后仍剩六成伤害，残血脱战改为血量 <30% 且距离 <190；仍保留追击 / 回圈位移',
                     '手游按键默认透明度从 90% 调整为 70%（不透明度 0.1→0.3），设置里的透明度滑杆默认也显示 70%，旧键位存档会自动迁移',
-                    '电脑端新增「自动瞄准」开关（设置面板，仅电脑端显示）：开启后俯视枪战会自动锁定敌人并按子弹速度预判走位提前量，2D 枪战会自动保持面向敌人；开关状态跟随账号同步，默认关闭'
+                    '电脑端新增「自动瞄准」开关（设置面板，仅电脑端显示）：开启后俯视枪战会自动锁定敌人并按子弹速度预判走位提前量，2D 枪战会自动保持面向敌人；开关状态跟随账号同步，默认关闭',
+                    '俯视模式减疗改为「每波毒圈」结算：每次缩圈双方减疗直接 +15%（默认，上限 95%），不再按每秒累加；数值在「环境设置 → 每波毒圈减疗（%/次缩圈）」里可调，保存后下一次缩圈立即生效，属性面板「减疗(对敌)」同步显示',
+                    '移除顶部状态效果条（紫色「剩余秒数 + 图标 + 效果名」那一列），横版与俯视都不再显示；状态仍可在左上武器面板与角色脚下的状态图标中查看'
                 ]
             },
             {
@@ -13863,13 +13867,13 @@ body.low-perf #menu::before { filter: none; opacity: .18; }
         };
         // === 俯视环境 (毒圈 / 边缘): 参数可在训练场「环境设置」中修改并保存 ===
         var TD_ENV_KEY = 'shooter_td_env_v1';
-        var TD_ENV_DEFAULT = { poisonPctPerSec: 5, poisonGrowthPerWave: 5, shrinkInterval: 20, shrinkStep: 90, minRadius: 260, edgeDmgPct: 3, initialRadius: 820 };
-        var TD_ENV = { poisonPctPerSec: 5, poisonGrowthPerWave: 5, shrinkInterval: 20, shrinkStep: 90, minRadius: 260, edgeDmgPct: 3, initialRadius: 820 };
+        var TD_ENV_DEFAULT = { poisonPctPerSec: 5, poisonGrowthPerWave: 5, shrinkInterval: 20, shrinkStep: 90, minRadius: 260, edgeDmgPct: 3, initialRadius: 820, decayPerShrink: 15 };
+        var TD_ENV = { poisonPctPerSec: 5, poisonGrowthPerWave: 5, shrinkInterval: 20, shrinkStep: 90, minRadius: 260, edgeDmgPct: 3, initialRadius: 820, decayPerShrink: 15 };
         function loadTdEnv() {
             try {
                 var o = JSON.parse(localStorage.getItem(TD_ENV_KEY) || 'null');
                 if (o && typeof o === 'object') {
-                    ['poisonPctPerSec', 'poisonGrowthPerWave', 'shrinkInterval', 'shrinkStep', 'minRadius', 'edgeDmgPct', 'initialRadius'].forEach(function (k) {
+                    ['poisonPctPerSec', 'poisonGrowthPerWave', 'shrinkInterval', 'shrinkStep', 'minRadius', 'edgeDmgPct', 'initialRadius', 'decayPerShrink'].forEach(function (k) {
                         var v = Number(o[k]);
                         if (isFinite(v)) TD_ENV[k] = v;
                     });
@@ -13900,6 +13904,15 @@ body.low-perf #menu::before { filter: none; opacity: .18; }
                     z.r = Math.max(minR, z.r - step);
                     z.shrinkCount = (z.shrinkCount || 0) + 1;
                     try { _floatSpawn(z.cx, z.cy - 20, '毒圈收缩 · 第 ' + z.shrinkCount + ' 次', '#c084ff', { big: true }); } catch (e) { }
+                    // 每波毒圈: 双方「减疗」直接累加 (俯视专用, 默认每次 +15%, 上限 95%)
+                    var _decAdd = Math.max(0, Number(TD_ENV.decayPerShrink) || 0) / 100;
+                    if (_decAdd > 0) {
+                        [player, ai].forEach(function (ent) {
+                            if (!ent || ent.health <= 0) return;
+                            ent._healDecayBonus = Math.min(0.95, (ent._healDecayBonus || 0) + _decAdd);
+                        });
+                        try { _floatSpawn(z.cx, z.cy - 46, '减疗 +' + Math.round(_decAdd * 100) + '%', '#ff9f43', { big: true }); } catch (e) { }
+                    }
                 }
             }
             if (now - z.dmgAt >= 500) {
@@ -13951,7 +13964,7 @@ body.low-perf #menu::before { filter: none; opacity: .18; }
         function openTdEnvPanel(ev) {
             if (ev && ev.stopPropagation) ev.stopPropagation();
             try { var _tl = document.getElementById('touchLayer'); if (_tl) _tl.style.display = 'none'; } catch (e) { }
-            var map = { envPoisonPct: 'poisonPctPerSec', envPoisonGrowth: 'poisonGrowthPerWave', envShrinkSec: 'shrinkInterval', envStep: 'shrinkStep', envMinR: 'minRadius', envEdgePct: 'edgeDmgPct', envInitR: 'initialRadius' };
+            var map = { envPoisonPct: 'poisonPctPerSec', envPoisonGrowth: 'poisonGrowthPerWave', envShrinkSec: 'shrinkInterval', envStep: 'shrinkStep', envMinR: 'minRadius', envEdgePct: 'edgeDmgPct', envInitR: 'initialRadius', envDecayPerShrink: 'decayPerShrink' };
             Object.keys(map).forEach(function (id) {
                 var el = document.getElementById(id);
                 if (el) el.value = TD_ENV[map[id]];
@@ -13972,7 +13985,7 @@ body.low-perf #menu::before { filter: none; opacity: .18; }
             } catch (e) { }
         }
         function readTdEnvInputs() {
-            var map = { envPoisonPct: 'poisonPctPerSec', envPoisonGrowth: 'poisonGrowthPerWave', envShrinkSec: 'shrinkInterval', envStep: 'shrinkStep', envMinR: 'minRadius', envEdgePct: 'edgeDmgPct', envInitR: 'initialRadius' };
+            var map = { envPoisonPct: 'poisonPctPerSec', envPoisonGrowth: 'poisonGrowthPerWave', envShrinkSec: 'shrinkInterval', envStep: 'shrinkStep', envMinR: 'minRadius', envEdgePct: 'edgeDmgPct', envInitR: 'initialRadius', envDecayPerShrink: 'decayPerShrink' };
             Object.keys(map).forEach(function (id) {
                 var el = document.getElementById(id);
                 if (!el) return;
@@ -13989,6 +14002,7 @@ body.low-perf #menu::before { filter: none; opacity: .18; }
             TD_ENV.minRadius = Math.max(40, Math.round(TD_ENV.minRadius || 260));
             TD_ENV.edgeDmgPct = Math.max(0, Number(TD_ENV.edgeDmgPct) || 0);
             TD_ENV.initialRadius = Math.max(200, Math.round(TD_ENV.initialRadius || 1200));
+            TD_ENV.decayPerShrink = Math.max(0, Math.min(95, Number(TD_ENV.decayPerShrink) || 0));
             try { localStorage.setItem(TD_ENV_KEY, JSON.stringify(TD_ENV)); } catch (e) { }
             resetTdZone();
             var tip = document.getElementById('tdEnvTip');
