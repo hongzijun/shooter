@@ -3325,12 +3325,12 @@ body.low-perf #menu::before { filter: none; opacity: .18; }
                 healResist: 0,
                 healDecayBase: 0.03,  // x: 每秒减疗% 基数 (基础属性面板, 作用于对方回血; 默认每秒 3%)
                 weapons: weapons,
-                energyMax: 100,
-                energyRegen: 15,
+                energyMax: 1000,
+                energyRegen: 30,
                 aiRound: 2,
                 aiDrawCount: 1,
                 growthVer: 1,
-                tuneVer: 6,
+                tuneVer: 7,
                 growth: isEnemy
                     ? { hpPerRound: 200, atkPerRound: 10, dmgMultPerRound: 0, defPerRound: 10, penPerRound: 5, redDefPerRound: 20, atkPerSecPerRound: 0.2, drawEveryRounds: 10, drawAddPerStep: 1, healDecayPerRound: 0, energyMaxPerRound: 0, energyRegenPerRound: 0 }
                     : { hpPerRound: 150, atkPerRound: 5, dmgMultPerRound: 0, defPerRound: 5, penPerRound: 3, redDefPerRound: 18, atkPerSecPerRound: 0.15, drawEveryRounds: 0, drawAddPerStep: 1, healDecayPerRound: 0, energyMaxPerRound: 0, energyRegenPerRound: 0 }
@@ -3341,8 +3341,8 @@ body.low-perf #menu::before { filter: none; opacity: .18; }
         // === 俯视独立数值 (与横版 TRAIN_TUNE 互不干扰) ===
         function _tdDefaultTune(side) {
             const t = JSON.parse(JSON.stringify(_trainDefaultTune(side)));
-            if (t.energyMax == null) t.energyMax = 100;
-            if (t.energyRegen == null) t.energyRegen = 15;
+            if (t.energyMax == null) t.energyMax = 1000;
+            if (t.energyRegen == null) t.energyRegen = 30;
             t.growth = t.growth || {};
             if (t.growth.energyMaxPerRound == null) t.growth.energyMaxPerRound = 0;
             if (t.growth.energyRegenPerRound == null) t.growth.energyRegenPerRound = 0;
@@ -12084,9 +12084,12 @@ body.low-perf #menu::before { filter: none; opacity: .18; }
                 saveTrainTune();   // 写回默认, 避免每次启动重复重置
                 return;
             }
+            let _needV7Save = false;
             ['mine', 'enemy'].forEach(function (side) {
                 const so = (data && typeof data === 'object' && data[side] && typeof data[side] === 'object') ? data[side] : {};
                 const d = def[side];
+                const _v7 = (Number(so.tuneVer) < 7);
+                if (_v7) _needV7Save = true;
                 // v3 迁移: 旧存档的 AI 成长伤害倍率 (默认 0.05/回合) 归 0, 其余自定义值保持不变
                 const _enemyDmgFix = (side === 'enemy' && Number(so.tuneVer) < 3);
                 // 旧存档无 growthVer: 玩家成长此前从未生效, 迁移为全 0
@@ -12103,14 +12106,16 @@ body.low-perf #menu::before { filter: none; opacity: .18; }
                     shieldMult: num(so.shieldMult, d.shieldMult),
                     healResist: num(so.healResist, d.healResist),
                     healDecayBase: Math.max(0, Math.min(0.95, num(so.healDecayBase, d.healDecayBase))),
-                    // 俯视能量: 初始最大能量默认 100 / 每秒能量默认 15
-                    energyMax: Math.max(1, num(so.energyMax, d.energyMax != null ? d.energyMax : 100)),
-                    energyRegen: Math.max(0, num(so.energyRegen, d.energyRegen != null ? d.energyRegen : 15)),
+                    // 俯视能量: 初始最大能量默认 1000 / 每秒能量默认 30 (v7 起; 旧存档的 100/15 自动迁移)
+                    energyMax: Math.max(1, _v7 ? (Number(so.energyMax) === 100 ? 1000 : num(so.energyMax, d.energyMax != null ? d.energyMax : 1000))
+                        : num(so.energyMax, d.energyMax != null ? d.energyMax : 1000)),
+                    energyRegen: Math.max(0, _v7 ? (Number(so.energyRegen) === 15 ? 30 : num(so.energyRegen, d.energyRegen != null ? d.energyRegen : 30))
+                        : num(so.energyRegen, d.energyRegen != null ? d.energyRegen : 30)),
                     weapons: {},
                     aiRound: Math.max(1, Math.round(num(so.aiRound, d.aiRound))),
                     aiDrawCount: Math.max(1, Math.min(10, Math.round(num(so.aiDrawCount, d.aiDrawCount)))),
                     growthVer: 1,
-                    tuneVer: 6,
+                    tuneVer: 7,
                     growth: {
                         hpPerRound: num(so.growth && so.growth.hpPerRound, _gd.hpPerRound),
                         // 兼容旧存档: 老版本增量存在顶层 atkPerSec (1 为「无成长」基准, 其它值视为每波增量)
@@ -12152,6 +12157,7 @@ body.low-perf #menu::before { filter: none; opacity: .18; }
                 });
                 TRAIN_TUNE[side] = t;
             });
+            if (_needV7Save) { try { saveTrainTune(); } catch (e) { } }
         }
 
         function saveTrainTuneFromPause() {
@@ -12623,7 +12629,9 @@ body.low-perf #menu::before { filter: none; opacity: .18; }
                     '俯视模式新增毒圈：圆形安全区初始覆盖全图，每 20 秒收缩 90 半径（最小 260）；完全处于圈外时每 0.5 秒受到 5 点真实伤害（白色「毒」飘字，不参与伤害合并）；一波结束（AI 阵亡）自动重置，不随单条命重置',
                     '俯视模式新增边界惩罚：身体碰到地图边缘会被向内击退，并扣除 3% 最大生命的真实伤害（0.6 秒冷却，独立飘字）',
                     '训练场新增「🌫 环境设置」：可调毒圈伤害 / 缩圈间隔 / 每次缩圈半径 / 最小半径 / 撞边扣血百分比 / 初始半径，保存后立即生效并随账号同步',
-                    '俯视 AI 更偏进攻：更少后撤（威胁阈值 0.025→0.06、位移阈值 0.04→0.09）、理想交战距离缩短 14%、开火命中率门槛降低；同时会把毒圈与边界作为软约束参与走位（圈外优先回圈、贴边时向内修正），而不是硬性禁止'
+                    '俯视 AI 更偏进攻：更少后撤（威胁阈值 0.025→0.06、位移阈值 0.04→0.09）、理想交战距离缩短 14%、开火命中率门槛降低；同时会把毒圈与边界作为软约束参与走位（圈外优先回圈、贴边时向内修正），而不是硬性禁止',
+                    '双方数值面板的俯视能量默认值调整为：初始最大能量 1000、每秒能量 30（旧存档中仍是 100 / 15 的会自动迁移，自定义值保留）；调整后立即作用于正式俯视与俯视训练场',
+                    '俯视模式补齐：任意一方掉命（玩家被击倒 / AI 被击杀 / 训练场靶子被击空）时，双方的「每秒物理攻击力加成」与「每秒减疗」累计立即清零，不再跨命累积'
                 ]
             },
             {
@@ -13204,7 +13212,7 @@ body.low-perf #menu::before { filter: none; opacity: .18; }
             W: 1600, H: 900, MARGIN: 30,
             playerSpeed: 5.76, aiSpeed: 5.28,   // 基础上调 60%
             radius: 22,
-            energyMax: 100, regen: 15,
+            energyMax: 1000, regen: 30,
             dashCost: 30, dashDist: 300, dashMs: 250,
             mouseX: 0, mouseY: 0,
             fireHeld: false,
@@ -13359,14 +13367,14 @@ body.low-perf #menu::before { filter: none; opacity: .18; }
             const t = (typeof TRAIN_TUNE !== 'undefined' && TRAIN_TUNE) ? (TRAIN_TUNE[ent && ent.isAI ? 'enemy' : 'mine'] || {}) : {};
             const g = t.growth || {};
             const _round = (gameState === 'tdtraining') ? Math.max(1, Math.round(t.aiRound || 1)) : Math.max(1, wave || 1);
-            const base = (t.energyMax != null) ? t.energyMax : 100;
+            const base = (t.energyMax != null) ? t.energyMax : 1000;
             return Math.max(1, base + (g.energyMaxPerRound || 0) * (_round - 1));
         }
         function tdRegenOf(ent) {
             const t = (typeof TRAIN_TUNE !== 'undefined' && TRAIN_TUNE) ? (TRAIN_TUNE[ent && ent.isAI ? 'enemy' : 'mine'] || {}) : {};
             const g = t.growth || {};
             const _round = (gameState === 'tdtraining') ? Math.max(1, Math.round(t.aiRound || 1)) : Math.max(1, wave || 1);
-            const base = (t.energyRegen != null) ? t.energyRegen : 15;
+            const base = (t.energyRegen != null) ? t.energyRegen : 30;
             return Math.max(0, base + (g.energyRegenPerRound || 0) * (_round - 1));
         }
         function tdEnergy(ent) {
@@ -13619,6 +13627,7 @@ body.low-perf #menu::before { filter: none; opacity: .18; }
             if (player.health <= 0) {
                 if (!TD.pDeadAt) {
                     TD.pDeadAt = now;
+                    try { resetAtkPerSecBonus(); } catch (e) { }
                     // 起死回生: 消耗一次复活, 不减命, 立即以 30% 生命复活
                     if (player.cardPerks && player.cardPerks.reviveLeft > 0) {
                         player.cardPerks.reviveLeft--;
@@ -13886,7 +13895,7 @@ body.low-perf #menu::before { filter: none; opacity: .18; }
                 ai.y = tdClamp(ai.y, TD.MARGIN, TD.H - TD.MARGIN);
                 if (_moved) { TD._tdTargetHomeX = ai.x; TD._tdTargetHomeY = ai.y; }
                 if (ai.health <= 0) {
-                    if (!TD.aDeadAt) TD.aDeadAt = now;
+                    if (!TD.aDeadAt) { TD.aDeadAt = now; try { resetAtkPerSecBonus(); } catch (e) { } }
                     if (now - TD.aDeadAt > 2000) {
                         ai.health = ai.maxHealth; ai.shield = 0;
                         ai.activeEffects = []; ai.slowEffect = null;
@@ -13914,6 +13923,7 @@ body.low-perf #menu::before { filter: none; opacity: .18; }
             if (ai.health <= 0) {
                 if (!TD.aDeadAt) {
                     TD.aDeadAt = now;
+                    try { resetAtkPerSecBonus(); } catch (e) { }
                     // === 击杀奖励 (与横版 die() 同源) ===
                     if (player && player.equip && player.equip.bladeCount > 0 && player.health > 0) {
                         const lostHp = Math.max(0, player.maxHealth - player.health);
