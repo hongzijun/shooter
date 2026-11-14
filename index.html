@@ -1989,6 +1989,29 @@ body.cm-menu #trainToggle { display: none !important; }
 #cmLoginHint { backdrop-filter: blur(8px); -webkit-backdrop-filter: blur(8px); box-shadow: 0 6px 20px rgba(0,0,0,.35), 0 0 18px rgba(255,90,90,.18); }
 #cmToast { box-shadow: 0 10px 30px rgba(0,0,0,.5), 0 0 26px rgba(61,255,176,.35); }
 
+/* ---- 单局游玩时长 (右上分数下方) ---- */
+#cmRunTimer {
+    position: fixed;
+    right: 12px;
+    top: 96px;
+    z-index: 900;
+    display: none;
+    padding: 6px 12px;
+    border-radius: 9px;
+    background: linear-gradient(165deg, rgba(21,34,62,.82), rgba(8,14,28,.88));
+    border: 1px solid rgba(120,210,255,.32);
+    color: #cfe8ff;
+    font-size: 13px;
+    font-weight: bold;
+    font-variant-numeric: tabular-nums;
+    box-shadow: 0 8px 22px rgba(0,0,0,.45), 0 0 18px rgba(34,230,255,.18);
+    backdrop-filter: blur(8px);
+    -webkit-backdrop-filter: blur(8px);
+    pointer-events: none;
+    letter-spacing: 1px;
+}
+body[data-device="touch"] #cmRunTimer { top: 84px; font-size: 12px; padding: 5px 10px; }
+
 /* ---- 低性能 / 减少动效 ---- */
 body.low-perf #menu::before,
 body.low-perf #menu::after,
@@ -2973,6 +2996,18 @@ body.low-perf #menu::before { filter: none; opacity: .18; }
             if (_tjLabel && _tjLabel.textContent !== (_tdTouch ? '位移' : '跳')) _tjLabel.textContent = _tdTouch ? '位移' : '跳';
             const _padEl = document.getElementById('touchMovePad');
             if (_padEl) _padEl.classList.toggle('td-stick', _tdTouch);
+            // 单局游玩时长 (右上分数下方, 仅正式战斗显示)
+            var _rt = document.getElementById('cmRunTimer');
+            if (_rt) {
+                var _g2 = (typeof gameState !== 'undefined') ? gameState : '';
+                var _showRt = (_g2 === 'playing' || _g2 === 'topdown');
+                _rt.style.display = _showRt ? 'block' : 'none';
+                if (_showRt) {
+                    var _rs = Math.max(0, Math.round(typeof runSeconds !== 'undefined' ? runSeconds : 0));
+                    var _mm = Math.floor(_rs / 60), _ss = _rs % 60;
+                    _rt.textContent = '⏱ ' + (_mm < 10 ? '0' : '') + _mm + ':' + (_ss < 10 ? '0' : '') + _ss;
+                }
+            }
         }
 
         /** 绑定触控层: Pointer Events + pointerId 所有权 + setPointerCapture */
@@ -3529,6 +3564,8 @@ body.low-perf #menu::before { filter: none; opacity: .18; }
         let keysJustPressed = {};
         let camera = { x: 0, y: 0 };
         let score = 0, kills = 0, combo = 0, maxCombo = 0, wave = 1;
+        // 单局统计: 游玩时长(秒, 暂停/选卡不计) 与 复活次数(点击继续游戏)
+        let runSeconds = 0, runDeaths = 0;
 
         // === 波次选卡系统: 全局状态 (蛋仔派对超燃竞技场风格) ===
         // isDrafting 独立于 ESC 的 isPaused, 避免选卡时被 ESC 暂停打断
@@ -5988,6 +6025,7 @@ body.low-perf #menu::before { filter: none; opacity: .18; }
                     name: _runName || '',
                     state: gameState,
                     score: score, kills: kills, combo: combo, maxCombo: maxCombo, wave: wave,
+                    runSeconds: runSeconds, runDeaths: runDeaths,
                     killStreak: killStreak, maxKillStreak: maxKillStreak,
                     draftCount: draftCount, gameStartTime: gameStartTime,
                     totalSuppliesCollected: 0,
@@ -6004,7 +6042,12 @@ body.low-perf #menu::before { filter: none; opacity: .18; }
                     pvpB: gameState === 'pvp' ? _snapEntity(playerB) : null,
                     td: gameState === 'topdown' ? {
                         pEnergy: player ? player._tdEnergy : TD.energyMax,
-                        aEnergy: ai ? ai._tdEnergy : TD.energyMax
+                        aEnergy: ai ? ai._tdEnergy : TD.energyMax,
+                        zone: TD.zone ? {
+                            r: TD.zone.r,
+                            shrinkCount: TD.zone.shrinkCount || 0,
+                            nextShrinkIn: Math.max(0, (TD.zone.nextShrink || 0) - Date.now())
+                        } : null
                     } : null
                 };
                 if (!_runId) _beginNewRun();
@@ -6054,6 +6097,8 @@ body.low-perf #menu::before { filter: none; opacity: .18; }
                 gameStartTime = data.gameStartTime || Date.now();
                 highestDamageSingleShot = data.highestDamageSingleShot || 0;
                 selectedCards = Array.isArray(data.selectedCards) ? data.selectedCards.slice() : [];
+                runSeconds = _num(data.runSeconds, 0);
+                runDeaths = _num(data.runDeaths, 0);
                 player = new Player((data.player && data.player.x) || 160, (data.player && data.player.y) || TD.H / 2, false);
                 _applyEntity(player, data.player);
                 ai = new Player((data.ai && data.ai.x) || TD.W - 160, (data.ai && data.ai.y) || TD.H / 2, true);
@@ -6071,6 +6116,17 @@ body.low-perf #menu::before { filter: none; opacity: .18; }
                 ai.lives = Math.min(CONFIG.MAX_LIVES, Math.max(1, _num(data.ai && data.ai.lives, CONFIG.MAX_LIVES)));
                 TD.wave = wave; TD.kills = kills; TD.score = score; TD.lives = player.lives;
                 TD.over = false; TD.pDeadAt = 0; TD.aDeadAt = 0; TD.pRespawnAt = 0; TD.aRespawnAt = 0;
+                if (data.td && data.td.zone && typeof data.td.zone === 'object') {
+                    TD.zone = {
+                        cx: TD.W / 2, cy: TD.H / 2,
+                        r: Math.max(40, _num(data.td.zone.r, TD_ENV.initialRadius)),
+                        shrinkCount: Math.max(0, Math.round(_num(data.td.zone.shrinkCount, 0))),
+                        nextShrink: Date.now() + Math.max(1000, _num(data.td.zone.nextShrinkIn, TD_ENV.shrinkInterval * 1000)),
+                        dmgAt: 0
+                    };
+                } else {
+                    resetTdZone();
+                }
                 TD.aWeaponSince = Date.now(); TD.aThinkAt = 0; TD.aWeaponAt = 0;
                 TD.aMeleeAt = 0; TD.aMeleeUntil = 0; TD.fireHeld = false; TD.firePressed = false;
                 TD._hidden = [];
@@ -6116,6 +6172,8 @@ body.low-perf #menu::before { filter: none; opacity: .18; }
                 gameStartTime = data.gameStartTime || Date.now();
                 highestDamageSingleShot = data.highestDamageSingleShot || 0;
                 selectedCards = Array.isArray(data.selectedCards) ? data.selectedCards.slice() : [];
+                runSeconds = data.runSeconds || 0;
+                runDeaths = data.runDeaths || 0;
 
                 bullets = []; particles = [];
                 timeScale = 1.0;
@@ -12634,7 +12692,9 @@ body.low-perf #menu::before { filter: none; opacity: .18; }
                     '俯视模式补齐：任意一方掉命（玩家被击倒 / AI 被击杀 / 训练场靶子被击空）时，双方的「每秒物理攻击力加成」与「每秒减疗」累计立即清零，不再跨命累积',
                     '撞墙击退力度加倍（8→18）并取消冷却：贴边即刻弹开；伤害仍按 0.5 秒结算一次',
                     '毒圈初始半径默认 820（旧值 1200 自动迁移），下侧四角一开始就能看到毒圈边界；底部中央新增缩毒进度条，显示「第 N 次收缩 · 剩余秒数 / 间隔秒数」',
-                    '修复环境设置面板在手机端被触控层遮挡导致点击无反应：打开面板时自动隐藏触控层、提高层级并优化触屏点击'
+                    '修复环境设置面板在手机端被触控层遮挡导致点击无反应：打开面板时自动隐藏触控层、提高层级并优化触屏点击',
+                    '排行榜新增两项统计：死亡次数（点击「继续游戏」复活 +1）与游玩时长（从第 1 波到本次最高波次，暂停 / 选卡不计）；榜单新增「死亡」「时长」两列',
+                    '战斗时右上角显示本局游玩时长（精确到秒），暂停 / 选卡时冻结；存档会一并保存游玩时长、死亡次数与毒圈状态（半径 / 缩圈次数 / 下次缩圈倒计时），重进后继续累计'
                 ]
             },
             {
@@ -13167,6 +13227,7 @@ body.low-perf #menu::before { filter: none; opacity: .18; }
             if (_DOM.pvpGameOver) _DOM.pvpGameOver.style.display = 'none';
             if (_DOM.livesInfo) _DOM.livesInfo.style.display = 'flex';
             score = 0; kills = 0; combo = 0; maxCombo = 0; wave = 1; killStreak = 0; lastKillTime = 0;
+            runSeconds = 0; runDeaths = 0;
             pvpLivesA = 2; pvpLivesB = 2; pvpScoreA = 0; pvpScoreB = 0;
             // 无限回合制状态初始化: 首回合=1 (不成长), 红方先抽, 双方刷新次数各3次
             pvpRound = 1; pvpPhase = 'fight'; pvpDraftSide = 'A'; pvpRefreshA = 10; pvpRefreshB = 10;
@@ -14495,6 +14556,7 @@ body.low-perf #menu::before { filter: none; opacity: .18; }
                 });
             });
             TD.wave = 1; TD.kills = 0; TD.score = 0; TD.lives = 99;
+            runSeconds = 0; runDeaths = 0;
             TD.over = false; TD.pDeadAt = 0; TD.aDeadAt = 0; TD.pRespawnAt = 0; TD.aRespawnAt = 0;
             TD.aThinkAt = 0; TD.aWeaponAt = 0; TD.aMeleeAt = 0; TD.aMeleeUntil = 0;
             TD.fireHeld = false; TD.firePressed = false; TD.aThreat = 0; TD._achAt = 0;
@@ -14731,6 +14793,7 @@ body.low-perf #menu::before { filter: none; opacity: .18; }
             if (_DOM.pvpWeaponDisplayB) _DOM.pvpWeaponDisplayB.style.display = 'none';
             if (_DOM.livesInfo) _DOM.livesInfo.style.display = 'none';
             score = 0; kills = 0; combo = 0; maxCombo = 0; wave = 1; killStreak = 0; lastKillTime = 0;
+            runSeconds = 0; runDeaths = 0;
             bullets = []; particles = [];
             timeScale = 1.0;
             screenShake = { x: 0, y: 0, intensity: 0, duration: 0, color: '' };
@@ -14775,6 +14838,7 @@ body.low-perf #menu::before { filter: none; opacity: .18; }
             if (_DOM.pvpWeaponDisplayB) _DOM.pvpWeaponDisplayB.style.display = 'none';
             if (_DOM.livesInfo) _DOM.livesInfo.style.display = 'none';
             score = 0; kills = 0; combo = 0; maxCombo = 0; wave = 1; killStreak = 0; lastKillTime = 0;
+            runSeconds = 0; runDeaths = 0;
             bullets = []; particles = [];
             timeScale = 1.0;
             screenShake = { x: 0, y: 0, intensity: 0, duration: 0, color: '' };
@@ -16167,6 +16231,7 @@ body.low-perf #menu::before { filter: none; opacity: .18; }
 
         function continueAfterGameOver() {
             if (gameState !== 'gameover') return;
+            runDeaths++;   // 排行榜: 死亡(复活)次数 +1
             // 俯视失败后继续: 命数重置为满, 双方按俯视规则重生
             if (window._lastGameMode === 'topdown') {
                 const _go = document.getElementById('gameOver');
@@ -16262,6 +16327,8 @@ body.low-perf #menu::before { filter: none; opacity: .18; }
         '  username text,',
         '  mode text,',
         '  max_wave int default 0,',
+        '  deaths int default 0,',
+        '  time_seconds int default 0,',
         '  achieved_at timestamptz default now(),',
         '  unique(account_id, mode)',
         ');',
@@ -16618,7 +16685,7 @@ body.low-perf #menu::before { filter: none; opacity: .18; }
         if (over && !lastGameover) {
             var mode = (window._lastGameMode === 'topdown') ? 'topdown' : 'pve';
             var wv = (mode === 'topdown') ? ((typeof TD !== 'undefined' && TD) ? TD.wave : 0) : ((typeof wave !== 'undefined') ? wave : 0);
-            submitScore(mode, wv);
+            submitScore(mode, wv, { deaths: runDeaths, seconds: runSeconds });
         }
         lastGameover = over;
     }
@@ -16631,6 +16698,10 @@ body.low-perf #menu::before { filter: none; opacity: .18; }
             if (g === 'playing' || g === 'topdown' || g === 'training' || g === 'tdtraining' || g === 'pvp') {
                 playSec++;
                 if (Date.now() - lastFlushAt > 20000) { lastFlushAt = Date.now(); flushPlayTime(false); }
+            }
+            // 单局计时: 仅正式战斗且未暂停/选卡/面板时累计
+            if ((g === 'playing' || g === 'topdown') && !isPaused && !isDrafting && !isAwardShowing && !statPanelOpen) {
+                try { runSeconds++; } catch (e) { }
             }
             checkGameover();
         }, 1000);
@@ -16647,8 +16718,10 @@ body.low-perf #menu::before { filter: none; opacity: .18; }
     }
 
     // ===================== 排行榜 =====================
-    function submitScore(mode, waveNum) {
+    function submitScore(mode, waveNum, stats) {
         var wv = Math.max(1, Math.round(Number(waveNum) || 0));
+        var _deaths = Math.max(0, Math.round(Number(stats && stats.deaths) || 0));
+        var _secs = Math.max(0, Math.round(Number(stats && stats.seconds) || 0));
         if (!current || !wv) return Promise.resolve(false);
         if (cloudOn()) {
             return api('scores?select=*&account_id=eq.' + encodeURIComponent(current.id) + '&mode=eq.' + encodeURIComponent(mode) + '&limit=1')
@@ -16658,12 +16731,12 @@ body.low-perf #menu::before { filter: none; opacity: .18; }
                     if (prev) {
                         return api('scores?id=eq.' + prev.id, {
                             method: 'PATCH', headers: { 'Prefer': 'return=minimal' },
-                            body: JSON.stringify({ username: current.username, max_wave: wv, achieved_at: nowISO() })
+                            body: JSON.stringify({ username: current.username, max_wave: wv, deaths: _deaths, time_seconds: _secs, achieved_at: nowISO() })
                         }).then(function () { return true; });
                     }
                     return api('scores', {
                         method: 'POST', headers: { 'Prefer': 'return=minimal' },
-                        body: JSON.stringify({ account_id: current.id, username: current.username, mode: mode, max_wave: wv, achieved_at: nowISO() })
+                        body: JSON.stringify({ account_id: current.id, username: current.username, mode: mode, max_wave: wv, deaths: _deaths, time_seconds: _secs, achieved_at: nowISO() })
                     }).then(function () { return true; });
                 })
                 .then(function (changed) {
@@ -16674,8 +16747,8 @@ body.low-perf #menu::before { filter: none; opacity: .18; }
         var o = localDb();
         var prev = o.scores.filter(function (s) { return s.account_id === current.id && s.mode === mode; })[0];
         if (prev && Number(prev.max_wave) >= wv) return Promise.resolve(false);
-        if (prev) { prev.max_wave = wv; prev.username = current.username; prev.achieved_at = nowISO(); }
-        else o.scores.push({ id: uid(), account_id: current.id, username: current.username, mode: mode, max_wave: wv, achieved_at: nowISO() });
+        if (prev) { prev.max_wave = wv; prev.username = current.username; prev.deaths = _deaths; prev.time_seconds = _secs; prev.achieved_at = nowISO(); }
+        else o.scores.push({ id: uid(), account_id: current.id, username: current.username, mode: mode, max_wave: wv, deaths: _deaths, time_seconds: _secs, achieved_at: nowISO() });
         localSave(o);
         track('score', (MODE_LABEL[mode] || mode) + ' 第 ' + wv + ' 波');
         return Promise.resolve(true);
@@ -16722,6 +16795,11 @@ body.low-perf #menu::before { filter: none; opacity: .18; }
 
     // ===================== 弹窗基础 =====================
     function ensureDom() {
+        if (!document.getElementById('cmRunTimer')) {
+            var _rtEl = document.createElement('div');
+            _rtEl.id = 'cmRunTimer';
+            document.body.appendChild(_rtEl);
+        }
         if (!document.getElementById('cmToast')) {
             var t = document.createElement('div');
             t.id = 'cmToast';
@@ -16905,10 +16983,11 @@ body.low-perf #menu::before { filter: none; opacity: .18; }
             rows = rows || [];
             if (!rows.length) { el.className = 'cm-empty'; el.textContent = '暂无记录'; return; }
             el.className = '';
-            var h = '<table class="cm-table"><thead><tr><th>#</th><th>用户名</th><th>最高波次</th><th>达成时间</th></tr></thead><tbody>';
+            var h = '<table class="cm-table"><thead><tr><th>#</th><th>用户名</th><th>波次</th><th>死亡</th><th>时长</th><th>达成</th></tr></thead><tbody>';
             rows.forEach(function (r, i) {
                 var me = current && String(r.account_id) === String(current.id);
-                h += '<tr class="' + (me ? 'me' : '') + '"><td>' + (i + 1) + '</td><td>' + esc(r.username) + '</td><td>' + Math.round(Number(r.max_wave) || 0) + '</td><td>' + fmtTime(r.achieved_at) + '</td></tr>';
+                h += '<tr class="' + (me ? 'me' : '') + '"><td>' + (i + 1) + '</td><td>' + esc(r.username) + '</td><td>' + Math.round(Number(r.max_wave) || 0) +
+                    '</td><td>' + Math.round(Number(r.deaths) || 0) + '</td><td>' + fmtDuration(r.time_seconds) + '</td><td>' + fmtTime(r.achieved_at) + '</td></tr>';
             });
             h += '</tbody></table>';
             if (!cloudOn()) h += '<div class="cm-note" style="margin-top:10px">当前为本地模式，仅显示本机记录。</div>';
