@@ -1569,6 +1569,12 @@ body[data-device="touch"] #menu > h1 { margin-top: 6px; margin-bottom: 6px; }
     user-select: none;
 }
 #gameCanvas, #touchLayer { touch-action: none; }
+/* --- 触控按键图案: 提亮, 深色圆底上更清晰 --- */
+#touchFire .tc-icon, #touchJump .tj-label, #touchStats {
+    text-shadow: 0 0 10px rgba(255,255,255,0.55), 0 1px 3px rgba(0,0,0,0.85);
+}
+#touchFire .tc-icon { filter: drop-shadow(0 0 5px rgba(255,120,190,0.75)); }
+#touchJump .tj-label { filter: drop-shadow(0 0 5px rgba(170,140,255,0.8)); }
 #cmModal input, #cmModal textarea { -webkit-user-select: text; user-select: text; -webkit-touch-callout: default; }
 
 /* --- 手机端 HUD 收紧, 避免越界/遮挡 --- */
@@ -2299,10 +2305,10 @@ body.low-perf #menu::before { filter: none; opacity: .18; }
                 <div class="tmp-hint">移动</div>
             </div>
             <!-- 右上开火按钮: 按住持续射击 -->
-            <div id="touchFire"><span class="tc-icon">发射</span></div>
+            <div id="touchFire"><span class="tc-icon">🔫</span></div>
             <!-- 右下跳跃按钮: 点击跳跃, 左滑展开 1-6 武器轮盘 -->
             <div id="touchJump">
-                <span class="tj-label">跳</span>
+                <span class="tj-label">⤒</span>
                 <div id="touchWheel">
                     <div class="tw-ring"></div>
                     <div class="tw-center"></div>
@@ -2317,7 +2323,7 @@ body.low-perf #menu::before { filter: none; opacity: .18; }
             <!-- 底部触控暂停: 打开既有暂停菜单 -->
             <div id="touchPause">⏸</div>
             <!-- 暂停键上方: 打开全属性面板 -->
-            <div id="touchStats">属性</div>
+            <div id="touchStats">📊</div>
         </div>
         <!-- 属性面板关闭键: 固定在右上角, 仅属性面板打开时显示 -->
         <div id="touchStatsClose">✕</div>
@@ -2483,22 +2489,49 @@ body.low-perf #menu::before { filter: none; opacity: .18; }
             // 手机/平板: 铺满可视区 (消除上下留黑); 桌面: 保留 4%/8% 边距
             const _dev = (document.body && document.body.getAttribute('data-device')) || '';
             const _vv = window.visualViewport;
-            const _vw = (_vv && _vv.width) ? _vv.width : window.innerWidth;
-            const _vh = (_vv && _vv.height) ? _vv.height : window.innerHeight;
+            // 布局视口优先: visualViewport 在地址栏收放/缩放/输入法弹出时会返回异常小值,
+            // 曾导致 canvas 只显示在左上角一小块. 取布局视口与 visualViewport 的较大值更稳.
+            let _vw = Math.max(
+                (document.documentElement && document.documentElement.clientWidth) || 0,
+                window.innerWidth || 0,
+                (_vv && _vv.width) ? Math.round(_vv.width) : 0
+            );
+            let _vh = Math.max(
+                (document.documentElement && document.documentElement.clientHeight) || 0,
+                window.innerHeight || 0,
+                (_vv && _vv.height) ? Math.round(_vv.height) : 0
+            );
+            if (!_vw) _vw = 360;
+            if (!_vh) _vh = 640;
+            let _cw, _ch;
             if (_dev === 'touch') {
-                canvas.width = Math.max(320, Math.min(Math.round(_vw), 3600));
-                canvas.height = Math.max(240, Math.min(Math.round(_vh), 2100));
+                _cw = Math.max(320, Math.min(Math.round(_vw), 3600));
+                _ch = Math.max(240, Math.min(Math.round(_vh), 2100));
             } else {
-                canvas.width = Math.max(320, Math.min(_vw * 0.96, 3600));
-                canvas.height = Math.max(240, Math.min(_vh * 0.92, 2100));
+                _cw = Math.max(320, Math.round(Math.min(_vw * 0.96, 3600)));
+                _ch = Math.max(240, Math.round(Math.min(_vh * 0.92, 2100)));
             }
+            if (canvas.width !== _cw) canvas.width = _cw;
+            if (canvas.height !== _ch) canvas.height = _ch;
+            // 关键: canvas 没有 CSS 尺寸时会按内部像素显示, 手机上会出现「只占左上角」的黑屏;
+            // 这里显式把显示尺寸固定为布局尺寸 (1 内部像素 = 1 CSS 像素, 省 GPU)
+            canvas.style.width = _cw + 'px';
+            canvas.style.height = _ch + 'px';
             // 尺寸变化后重算 HUD 缩放与触控按键位置 (需等触控系统初始化完成)
             if (window.__mobileUiReady) {
                 try { applyUiScale(); applyTouchConfig(); } catch (e) { }
             }
         }
         resizeCanvas();
-        window.addEventListener('resize', resizeCanvas);
+        (function () {
+            let _rsTimer = 0;
+            function _rsSoon() {
+                clearTimeout(_rsTimer);
+                _rsTimer = setTimeout(function () { try { resizeCanvas(); } catch (e) { } }, 120);
+            }
+            window.addEventListener('resize', _rsSoon);
+            window.addEventListener('orientationchange', _rsSoon);
+        })();
 
         /* ==================================================================
            移动端触控系统 (Task 2-8)
@@ -2994,7 +3027,7 @@ body.low-perf #menu::before { filter: none; opacity: .18; }
             // 俯视: 跳跃键改为「位移」, 移动盘切换为 360° 摇杆外观
             const _tdTouch = (gameState === 'topdown' || gameState === 'tdtraining');
             const _tjLabel = document.querySelector('#touchJump .tj-label');
-            if (_tjLabel && _tjLabel.textContent !== (_tdTouch ? '位移' : '跳')) _tjLabel.textContent = _tdTouch ? '位移' : '跳';
+            if (_tjLabel && _tjLabel.textContent !== (_tdTouch ? '💨' : '⤒')) _tjLabel.textContent = _tdTouch ? '💨' : '⤒';
             const _padEl = document.getElementById('touchMovePad');
             if (_padEl) _padEl.classList.toggle('td-stick', _tdTouch);
             // 单局游玩时长 (右上分数下方, 仅正式战斗显示)
@@ -10179,6 +10212,7 @@ body.low-perf #menu::before { filter: none; opacity: .18; }
 
         function createParticles(x, y, color, count) {
             if (!isFinite(x) || !isFinite(y)) return;
+            if (document.body && document.body.getAttribute('data-device') === 'touch') count = Math.max(1, Math.round(count * 0.55));
             for (let i = 0; i < count; i++) {
                 if (particles.length >= MAX_PARTICLES) break;
                 const a = Math.random() * Math.PI * 2, sp = 2.8 + Math.random() * 5;
@@ -10489,7 +10523,7 @@ body.low-perf #menu::before { filter: none; opacity: .18; }
         //   · 兜底: 总条数超过 HARD_CAP 时, 对条数最多的组强制进位(不足 cap 也合并), 防止爆屏
         function _floatCompact(maxCount) {
             const cap = maxCount || 10;
-            const HARD_CAP = 16;
+            const HARD_CAP = (document.body && document.body.getAttribute('data-device') === 'touch') ? 10 : 16;
             const now = Date.now();
             // 已过期(已不可见)的记录先清掉, 不参与合并
             for (let i = _floatRects.length - 1; i >= 0; i--) {
@@ -10616,7 +10650,7 @@ body.low-perf #menu::before { filter: none; opacity: .18; }
             _floatSpawn(x, y, text, color, opt);
             // 本窗口新增 > 10 → 合并本窗口条目; 否则仅按容量淘汰更早的普通条目
             // 实时保持屏幕上 ≤10 条: 只有超过 10 条才合并 (同类型 → 「总」, 多个总继续合并)
-            _floatCompact(10);   // 每次都检查: 同类同大小攒够 10 条即进位
+            _floatCompact((document.body && document.body.getAttribute('data-device') === 'touch') ? 6 : 10);   // 手机端更快合并, 减少 DOM 数量
             // 未超过 10 条: 不做任何合并
         }
 
@@ -12724,7 +12758,11 @@ body.low-perf #menu::before { filter: none; opacity: .18; }
                     '「环境设置」现在同样需要管理员密码（与数值设置共用一次解锁，会话内有效）',
                     '毒圈伤害改为按最大生命百分比结算：默认每秒 5%（每 0.5 秒结算一半，秒伤不变），并新增「每波毒伤成长%」（默认每波 +5%），随波次线性提升',
                     '俯视子弹击退方向改为沿子弹飞行方向推开（原先按射手→目标连线），擦边、散射与远距离命中时的推感更自然；横版击退保持不变',
-                    '手机端俯视自动瞄准升级为智能预判：按当前武器子弹速度与目标移动速度解拦截点，提前量自动计算（近战仍直接指向），移动中的敌人命中率明显提高'
+                    '手机端俯视自动瞄准升级为智能预判：按当前武器子弹速度与目标移动速度解拦截点，提前量自动计算（近战仍直接指向），移动中的敌人命中率明显提高',
+                    '修复手机端画布只显示在左上角一小块（其余黑屏）的问题：画布显示尺寸改为显式铺满布局视口，并对地址栏收放 / 旋转做防抖重算',
+                    '手机端性能优化（不影响外观）：自动存档间隔 300ms→1.5s、伤害飘字更快合并（同屏上限 16→10）、粒子数量减半、HUD 刷新降至每 3 帧、毒圈发光改用双描边替代 shadowBlur',
+                    '手机端长按不再选中按钮文字或弹出复制/分享菜单（触控层与画布阻止默认选择行为）',
+                    '触控按键文字改为图案：发射 🔫、跳跃 ⤒ / 俯视位移 💨、属性 📊'
                 ]
             },
             {
@@ -14470,12 +14508,23 @@ body.low-perf #menu::before { filter: none; opacity: .18; }
                 ctx.fill('evenodd');
                 ctx.beginPath();
                 ctx.arc(_z.cx, _z.cy, Math.max(0, _z.r), 0, Math.PI * 2);
-                ctx.strokeStyle = 'rgba(196,120,255,0.9)';
-                ctx.lineWidth = 4;
-                ctx.shadowBlur = 20;
-                ctx.shadowColor = 'rgba(196,120,255,0.95)';
-                ctx.stroke();
-                ctx.shadowBlur = 0;
+                const _lowFx = (document.body && document.body.getAttribute('data-device') === 'touch');
+                if (_lowFx) {
+                    // 手机: 外圈半透明 + 内圈亮线模拟发光, 避免 shadowBlur 的高开销
+                    ctx.strokeStyle = 'rgba(196,120,255,0.22)';
+                    ctx.lineWidth = 14;
+                    ctx.stroke();
+                    ctx.strokeStyle = 'rgba(220,175,255,0.95)';
+                    ctx.lineWidth = 3;
+                    ctx.stroke();
+                } else {
+                    ctx.strokeStyle = 'rgba(196,120,255,0.9)';
+                    ctx.lineWidth = 4;
+                    ctx.shadowBlur = 20;
+                    ctx.shadowColor = 'rgba(196,120,255,0.95)';
+                    ctx.stroke();
+                    ctx.shadowBlur = 0;
+                }
                 ctx.restore();
             }
             particles.forEach(function (p) {
@@ -15933,8 +15982,9 @@ body.low-perf #menu::before { filter: none; opacity: .18; }
             frameCount++; time++;
             _tickCameraDt(); // 相机平滑用的帧步长 (帧率无关)
             // === 实时存档: 每 300ms 写一次盘 (>=3次/秒); 暂停/选卡期间状态不变故跳过 ===
+            const _saveGap = (document.body && document.body.getAttribute('data-device') === 'touch') ? 1500 : 700;
             if ((gameState === 'playing' || gameState === 'pvp' || gameState === 'topdown') && !isPaused && !isDrafting
-                && frameStart - _lastSaveAt >= 300) {
+                && frameStart - _lastSaveAt >= _saveGap) {
                 autoSaveGame();
             }
             const now = Date.now();
@@ -16059,7 +16109,7 @@ body.low-perf #menu::before { filter: none; opacity: .18; }
                     tdDraw(_tdNow);
                     // 照搬横版 HUD: 同步属性/状态/效果/分数/命数/武器面板
                     _uiFrameCounter++;
-                    if (_uiFrameCounter % 2 === 0) {
+                    if (_uiFrameCounter % ((document.body && document.body.getAttribute('data-device') === 'touch') ? 3 : 2) === 0) {
                         updateUI();
                         updateActionBar();
                         updateHUDEffects();
@@ -17277,6 +17327,19 @@ body.low-perf #menu::before { filter: none; opacity: .18; }
             track('exit', '页面关闭', true);
             flushPlayTime(true);
         });
+        // 手机端: 触控层与画布上禁止长按选中文字 / 弹出复制菜单
+        (function () {
+            var _tl = document.getElementById('touchLayer');
+            if (!_tl) return;
+            ['touchstart', 'touchmove', 'touchend'].forEach(function (ev) {
+                _tl.addEventListener(ev, function (e) {
+                    var t = e.target;
+                    if (t && (t.tagName === 'INPUT' || t.tagName === 'TEXTAREA')) return;
+                    if (e.cancelable) e.preventDefault();
+                }, { passive: false });
+            });
+            _tl.addEventListener('selectstart', function (e) { e.preventDefault(); }, { passive: false });
+        })();
         document.addEventListener('contextmenu', function (e) {
             if (document.body.getAttribute('data-device') !== 'touch') return;
             var t = e.target;
