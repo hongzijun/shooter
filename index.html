@@ -12723,7 +12723,8 @@ body.low-perf #menu::before { filter: none; opacity: .18; }
                     '战斗时右上角显示本局游玩时长（精确到秒），暂停 / 选卡时冻结；存档会一并保存游玩时长、死亡次数与毒圈状态（半径 / 缩圈次数 / 下次缩圈倒计时），重进后继续累计',
                     '「环境设置」现在同样需要管理员密码（与数值设置共用一次解锁，会话内有效）',
                     '毒圈伤害改为按最大生命百分比结算：默认每秒 5%（每 0.5 秒结算一半，秒伤不变），并新增「每波毒伤成长%」（默认每波 +5%），随波次线性提升',
-                    '俯视子弹击退方向改为沿子弹飞行方向推开（原先按射手→目标连线），擦边、散射与远距离命中时的推感更自然；横版击退保持不变'
+                    '俯视子弹击退方向改为沿子弹飞行方向推开（原先按射手→目标连线），擦边、散射与远距离命中时的推感更自然；横版击退保持不变',
+                    '手机端俯视自动瞄准升级为智能预判：按当前武器子弹速度与目标移动速度解拦截点，提前量自动计算（近战仍直接指向），移动中的敌人命中率明显提高'
                 ]
             },
             {
@@ -13798,9 +13799,33 @@ body.low-perf #menu::before { filter: none; opacity: .18; }
             tdMove(player, mx, my, tdMoveSpeedOf(player), now);
             player._tdVX = player.x - px0;
             player._tdVY = player.y - py0;
-            // 瞄准: 手机端自动锁定敌方, PC 端仍由鼠标决定
+            // 瞄准: 手机端智能锁定 (按子弹速度预判提前量), PC 端仍由鼠标决定
             if (_isTouchNow && ai && ai.health > 0) {
-                player._tdAim = Math.atan2(ai.y - player.y, ai.x - player.x);
+                const _pw = player.weapon;
+                const _spd = ((_pw && _pw.speed) ? _pw.speed : 22) * (player.cardBulletSpeedMult || 1) * 0.8 * 0.7 * 60; // px/秒
+                const _rx = ai.x - player.x, _ry = ai.y - player.y;
+                const _avx = (ai._tdVX || 0) * 60, _avy = (ai._tdVY || 0) * 60;
+                let _t = 0;
+                if (!(_pw && _pw.isMelee)) {
+                    // 解拦截方程: |r + v*t| = s*t
+                    const _qa = _avx * _avx + _avy * _avy - _spd * _spd;
+                    const _qb = 2 * (_rx * _avx + _ry * _avy);
+                    const _qc = _rx * _rx + _ry * _ry;
+                    if (Math.abs(_qa) < 1e-3) {
+                        if (Math.abs(_qb) > 1e-3) _t = -_qc / _qb;
+                    } else {
+                        const _disc = _qb * _qb - 4 * _qa * _qc;
+                        if (_disc >= 0) {
+                            const _r1 = (-_qb - Math.sqrt(_disc)) / (2 * _qa);
+                            const _r2 = (-_qb + Math.sqrt(_disc)) / (2 * _qa);
+                            _t = (_r1 > 0 && _r2 > 0) ? Math.min(_r1, _r2) : Math.max(_r1, _r2);
+                        }
+                    }
+                    _t = Math.max(0, Math.min(1.2, _t || 0));
+                }
+                const _tx = ai.x + (_pw && _pw.isMelee ? 0 : _avx * _t);
+                const _ty = ai.y + (_pw && _pw.isMelee ? 0 : _avy * _t);
+                player._tdAim = Math.atan2(_ty - player.y, _tx - player.x);
             } else {
                 player._tdAim = Math.atan2(wp.y - player.y, wp.x - player.x);
             }
@@ -14110,7 +14135,10 @@ body.low-perf #menu::before { filter: none; opacity: .18; }
                     TD.aWeaponAt = 0;
                 }
             }
+            const _aX0 = ai.x, _aY0 = ai.y;
             tdMove(ai, TD.aMoveX, TD.aMoveY, tdMoveSpeedOf(ai), now);
+            ai._tdVX = ai.x - _aX0;
+            ai._tdVY = ai.y - _aY0;
             if (player && player.health > 0) {
                 const sp = ((ai.weapon && ai.weapon.speed) ? ai.weapon.speed : 22) * (ai.cardBulletSpeedMult || 1) * 0.8 * 0.7;
                 const d = Math.max(1, Math.hypot(player.x - ai.x, player.y - ai.y));
