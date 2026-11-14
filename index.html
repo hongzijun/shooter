@@ -4646,11 +4646,11 @@ body.low-perf #menu::before { filter: none; opacity: .18; }
             if (gameState === 'pvp') return (p === playerA) ? playerB : (p === playerB ? playerA : null);
             return p.isAI ? player : ai;
         }
-        // 对方累计的「每秒减疗」: 只减对方的回血, 不减自己 (上限95%)
+        // 对方累计的减疗: 只减对方的回血, 不减自己 (上限 90%)
         function fxHealDecayFor(p) {
             const o = fxOpponentOf(p);
             const v = (o && o._healDecayBonus) || 0;
-            return Math.max(0, Math.min(0.95, v));
+            return Math.max(0, Math.min(0.9, v));
         }
         // 「时间刻印」: 所有冷却型效果额外 -10%/张 (上限 -60%), 在 CDR 之后再乘算
         function fxCdrExtra(p) {
@@ -4699,7 +4699,7 @@ body.low-perf #menu::before { filter: none; opacity: .18; }
             }
             // 抗治疗: 相当于 治疗倍率 - 抗治疗 (撼地重斧的减疗并入抗治疗)
             v *= Math.max(0, fxMult(p, 'heal') - fxHealResist(p));
-            // 对方施加的「每秒减疗」: 任何回血(治疗)按该比例削减, 上限 95%
+            // 对方施加的减疗: 任何回血(治疗)按该比例削减, 上限 90%
             v *= (1 - fxHealDecayFor(p));
             v = Math.round(v);
             let applied = 0;
@@ -4728,7 +4728,7 @@ body.low-perf #menu::before { filter: none; opacity: .18; }
             if (!p || p.health <= 0 || amt <= 0) return 0;
             const fx = p.fx;
             let v = amt * (1 + ((fx && fx.shieldPower) || 0)) * fxMult(p, 'shield');
-            // 对方累计的「每秒减疗」同样削减护盾获取 (与治疗/吸血一致, 上限 95%); 只减对方, 不减自己
+            // 对方累计的减疗同样削减护盾获取 (与治疗/吸血一致, 上限 90%); 只减对方, 不减自己
             v *= (1 - fxHealDecayFor(p));
             v = Math.round(v);
             const _cap = Math.max(0, (p.maxHealth || 0) * 4);
@@ -6436,8 +6436,8 @@ body.low-perf #menu::before { filter: none; opacity: .18; }
             p.critDamageMult = _num(d.critDamageMult, p.critDamageMult);
             p._trainDefRed = Math.max(0, _num(d._trainDefRed, 0));
             p._atkPerSecBonus = Math.max(0, _num(d._atkPerSecBonus, 0));
-            // 每秒减疗累计: 读档后继续保留, 上限 95%
-            p._healDecayBonus = Math.max(0, Math.min(0.95, _num(d._healDecayBonus, 0)));
+            // 减疗累计: 读档后继续保留, 上限 90%
+            p._healDecayBonus = Math.max(0, Math.min(0.9, _num(d._healDecayBonus, 0)));
             p._atkSecAt = 0;   // 每秒成长计时器: 下一帧从当前时刻重新开始 (之后仍按秒继续累加)
             p.cardDamageMult = _num(d.cardDamageMult, 1);
             p.cardSpeedMult = _num(d.cardSpeedMult, 1);
@@ -7950,7 +7950,7 @@ body.low-perf #menu::before { filter: none; opacity: .18; }
                 if (_el >= 1000) {
                     const _n = Math.floor(_el / 1000);
                     if (_perSec > 0) this._atkPerSecBonus = (this._atkPerSecBonus || 0) + _perSec * _n;
-                    if (_decay > 0) this._healDecayBonus = Math.min(0.95, (this._healDecayBonus || 0) + _decay * _n);
+                    if (_decay > 0) this._healDecayBonus = Math.min(0.9, (this._healDecayBonus || 0) + _decay * _n);
                     this._atkSecAt += _n * 1000;
                 }
             }
@@ -10642,8 +10642,8 @@ body.low-perf #menu::before { filter: none; opacity: .18; }
                     multRow('shieldMult', '护盾倍率') +
                     row('每秒物理攻击力', '<span style="color:#ffd166">' + (Math.round(atkPerSecValue(e) * 10) / 10) + '</span>' +
                         ' <span style="color:#7f8ba8">(已累积 +' + Math.round(e._atkPerSecBonus || 0) + ')</span>') +
-                    row('减疗(对敌)', '<span style="color:#ff9f43">' + fmtPct(Math.min(0.95, e._healDecayBonus || 0)) + '</span>' +
-                        ' <span style="color:#7f8ba8">' + ((gameState === 'topdown' || gameState === 'tdtraining') ? '(每波毒圈累加, 上限95%, 独立于抗治疗)' : '(每秒累加, 上限95%, 独立于抗治疗)') + '</span>') +
+                    row('减疗(对敌)', '<span style="color:#ff9f43">' + fmtPct(Math.min(0.9, e._healDecayBonus || 0)) + '</span>' +
+                        ' <span style="color:#7f8ba8">' + ((gameState === 'topdown' || gameState === 'tdtraining') ? '(每波毒圈累加, 上限90%, 独立于抗治疗)' : '(每秒累加, 上限90%, 独立于抗治疗)') + '</span>') +
                     ((gameState === 'topdown' || gameState === 'tdtraining')
                         ? row('每秒能量', '<span style="color:#55efc4">' + (Math.round(tdRegenOf(e) * 10) / 10) + '</span>' +
                             ' <span style="color:#7f8ba8">(当前上限 ' + Math.round(tdEnergyMaxOf(e)) + ')</span>')
@@ -12693,7 +12693,7 @@ body.low-perf #menu::before { filter: none; opacity: .18; }
                     shieldMult: num(so.shieldMult, d.shieldMult),
                     healResist: num(so.healResist, d.healResist),
                     healDecayBase: Math.max(0, Math.min(0.95, num(so.healDecayBase, d.healDecayBase))),
-                    decayPerShrink: Math.max(0, Math.min(0.95, num(so.decayPerShrink, d.decayPerShrink))),
+                    decayPerShrink: Math.max(0, Math.min(0.9, num(so.decayPerShrink, d.decayPerShrink))),
                     // 俯视能量: 初始最大能量默认 1000 / 每秒能量默认 30 (v7 起; 旧存档的 100/15 自动迁移)
                     energyMax: Math.max(1, _v7 ? (Number(so.energyMax) === 100 ? 1000 : num(so.energyMax, d.energyMax != null ? d.energyMax : 1000))
                         : num(so.energyMax, d.energyMax != null ? d.energyMax : 1000)),
@@ -13268,7 +13268,8 @@ body.low-perf #menu::before { filter: none; opacity: .18; }
                     '俯视训练场命数：人物 3 条命、靶子 2 条命（HUD 显示 ❤×N）。掉命后原地复活并保留毒圈；任意一方命数用完则整套重置（双方满血满命、靶子回原位、毒圈与减疗累计清零）',
                     '「每波毒圈减疗」改为双方各自可调：训练场数值面板的人物 / AI 页签各新增「每波毒圈减疗(%)」（默认 15%），每次缩圈按各自的数值累加、互不影响；环境设置里重复的那一项已移除，属性面板说明同步为「每波毒圈累加」',
                     '相位臂甲免疫限制：现在只抵挡物理伤害，法术 / 真伤 / 特效伤害不再被免疫（卡牌描述同步）；护盾获取本来就按累计减疗比例削减',
-                    '修复减疗累计「重新进场归零」：掉一条命复活时只清空每秒物攻加成，保留每波毒圈累计的减疗；只有一整波命数打完（新一波）、训练场整套重置或横版击杀时才连减疗一起清零'
+                    '修复减疗累计「重新进场归零」：掉一条命复活时只清空每秒物攻加成，保留每波毒圈累计的减疗；只有一整波命数打完（新一波）、训练场整套重置或横版击杀时才连减疗一起清零',
+                    '减疗累计上限由 95% 下调为 90%（治疗 / 吸血 / 护盾获取统一按 90% 封顶），属性面板说明同步'
                 ]
             },
             {
@@ -13915,12 +13916,12 @@ body.low-perf #menu::before { filter: none; opacity: .18; }
                     z.r = Math.max(minR, z.r - step);
                     z.shrinkCount = (z.shrinkCount || 0) + 1;
                     try { _floatSpawn(z.cx, z.cy - 20, '毒圈收缩 · 第 ' + z.shrinkCount + ' 次', '#c084ff', { big: true }); } catch (e) { }
-                    // 每波毒圈: 双方各自按训练场面板的「每波毒圈减疗(%)」累加 (俯视专用, 默认 15%, 上限 95%)
+                    // 每波毒圈: 双方各自按训练场面板的「每波毒圈减疗(%)」累加 (俯视专用, 默认 15%, 上限 90%)
                     var _fallbackDec = Math.max(0, Number(TD_ENV.decayPerShrink) || 0) / 100;
                     var _decP = Math.max(0, Number(TRAIN_TUNE && TRAIN_TUNE.mine && TRAIN_TUNE.mine.decayPerShrink != null ? TRAIN_TUNE.mine.decayPerShrink : _fallbackDec) || 0);
                     var _decA = Math.max(0, Number(TRAIN_TUNE && TRAIN_TUNE.enemy && TRAIN_TUNE.enemy.decayPerShrink != null ? TRAIN_TUNE.enemy.decayPerShrink : _fallbackDec) || 0);
-                    if (player) player._healDecayBonus = Math.min(0.95, (player._healDecayBonus || 0) + _decP);
-                    if (ai) ai._healDecayBonus = Math.min(0.95, (ai._healDecayBonus || 0) + _decA);
+                    if (player) player._healDecayBonus = Math.min(0.9, (player._healDecayBonus || 0) + _decP);
+                    if (ai) ai._healDecayBonus = Math.min(0.9, (ai._healDecayBonus || 0) + _decA);
                     try {
                         var _decTxt = (_decP === _decA)
                             ? ('减疗 +' + Math.round(_decP * 100) + '%')
@@ -14029,7 +14030,7 @@ body.low-perf #menu::before { filter: none; opacity: .18; }
             TD_ENV.minRadius = Math.max(40, Math.round(TD_ENV.minRadius || 260));
             TD_ENV.edgeDmgPct = Math.max(0, Number(TD_ENV.edgeDmgPct) || 0);
             TD_ENV.initialRadius = Math.max(200, Math.round(TD_ENV.initialRadius || 1200));
-            TD_ENV.decayPerShrink = Math.max(0, Math.min(95, Number(TD_ENV.decayPerShrink) || 0));
+            TD_ENV.decayPerShrink = Math.max(0, Math.min(90, Number(TD_ENV.decayPerShrink) || 0));
             try { localStorage.setItem(TD_ENV_KEY, JSON.stringify(TD_ENV)); } catch (e) { }
             resetTdZone();
             var tip = document.getElementById('tdEnvTip');
@@ -16395,7 +16396,7 @@ body.low-perf #menu::before { filter: none; opacity: .18; }
             return Math.max(0, x + y * (z - 1));
         }
 
-        // 每秒减疗%: 与每秒物理攻击力同一公式 x + y*(z-1), 上限 95%
+        // 每秒减疗%: 与每秒物理攻击力同一公式 x + y*(z-1), 上限 90%
         function healDecayValue(ent) {
             const side = (ent && ent.isAI) ? 'enemy' : 'mine';
             const t = (TRAIN_TUNE && TRAIN_TUNE[side]) ? TRAIN_TUNE[side] : null;
@@ -16406,7 +16407,7 @@ body.low-perf #menu::before { filter: none; opacity: .18; }
             if ((gameState === 'training' || gameState === 'tdtraining')) z = Math.max(1, Math.round(t.aiRound || 1));
             else if (gameState === 'pvp') z = Math.max(1, pvpRound || 1);
             else z = Math.max(1, wave || 1);
-            return Math.max(0, Math.min(0.95, x + y * (z - 1)));
+            return Math.max(0, Math.min(0.9, x + y * (z - 1)));
         }
 
         // 每秒物理攻击力加成: 发生击杀时双方累计值清零 (从零重新计时)
