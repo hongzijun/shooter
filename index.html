@@ -11663,7 +11663,8 @@
                 weaponEl.textContent = player.currentWeapon ? player.currentWeapon[0].toUpperCase() : '?';
             }
             if (ammoEl && player.weapon) {
-                ammoEl.textContent = player.weapon.ammo + '/' + player.weapon.maxAmmo;
+                const _tdNoReload = (gameState === 'topdown' || gameState === 'tdtraining');
+                ammoEl.textContent = _tdNoReload ? '∞' : (player.weapon.ammo + '/' + player.weapon.maxAmmo);
             }
         }
 
@@ -11720,7 +11721,8 @@
                 if (hudMoveEl) hudMoveEl.textContent = stateText;
                 if (hudWeaponEl) {
                     const wpn = player.weapon;
-                    const ammoStr = wpn && wpn.isMelee ? '近战' : (wpn ? wpn.ammo + '/' + (wpn.maxAmmo ?? '?') : '?');
+                    const _tdNoReload = (gameState === 'topdown' || gameState === 'tdtraining');
+                    const ammoStr = wpn && wpn.isMelee ? '近战' : (wpn ? (_tdNoReload ? '∞' : wpn.ammo + '/' + (wpn.maxAmmo ?? '?')) : '?');
                     hudWeaponEl.textContent = '🔫 ' + (player.currentWeapon || '?').toUpperCase() + ' ' + ammoStr;
                 }
                 if (hudHpEl) hudHpEl.textContent = '❤ ' + Math.ceil(player.health);
@@ -11793,7 +11795,8 @@
                     ammoEl.textContent = '近战武器';
                     ammoEl.style.color = '#a29bfe';
                 } else {
-                    ammoEl.textContent = '弹药: ' + w.ammo + '/' + w.reserve;
+                    const _tdNoReload2 = (gameState === 'topdown' || gameState === 'tdtraining');
+                    ammoEl.textContent = '弹药: ' + (_tdNoReload2 ? '∞（俯视无需换弹）' : (w.ammo + '/' + w.reserve));
                     ammoEl.style.color = w.ammo < w.maxAmmo * 0.25 ? '#e74c3c' : '#2ed573';
                 }
             }
@@ -12019,7 +12022,8 @@
                 date: '2026-11-14',
                 items: [
                     '俯视能量环移到画面左下 / 右下角，名称标签改到环上方；「正面 / 负面效果」面板在俯视下整排上移，给角落让出位置，两者不再互相遮挡；能量不足提示同步移到环下方',
-                    '「坚忍之志」新增治疗增强上限：最多 +200%（治疗倍率最高 ×3），超出部分不再继续放大治疗；卡牌描述与属性面板（显示当前实际增强值）同步'
+                    '「坚忍之志」新增治疗增强上限：最多 +200%（治疗倍率最高 ×3），超出部分不再继续放大治疗；卡牌描述与属性面板（显示当前实际增强值）同步',
+                    '俯视模式（含俯视训练场）取消换弹：双方弹匣无限、开火不消耗弹药、不再进入换弹状态，AI 与玩家一致；R 键不再换弹，左上 HUD 弹药显示为 ∞，底部键位说明同步移除「R 换弹」'
                 ]
             },
             {
@@ -12688,8 +12692,9 @@
             if (ent.frozen || fxIsStunned(ent)) return false;   // 眩晕/冰冻: 不能发射任何武器
             const w = ent.weapon;
             if (!w || w.isMelee) return false;
-            if (ent.isReloading) return false;
-            if (w.ammo <= 0) { ent.reload(); return false; }
+            // 俯视模式取消换弹: 双方弹匣视为无限, 不消耗弹药、不进入换弹状态
+            ent.isReloading = false;
+            if (w.ammo < w.maxAmmo) w.ammo = w.maxAmmo;
             const interval = (ent.getFireInterval ? ent.getFireInterval(w) : (w.fireRate || 200));
             if (now - ent.lastShot < interval) return false;
             const cost = tdWeaponCost(ent);
@@ -12699,7 +12704,7 @@
             }
             ent._tdEnergy -= cost;
             ent.lastShot = now;
-            w.ammo--;
+            // 俯视取消换弹: 不扣弹匣弹药
             // 特殊弹药: 与横版一致, 每次开火消耗 1 发
             let specialType = null;
             if (ent.currentSpecialAmmo && ent.specialAmmoCount > 0) {
@@ -12957,7 +12962,6 @@
             } else if (TD.fireHeld) {
                 tdFire(player, player._tdAim, now);
             }
-            player.updateReload();
             TD.firePressed = false;
         }
 
@@ -13195,7 +13199,6 @@
                 return;
             }
             tdRegen(ai, TD.dt || 0);
-            ai.updateReload();
             if (now >= TD.aThinkAt) { TD.aThinkAt = now + 100; tdAIThink(now); }
             // 刀剑处决: 逼近并在 115px 内挥砍, 结束后立刻切回远程武器
             if (TD.aMeleeUntil && now < TD.aMeleeUntil) {
@@ -13652,7 +13655,6 @@
                 _ctrl.innerHTML = '<div><span class="key">WASD</span> 移动</div>' +
                     '<div><span class="key">鼠标</span> 瞄准 / 射击</div>' +
                     '<div><span class="key">空格</span> 能量位移</div>' +
-                    '<div><span class="key">R</span> 换弹</div>' +
                     '<div><span class="key">1-5</span> 武器</div>' +
                     '<div><span class="key">E / 6</span> 战刃</div>';
             }
@@ -13707,7 +13709,6 @@
                 _ctrl.innerHTML = '<div><span class="key">WASD</span> 移动</div>' +
                     '<div><span class="key">鼠标</span> 瞄准 / 射击</div>' +
                     '<div><span class="key">空格</span> 能量位移</div>' +
-                    '<div><span class="key">R</span> 换弹</div>' +
                     '<div><span class="key">1-5</span> 武器</div>' +
                     '<div><span class="key">E / 6</span> 战刃</div>';
             }
@@ -13824,7 +13825,7 @@
             if (gameState !== 'topdown' && gameState !== 'tdtraining') return;
             const kk = String(e.key || '').toLowerCase();
             TD.keys[kk] = true;
-            if (kk === 'r' && player) player.reload();
+            // 俯视模式取消换弹: R 键不再触发换弹
             if (gameState === 'tdtraining' && kk.indexOf('arrow') === 0) {
                 if (e.preventDefault) e.preventDefault();
             }
