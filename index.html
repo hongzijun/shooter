@@ -1747,6 +1747,20 @@ body[data-device="touch"] #statusPanel { display: none !important; }
     body[data-device="touch"] #topStatusPanel { top: 132px !important; width: min(92vw, 320px) !important; }
 }
 
+/* 未登录: 游戏入口锁定 + 顶部提示 */
+#cmLoginHint {
+    margin: 6px 0 2px;
+    padding: 9px 16px;
+    border-radius: 999px;
+    background: rgba(255,90,90,0.14);
+    border: 1px solid rgba(255,120,120,0.45);
+    color: #ffb3b3;
+    font-size: 13px;
+    text-align: center;
+    max-width: 92vw;
+}
+#menu .cm-locked { opacity: 0.55; filter: grayscale(0.35); }
+
 /* 主菜单态: 隐藏游戏内 HUD, 保持标题与按钮干净 */
 body.cm-menu #hud, body.cm-menu #hudFullStatus, body.cm-menu #statusPanel,
 body.cm-menu #topStatusPanel, body.cm-menu #livesInfo, body.cm-menu #killFeedPanel,
@@ -12360,7 +12374,8 @@ body.cm-menu #trainToggle { display: none !important; }
                     '新增「💬 留言板」：登录后可发表留言，所有人可查看（用户名 + 发布时间）',
                     '新增「⚙ 设置」面板，原「按键设置」按钮移入设置；设置中显示账号状态与云端连接状态',
                     '手游体验修复：主菜单可上下滑动、长按按钮不再触发文字选择/复制/系统菜单、手机横竖屏铺满屏幕无留黑、HUD 与触控按钮收进安全区',
-                    '社区数据接入 Supabase（可选）：填入项目地址与 anon key 后账号/榜单/留言全服同步；未配置时自动使用本机存储并在设置中提示'
+                    '社区数据接入 Supabase（可选）：填入项目地址与 anon key 后账号/榜单/留言全服同步；未配置时自动使用本机存储并在设置中提示',
+                    '登录注册改为强制要求：未登录时主菜单显示「🔒 请先登录 / 注册后再开始游戏」，开始游戏 / 双人对战 / 训练场 / 俯视 PVE / 俯视训练场均会先要求登录；登录后自动解锁，退出登录会重新要求登录'
                 ]
             },
             {
@@ -15788,6 +15803,7 @@ body.cm-menu #trainToggle { display: none !important; }
     var idleReported = false;
     var lastGameover = false;
     var adminUnlocked = false;
+    var modalLocked = false;
     var rankTab = 'pve';
     var clockStarted = false;
     var lastFlushAt = 0;
@@ -15918,12 +15934,14 @@ body.cm-menu #trainToggle { display: none !important; }
     }
     function signIn(user, type) {
         current = { id: user.id, username: user.username };
+        try { forceCloseModal(); } catch (e) { }
         playBase = Number(user.play_seconds || 0);
         playSec = 0;
         try { localStorage.setItem(LS_LAST, JSON.stringify(current)); } catch (e) { }
         updateAccountBtn();
         startClock();
         showToast('✅ 已登录 ' + user.username);
+        updateLockUI();
         return patchUser(user.id, { last_login_at: nowISO() }).catch(function () { })
             .then(function () { return track(type || 'login', ''); })
             .then(function () { return user; });
@@ -15938,9 +15956,10 @@ body.cm-menu #trainToggle { display: none !important; }
         }).then(function (u) {
             if (!u) throw new Error('注册失败，请稍后重试');
             current = { id: u.id, username: u.username };
+            try { forceCloseModal(); } catch (e) { }
             playBase = 0; playSec = 0;
             try { localStorage.setItem(LS_LAST, JSON.stringify(current)); } catch (e) { }
-            updateAccountBtn(); startClock();
+            updateAccountBtn(); startClock(); updateLockUI();
             try { GameAudio.play('pickup'); } catch (e) { }
             showToast('✅ 注册成功，已登录 ' + u.username);
             return track('register', '').then(function () {
@@ -15962,9 +15981,10 @@ body.cm-menu #trainToggle { display: none !important; }
             current = null;
             playBase = 0; playSec = 0;
             try { localStorage.removeItem(LS_LAST); } catch (e) { }
-            updateAccountBtn();
+            updateAccountBtn(); updateLockUI();
             showToast('已退出登录');
-            closeModal();
+            forceCloseModal();
+            setTimeout(function () { try { openAuthRequired(); } catch (e) { } }, 300);
         });
     }
     function autoLogin() {
@@ -15983,7 +16003,7 @@ body.cm-menu #trainToggle { display: none !important; }
             current = { id: u.id, username: u.username };
             playBase = Number(u.play_seconds || 0);
             playSec = 0;
-            updateAccountBtn(); startClock();
+            updateAccountBtn(); startClock(); updateLockUI();
             showToast('✅ 已登录 ' + u.username + '（本机自动登录）');
             return track('auto_login', '').then(function () {
                 return patchUser(u.id, { last_login_at: nowISO() }).catch(function () { });
@@ -16142,15 +16162,35 @@ body.cm-menu #trainToggle { display: none !important; }
             if (cb) cb.addEventListener('click', closeModal);
         }
     }
-    function openModal(title, html) {
+    function openModal(title, html, locked) {
         ensureDom();
+        modalLocked = !!locked;
         document.getElementById('cmTitle').textContent = title;
         document.getElementById('cmBody').innerHTML = html;
         document.getElementById('cmModal').classList.add('show');
+        var cb = document.getElementById('cmClose');
+        if (cb) cb.style.display = locked ? 'none' : '';
     }
     function closeModal() {
+        if (modalLocked) return;
         var m = document.getElementById('cmModal');
         if (m) m.classList.remove('show');
+    }
+    function forceCloseModal() {
+        modalLocked = false;
+        var m = document.getElementById('cmModal');
+        if (m) m.classList.remove('show');
+    }
+    function openAuthRequired() {
+        renderAuth('login', true);
+    }
+    function updateLockUI() {
+        ['btnStartGame2', 'btnPvP', 'btnTraining', 'btnTopdown', 'btnTdTraining'].forEach(function (id) {
+            var b = document.getElementById(id);
+            if (b) b.classList.toggle('cm-locked', !current);
+        });
+        var hint = document.getElementById('cmLoginHint');
+        if (hint) hint.style.display = current ? 'none' : 'block';
     }
     function bodyEl() { return document.getElementById('cmBody'); }
     function setMsg(id, text, ok) {
@@ -16190,7 +16230,29 @@ body.cm-menu #trainToggle { display: none !important; }
                 menu.appendChild(b);
             });
         }
+        if (!document.getElementById('cmLoginHint')) {
+            var hint = document.createElement('div');
+            hint.id = 'cmLoginHint';
+            hint.textContent = '🔒 请先登录 / 注册后再开始游戏';
+            var anchor = document.getElementById('btnStartGame2');
+            if (anchor && anchor.parentNode) anchor.parentNode.insertBefore(hint, anchor);
+            else menu.appendChild(hint);
+        }
+        if (!menu.__cmGuard) {
+            menu.__cmGuard = true;
+            menu.addEventListener('click', function (e) {
+                if (current) return;
+                var b = (e.target && e.target.closest) ? e.target.closest('button') : null;
+                if (!b) return;
+                if (['btnStartGame2', 'btnPvP', 'btnTraining', 'btnTopdown', 'btnTdTraining'].indexOf(b.id) >= 0) {
+                    e.preventDefault();
+                    e.stopPropagation();
+                    openAuthRequired();
+                }
+            }, true);
+        }
         updateAccountBtn();
+        updateLockUI();
     }
 
     // ===================== 账号视图 =====================
@@ -16206,9 +16268,9 @@ body.cm-menu #trainToggle { display: none !important; }
         }
         renderAuth('login');
     }
-    function renderAuth(tab) {
+    function renderAuth(tab, required) {
         var isLogin = (tab !== 'register');
-        openModal('👤 登录 / 注册',
+        openModal(required ? '🔒 请先登录 / 注册' : '👤 登录 / 注册',
             '<div class="cm-tabs">' +
             '<div class="cm-tab' + (isLogin ? ' on' : '') + '" id="cmTabLogin">登录</div>' +
             '<div class="cm-tab' + (isLogin ? '' : ' on') + '" id="cmTabReg">注册</div>' +
@@ -16218,9 +16280,11 @@ body.cm-menu #trainToggle { display: none !important; }
             '<div class="cm-msg" id="cmAuthMsg"></div>' +
             '<button class="cm-btn ' + (isLogin ? '' : 'green') + '" id="cmAuthSubmit">' + (isLogin ? '登录' : '注册并登录') + '</button>' +
             '<div class="cm-note" style="margin-top:10px">注册/登录后本机会记住账号，下次打开页面自动登录并提示当前账号。</div>' +
-            (cloudOn() ? '' : '<div class="cm-note" style="margin-top:6px;color:#ffb86b;">当前未配置云端，账号仅保存在本机。</div>'));
-        bind('cmTabLogin', 'click', function () { renderAuth('login'); });
-        bind('cmTabReg', 'click', function () { renderAuth('register'); });
+            (required ? '<div class="cm-note" style="margin-top:6px;color:#ffb3b3;">登录后才能开始游戏。</div>' : '') +
+            (cloudOn() ? '' : '<div class="cm-note" style="margin-top:6px;color:#ffb86b;">当前未配置云端，账号仅保存在本机。</div>'),
+            !!required);
+        bind('cmTabLogin', 'click', function () { renderAuth('login', required); });
+        bind('cmTabReg', 'click', function () { renderAuth('register', required); });
         bind('cmAuthSubmit', 'click', function () {
             var u = (document.getElementById('cmUser') || {}).value || '';
             var p = (document.getElementById('cmPwd') || {}).value || '';
@@ -16231,7 +16295,7 @@ body.cm-menu #trainToggle { display: none !important; }
             var task = isLogin ? doLogin(u, p) : doRegister(u, p);
             task.then(function () {
                 try { GameAudio.play('pickup'); } catch (e) { }
-                closeModal();
+                forceCloseModal();
             }).catch(function (e) {
                 setMsg('cmAuthMsg', (e && e.message) || '操作失败，请稍后重试');
             });
@@ -16442,6 +16506,10 @@ body.cm-menu #trainToggle { display: none !important; }
         var fn = window[name];
         if (typeof fn !== 'function' || fn.__cmHooked) return;
         var wrapped = function () {
+            if (!current) {
+                try { openAuthRequired(); } catch (e) { }
+                return;
+            }
             var r = fn.apply(this, arguments);
             try { onModeEnter(mode); } catch (e) { }
             return r;
@@ -16511,7 +16579,10 @@ body.cm-menu #trainToggle { display: none !important; }
         syncMenuClass();
         setInterval(syncMenuClass, 250);
 
-        autoLogin();
+        autoLogin().then(function () {
+            updateLockUI();
+            if (!current) setTimeout(function () { try { openAuthRequired(); } catch (e) { } }, 450);
+        });
     }
 
     window.Community = {
