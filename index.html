@@ -1785,6 +1785,222 @@ body.cm-menu #trainToggle { display: none !important; }
     .cm-table th, .cm-table td { padding: 6px 4px; font-size: 11px; }
 }
 
+/* ================= UI 强化: 深空霓虹 (动态 / 玻璃 / 发光) ================= */
+:root {
+    --ui-cyan: #22e6ff;
+    --ui-pink: #ff2e88;
+    --ui-violet: #8a5cff;
+    --ui-green: #3dffb0;
+    --ui-amber: #ffb347;
+    --ui-line: rgba(120, 200, 255, 0.22);
+}
+
+@keyframes cmSpin { to { transform: translate(-50%, -50%) rotate(360deg); } }
+@keyframes cmGrid { to { background-position: 48px 48px, 48px 48px; } }
+@keyframes cmRise { from { opacity: 0; transform: translateY(16px) scale(0.98); } to { opacity: 1; transform: none; } }
+@keyframes cmPop { from { opacity: 0; transform: translateY(12px) scale(0.97); } to { opacity: 1; transform: none; } }
+@keyframes cmGlowPulse {
+    0%, 100% { filter: drop-shadow(0 0 14px rgba(34,230,255,.30)) drop-shadow(0 0 34px rgba(138,92,255,.18)); }
+    50% { filter: drop-shadow(0 0 24px rgba(34,230,255,.48)) drop-shadow(0 0 48px rgba(255,46,136,.24)); }
+}
+@keyframes cmPulseRing {
+    0%, 100% { box-shadow: 0 8px 20px rgba(0,0,0,.45), 0 0 0 0 rgba(34,230,255,.35); }
+    50% { box-shadow: 0 8px 22px rgba(0,0,0,.5), 0 0 0 7px rgba(34,230,255,0); }
+}
+@keyframes cmShimmer { from { background-position: -220% 0; } to { background-position: 220% 0; } }
+
+/* ---- 主菜单: 深空背景 + 旋转光斑 + 网格 ---- */
+#menu {
+    background:
+        radial-gradient(1200px 700px at 50% -8%, rgba(34,230,255,.13), transparent 62%),
+        radial-gradient(900px 620px at 86% 106%, rgba(255,46,136,.13), transparent 60%),
+        linear-gradient(180deg, rgba(4,7,16,.94), rgba(3,5,12,.97)) !important;
+}
+#menu::before {
+    content: '';
+    position: fixed;
+    left: 50%;
+    top: 50%;
+    width: 140vmax;
+    height: 140vmax;
+    transform: translate(-50%, -50%);
+    background: conic-gradient(from 0deg,
+        rgba(34,230,255,.30), rgba(138,92,255,.20) 28%,
+        rgba(255,46,136,.26) 56%, rgba(61,255,176,.18) 78%, rgba(34,230,255,.30));
+    filter: blur(56px);
+    opacity: .88;
+    animation: cmSpin 38s linear infinite;
+    pointer-events: none;
+    z-index: 0;
+}
+#menu::after {
+    content: '';
+    position: fixed;
+    inset: 0;
+    background-image:
+        linear-gradient(rgba(130,215,255,.14) 1px, transparent 1px),
+        linear-gradient(90deg, rgba(130,215,255,.14) 1px, transparent 1px);
+    background-size: 52px 52px;
+    -webkit-mask-image: radial-gradient(ellipse at 50% 42%, rgba(0,0,0,.92), transparent 74%);
+    mask-image: radial-gradient(ellipse at 50% 42%, rgba(0,0,0,.92), transparent 74%);
+    animation: cmGrid 24s linear infinite;
+    pointer-events: none;
+    z-index: 0;
+}
+#menu > * { position: relative; z-index: 1; }
+
+#menu h1 {
+    letter-spacing: 3px;
+    animation: cmGlowPulse 5s ease-in-out infinite;
+    position: relative;
+}
+#menu h1::before,
+#menu h1::after {
+    content: attr(data-text);
+    position: absolute;
+    inset: 0;
+    pointer-events: none;
+    -webkit-background-clip: text;
+    background-clip: text;
+    background: none;
+    -webkit-text-fill-color: transparent;
+}
+#menu h1::before { color: var(--ui-cyan); -webkit-text-fill-color: var(--ui-cyan); transform: translate(-2px, 0); opacity: .20; }
+#menu h1::after { color: var(--ui-pink); -webkit-text-fill-color: var(--ui-pink); transform: translate(2px, 0); opacity: .16; }
+#menu h2 { color: #7fd6ff !important; letter-spacing: 2px; text-shadow: 0 0 14px rgba(34,230,255,.35); }
+#menu p { color: #8fa6c8 !important; }
+#menu p b { color: #cfe8ff; }
+
+/* ---- 主菜单按钮: 玻璃 + 扫光 + 悬浮 ---- */
+#menu > button {
+    position: relative;
+    overflow: hidden;
+    border-radius: 12px !important;
+    border: 1px solid rgba(140, 210, 255, .26) !important;
+    box-shadow: 0 9px 24px rgba(0,0,0,.5), inset 0 1px 0 rgba(255,255,255,.30), inset 0 -12px 24px rgba(0,0,0,.22);
+    transition: transform .18s cubic-bezier(.2,.9,.3,1.4), box-shadow .22s ease, filter .22s ease;
+    animation: cmRise .55s both;
+    isolation: isolate;
+}
+#menu > button::before {
+    content: '';
+    position: absolute;
+    inset: 0;
+    background: linear-gradient(110deg, transparent 18%, rgba(255,255,255,.30) 44%, transparent 62%);
+    transform: translateX(-135%);
+    transition: transform .6s ease;
+    pointer-events: none;
+}
+#menu > button::after {
+    content: '';
+    position: absolute;
+    left: 2px;
+    top: 18%;
+    bottom: 18%;
+    width: 3px;
+    border-radius: 3px;
+    background: linear-gradient(180deg, #22e6ff, #8a5cff 55%, #ff2e88);
+    box-shadow: 0 0 10px rgba(34,230,255,.8);
+    pointer-events: none;
+}
+#menu > button:hover::before { transform: translateX(135%); }
+#menu > button:hover {
+    transform: translateY(-3px) scale(1.025);
+    box-shadow: 0 14px 34px rgba(0,0,0,.5), 0 0 26px rgba(34,230,255,.35), inset 0 1px 0 rgba(255,255,255,.22);
+    filter: saturate(1.18) brightness(1.07);
+}
+#menu > button:active { transform: translateY(-1px) scale(.99); filter: saturate(1.1) brightness(.98); }
+#btnStartGame2 { animation: cmRise .55s both, cmPulseRing 3.4s ease-in-out infinite 1s; }
+#menu .cm-locked { opacity: .45 !important; filter: grayscale(.6) !important; }
+
+/* ---- HUD 面板: 玻璃拟态 ---- */
+#hud, #hudFullStatus, #score, #killFeedPanel, #livesInfo, #topStatusPanel, #statusPanel {
+    background: linear-gradient(165deg, rgba(21,34,62,.82), rgba(8,14,28,.88)) !important;
+    border: 1px solid rgba(120,210,255,.32) !important;
+    border-radius: 12px !important;
+    box-shadow: 0 12px 34px rgba(0,0,0,.5), inset 0 1px 0 rgba(255,255,255,.10), 0 0 28px rgba(34,230,255,.10) !important;
+    backdrop-filter: blur(10px) saturate(1.15);
+    -webkit-backdrop-filter: blur(10px) saturate(1.15);
+}
+#score { text-shadow: 0 0 12px rgba(255,215,0,.35); }
+#livesInfo { text-shadow: 0 0 10px rgba(255,71,87,.35); }
+#killFeedPanel { border-left: 2px solid rgba(34,230,255,.45) !important; }
+
+/* ---- 血条 / 护盾条: 高光 + 呼吸 ---- */
+.health-bar { border-radius: 7px !important; overflow: hidden; box-shadow: inset 0 0 10px rgba(0,0,0,.75), 0 0 12px rgba(61,255,176,.14); }
+.health-fill { border-radius: 6px !important; position: relative; overflow: hidden; box-shadow: inset 0 2px 4px rgba(255,255,255,.35), inset 0 -3px 6px rgba(0,0,0,.3); }
+.health-fill::after {
+    content: '';
+    position: absolute;
+    inset: 0;
+    background: linear-gradient(180deg, rgba(255,255,255,.38), rgba(255,255,255,0) 58%);
+    pointer-events: none;
+}
+.shield-bar { border-radius: 5px !important; overflow: hidden; }
+.shield-fill { box-shadow: inset 0 1px 3px rgba(255,255,255,.4), 0 0 10px rgba(79,142,255,.45); }
+
+/* ---- 弹窗 / 面板统一玻璃质感 ---- */
+#cmModal .cm-card {
+    border-color: rgba(120,210,255,.45) !important;
+    box-shadow: 0 28px 90px rgba(0,0,0,.72), 0 0 52px rgba(34,230,255,.18), inset 0 1px 0 rgba(255,255,255,.10) !important;
+    position: relative;
+    animation: cmPop .26s cubic-bezier(.2,.9,.3,1.15);
+}
+#cmModal .cm-card::before {
+    content: '';
+    position: absolute;
+    left: 0; right: 0; top: 0;
+    height: 2px;
+    background: linear-gradient(90deg, transparent, var(--ui-cyan), var(--ui-violet), var(--ui-pink), transparent);
+    opacity: .9;
+}
+#cmModal .cm-head { background: linear-gradient(90deg, rgba(34,230,255,.14), rgba(138,92,255,.10), rgba(255,46,136,.10)) !important; }
+.cm-btn { position: relative; overflow: hidden; box-shadow: 0 6px 16px rgba(0,0,0,.4), inset 0 1px 0 rgba(255,255,255,.18); transition: transform .16s ease, filter .18s ease, box-shadow .2s ease; }
+.cm-btn:hover { transform: translateY(-2px); filter: brightness(1.08) saturate(1.1); box-shadow: 0 10px 24px rgba(0,0,0,.45), 0 0 20px rgba(34,230,255,.28); }
+.cm-btn:active { transform: translateY(0) scale(.98); }
+.cm-item { transition: transform .16s ease, background .18s ease, border-color .18s ease; }
+.cm-item:hover { transform: translateX(3px); border-color: rgba(34,230,255,.45) !important; box-shadow: 0 0 18px rgba(34,230,255,.16); }
+.cm-tab { transition: transform .16s ease, background .2s ease, box-shadow .2s ease; }
+.cm-tab:hover { transform: translateY(-1px); }
+.cm-tab.on { box-shadow: 0 0 18px rgba(34,230,255,.35); }
+
+/* ---- 暂停 / 属性 / 说明 / 训练面板 ---- */
+#pauseMenu > div, #statPanel, #settingsPanel > div, #noticePanel > div, #buffGuidePanel > div,
+#trainPanel, #trainTune .tt-card, #trainShop {
+    background: linear-gradient(165deg, rgba(16,24,44,.97), rgba(7,11,22,.985)) !important;
+    border: 1px solid rgba(120,200,255,.24) !important;
+    box-shadow: 0 24px 70px rgba(0,0,0,.65), inset 0 1px 0 rgba(255,255,255,.06) !important;
+}
+#pauseMenu button, #statPanel button { border-radius: 10px !important; transition: transform .16s ease, filter .18s ease, box-shadow .2s ease; }
+#pauseMenu button:hover, #statPanel button:hover { transform: translateY(-2px); filter: brightness(1.08); box-shadow: 0 8px 22px rgba(0,0,0,.45), 0 0 18px rgba(34,230,255,.25); }
+
+/* ---- 触控按钮: 霓虹描边 ---- */
+#touchMovePad, #touchFire, #touchJump, #touchPause, #touchStats {
+    border-color: rgba(120,210,255,.5) !important;
+    box-shadow: 0 0 22px rgba(34,230,255,.26), 0 8px 20px rgba(0,0,0,.45), inset 0 0 16px rgba(34,230,255,.12) !important;
+}
+#touchFire { box-shadow: 0 0 26px rgba(255,46,136,.32), 0 8px 20px rgba(0,0,0,.45), inset 0 0 16px rgba(255,46,136,.14) !important; }
+#touchJump { box-shadow: 0 0 26px rgba(138,92,255,.34), 0 8px 20px rgba(0,0,0,.45), inset 0 0 16px rgba(138,92,255,.14) !important; }
+#touchMovePad.pressed, #touchFire.pressed, #touchJump.pressed {
+    box-shadow: 0 0 34px rgba(34,230,255,.55), inset 0 0 22px rgba(34,230,255,.28) !important;
+}
+
+/* ---- 顶部解锁提示 / 登录横幅 ---- */
+#cmLoginHint { backdrop-filter: blur(8px); -webkit-backdrop-filter: blur(8px); box-shadow: 0 6px 20px rgba(0,0,0,.35), 0 0 18px rgba(255,90,90,.18); }
+#cmToast { box-shadow: 0 10px 30px rgba(0,0,0,.5), 0 0 26px rgba(61,255,176,.35); }
+
+/* ---- 低性能 / 减少动效 ---- */
+body.low-perf #menu::before,
+body.low-perf #menu::after,
+body.low-perf #menu h1,
+body.low-perf #btnStartGame2 { animation: none !important; }
+body.low-perf #menu::before { filter: none; opacity: .18; }
+@media (prefers-reduced-motion: reduce) {
+    #menu::before, #menu::after, #menu h1, #menu > button, #btnStartGame2 { animation: none !important; }
+    #menu > button, .cm-btn, .cm-item { transition: none !important; }
+}
+
+
     </style>
 </head>
 
@@ -12376,7 +12592,8 @@ body.cm-menu #trainToggle { display: none !important; }
                     '手游体验修复：主菜单可上下滑动、长按按钮不再触发文字选择/复制/系统菜单、手机横竖屏铺满屏幕无留黑、HUD 与触控按钮收进安全区',
                     '社区数据接入 Supabase（可选）：填入项目地址与 anon key 后账号/榜单/留言全服同步；未配置时自动使用本机存储并在设置中提示',
                     '登录注册改为强制要求：未登录时主菜单显示「🔒 请先登录 / 注册后再开始游戏」，开始游戏 / 双人对战 / 训练场 / 俯视 PVE / 俯视训练场均会先要求登录；登录后自动解锁，退出登录会重新要求登录',
-                    '账号数据改为跟随账号（不再只存本机）：登录 / 自动登录时从云端拉取该账号的键位设置、训练场数值、成就与多槽存档并覆盖本机；此后的修改每 15 秒（以及退出模式 / 关闭页面时）自动同步回该账号，换设备或换账号登录都能带回自己的数据'
+                    '账号数据改为跟随账号（不再只存本机）：登录 / 自动登录时从云端拉取该账号的键位设置、训练场数值、成就与多槽存档并覆盖本机；此后的修改每 15 秒（以及退出模式 / 关闭页面时）自动同步回该账号，换设备或换账号登录都能带回自己的数据',
+                    'UI 全面强化（深空霓虹主题）：主菜单加入动态旋转光斑与流动网格背景、标题发光与色差层、按钮玻璃质感 + 扫光 + 悬浮动效与依次入场；HUD 面板统一玻璃拟态与霓虹描边，血条 / 护盾条加高光与呼吸光；弹窗 / 排行榜 / 留言板 / 管理面板统一发光卡片与入场动画；触控按钮加霓虹描边与按下脉冲；低性能设备与「减少动效」系统设置下自动降级'
                 ]
             },
             {
@@ -13859,7 +14076,10 @@ body.cm-menu #trainToggle { display: none !important; }
             ctx.strokeStyle = 'rgba(255,255,255,0.14)'; ctx.lineWidth = lw; ctx.stroke();
             const ratio = Math.max(0, Math.min(1, val / _max));
             ctx.beginPath(); ctx.arc(cx, cy, r, -Math.PI / 2, -Math.PI / 2 + Math.PI * 2 * ratio);
-            ctx.strokeStyle = color; ctx.lineWidth = lw; ctx.lineCap = 'round'; ctx.stroke();
+            ctx.strokeStyle = color; ctx.lineWidth = lw; ctx.lineCap = 'round';
+            ctx.shadowBlur = Math.max(8, r * 0.42); ctx.shadowColor = color;
+            ctx.stroke();
+            ctx.shadowBlur = 0;
             ctx.fillStyle = 'rgba(0,0,0,0.42)';
             ctx.beginPath(); ctx.arc(cx, cy, r - lw / 2 - 1, 0, Math.PI * 2); ctx.fill();
             ctx.fillStyle = '#ffffff';
@@ -14039,7 +14259,7 @@ body.cm-menu #trainToggle { display: none !important; }
             const _tg = document.getElementById('trainToggle');
             if (_tg) _tg.style.display = 'flex';
             const _dbg = document.getElementById('trainingDebug');
-            if (_dbg) _dbg.style.display = 'block';
+            if (_dbg) { _dbg.style.display = 'block'; _dbg.style.left = '250px'; }
             try { updateTrainGodBtns(); } catch (e) { }
             updateUI();
             try { GameAudio.init(); } catch (e) { }
@@ -16340,6 +16560,15 @@ body.cm-menu #trainToggle { display: none !important; }
         }
         updateAccountBtn();
         updateLockUI();
+        decorateUI();
+    }
+    function decorateUI() {
+        var h1 = document.querySelector('#menu h1');
+        if (h1 && !h1.getAttribute('data-text')) h1.setAttribute('data-text', h1.textContent || '');
+        var btns = document.querySelectorAll('#menu > button');
+        for (var i = 0; i < btns.length; i++) {
+            btns[i].style.animationDelay = (0.05 + i * 0.045).toFixed(2) + 's';
+        }
     }
 
     // ===================== 账号视图 =====================
