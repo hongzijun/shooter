@@ -11052,8 +11052,8 @@ body.low-perf #menu::before { filter: none; opacity: .18; }
                         const hitDirY = t.y - b.y;
                         const hd = Math.max(1, Math.sqrt(hitDirX * hitDirX + hitDirY * hitDirY));
                         if (!fxIsStunned(t)) {
-                            if (gameState === 'topdown') {
-                                // 俯视轻量击退: 约 120px/s 初速, 逐帧衰减; 位移无敌期间免疫
+                            if (gameState === 'topdown' || gameState === 'tdtraining') {
+                                // 俯视轻量击退: 约 120px/s 初速, 逐帧衰减; 位移无敌期间免疫 (训练场靶子同样生效)
                                 if (!(Date.now() < (t._tdInvUntil || 0))) {
                                     t._tdKbVX = (t._tdKbVX || 0) + (hitDirX / hd) * knockPower * 0.8;
                                     t._tdKbVY = (t._tdKbVY || 0) + (hitDirY / hd) * knockPower * 0.8;
@@ -11483,7 +11483,9 @@ body.low-perf #menu::before { filter: none; opacity: .18; }
         function resetTrainEnemy() {
             if (!ai) return;
             if (gameState === 'tdtraining') {
-                ai.x = TD.W - 360; ai.y = TD.H / 2;
+                const _rhx = (typeof TD._tdTargetHomeX === 'number') ? TD._tdTargetHomeX : (TD.W - 360);
+                const _rhy = (typeof TD._tdTargetHomeY === 'number') ? TD._tdTargetHomeY : (TD.H / 2);
+                ai.x = _rhx; ai.y = _rhy;
                 ai._tdKbVX = 0; ai._tdKbVY = 0;
                 ai.activeEffects = []; ai.slowEffect = null;
                 ai.burningStacks = 0; ai.burnStacks = []; ai.frozen = false;
@@ -12593,7 +12595,8 @@ body.low-perf #menu::before { filter: none; opacity: .18; }
                     '社区数据接入 Supabase（可选）：填入项目地址与 anon key 后账号/榜单/留言全服同步；未配置时自动使用本机存储并在设置中提示',
                     '登录注册改为强制要求：未登录时主菜单显示「🔒 请先登录 / 注册后再开始游戏」，开始游戏 / 双人对战 / 训练场 / 俯视 PVE / 俯视训练场均会先要求登录；登录后自动解锁，退出登录会重新要求登录',
                     '账号数据改为跟随账号（不再只存本机）：登录 / 自动登录时从云端拉取该账号的键位设置、训练场数值、成就与多槽存档并覆盖本机；此后的修改每 15 秒（以及退出模式 / 关闭页面时）自动同步回该账号，换设备或换账号登录都能带回自己的数据',
-                    'UI 全面强化（深空霓虹主题）：主菜单加入动态旋转光斑与流动网格背景、标题发光与色差层、按钮玻璃质感 + 扫光 + 悬浮动效与依次入场；HUD 面板统一玻璃拟态与霓虹描边，血条 / 护盾条加高光与呼吸光；弹窗 / 排行榜 / 留言板 / 管理面板统一发光卡片与入场动画；触控按钮加霓虹描边与按下脉冲；低性能设备与「减少动效」系统设置下自动降级'
+                    'UI 全面强化（深空霓虹主题）：主菜单加入动态旋转光斑与流动网格背景、标题发光与色差层、按钮玻璃质感 + 扫光 + 悬浮动效与依次入场；HUD 面板统一玻璃拟态与霓虹描边，血条 / 护盾条加高光与呼吸光；弹窗 / 排行榜 / 留言板 / 管理面板统一发光卡片与入场动画；触控按钮加霓虹描边与按下脉冲；低性能设备与「减少动效」系统设置下自动降级',
+                    '登录 / 注册、管理员密码与训练场密码输入框改为始终明文显示；俯视训练场靶子现在会被子弹与刀剑击退，被击倒后 2 秒在原地满血复活（方向键摆放的位置即复活点），「重置靶位」也回到该位置'
                 ]
             },
             {
@@ -13695,14 +13698,25 @@ body.low-perf #menu::before { filter: none; opacity: .18; }
             // === 俯视训练场: AI 为静止靶子, 不移动不还手; 打空 2 秒后满血重置 ===
             if (gameState === 'tdtraining') {
                 TD.aMoveX = 0; TD.aMoveY = 0;
-                // 方向键移动靶位
+                // 受击退: 靶子同样会被子弹 / 刀剑推动, 逐帧衰减
+                if (ai._tdKbVX || ai._tdKbVY) {
+                    ai.x += ai._tdKbVX || 0;
+                    ai.y += ai._tdKbVY || 0;
+                    ai._tdKbVX = (ai._tdKbVX || 0) * 0.86;
+                    ai._tdKbVY = (ai._tdKbVY || 0) * 0.86;
+                    if (Math.abs(ai._tdKbVX) < 0.05) ai._tdKbVX = 0;
+                    if (Math.abs(ai._tdKbVY) < 0.05) ai._tdKbVY = 0;
+                }
+                // 方向键移动靶位 (同时更新靶位锚点)
                 const _sp = 5;
-                if (TD.keys['arrowup']) ai.y -= _sp;
-                if (TD.keys['arrowdown']) ai.y += _sp;
-                if (TD.keys['arrowleft']) ai.x -= _sp;
-                if (TD.keys['arrowright']) ai.x += _sp;
+                let _moved = false;
+                if (TD.keys['arrowup']) { ai.y -= _sp; _moved = true; }
+                if (TD.keys['arrowdown']) { ai.y += _sp; _moved = true; }
+                if (TD.keys['arrowleft']) { ai.x -= _sp; _moved = true; }
+                if (TD.keys['arrowright']) { ai.x += _sp; _moved = true; }
                 ai.x = tdClamp(ai.x, TD.MARGIN, TD.W - TD.MARGIN);
                 ai.y = tdClamp(ai.y, TD.MARGIN, TD.H - TD.MARGIN);
+                if (_moved) { TD._tdTargetHomeX = ai.x; TD._tdTargetHomeY = ai.y; }
                 if (ai.health <= 0) {
                     if (!TD.aDeadAt) TD.aDeadAt = now;
                     if (now - TD.aDeadAt > 2000) {
@@ -13713,7 +13727,12 @@ body.low-perf #menu::before { filter: none; opacity: .18; }
                         ai._trainDmgTotal = 0; ai._trainDmgStart = 0; ai._trainDmgLast = 0;
                         ai._tdEnergy = tdEnergyMaxOf(ai);
                         ai._tdMeleeAt = 0; ai.lastShot = 0;
-                        ai.x = TD.W - 360; ai.y = TD.H / 2;
+                        ai._tdKbVX = 0; ai._tdKbVY = 0;
+                        // 回到靶位原位 (而非默认角落)
+                        const _hx = (typeof TD._tdTargetHomeX === 'number') ? TD._tdTargetHomeX : ai.x;
+                        const _hy = (typeof TD._tdTargetHomeY === 'number') ? TD._tdTargetHomeY : ai.y;
+                        ai.x = tdClamp(_hx, TD.MARGIN, TD.W - TD.MARGIN);
+                        ai.y = tdClamp(_hy, TD.MARGIN, TD.H - TD.MARGIN);
                         TD.aDeadAt = 0;
                     }
                 } else {
@@ -14235,6 +14254,7 @@ body.low-perf #menu::before { filter: none; opacity: .18; }
             TD.lastNow = Date.now(); TD.dt = 0; TD._noEnergyAt = 0;
             player._tdAim = 0; ai._tdAim = Math.PI;
             player.lastShot = 0; ai.lastShot = 0;
+            TD._tdTargetHomeX = ai.x; TD._tdTargetHomeY = ai.y;
             player._tdEnergy = tdEnergyMaxOf(player); ai._tdEnergy = tdEnergyMaxOf(ai);
             isPaused = false; isDrafting = false; statPanelOpen = false; isAwardShowing = false;
             TD._hidden = [];
@@ -16592,7 +16612,7 @@ body.low-perf #menu::before { filter: none; opacity: .18; }
             '<div class="cm-tab' + (isLogin ? '' : ' on') + '" id="cmTabReg">注册</div>' +
             '</div>' +
             '<div class="cm-field"><label>用户名（2-16 字）</label><input id="cmUser" maxlength="16" autocomplete="username" placeholder="输入用户名"></div>' +
-            '<div class="cm-field"><label>密码（4-32 字）</label><input id="cmPwd" type="password" maxlength="32" autocomplete="current-password" placeholder="输入密码"></div>' +
+            '<div class="cm-field"><label>密码（4-32 字）</label><input id="cmPwd" type="text" maxlength="32" autocomplete="off" placeholder="输入密码（明文显示）"></div>' +
             '<div class="cm-msg" id="cmAuthMsg"></div>' +
             '<button class="cm-btn ' + (isLogin ? '' : 'green') + '" id="cmAuthSubmit">' + (isLogin ? '登录' : '注册并登录') + '</button>' +
             '<div class="cm-note" style="margin-top:10px">注册/登录后本机会记住账号，下次打开页面自动登录并提示当前账号。</div>' +
@@ -16719,7 +16739,7 @@ body.low-perf #menu::before { filter: none; opacity: .18; }
     function openAdminGate() {
         if (adminUnlocked) { openAdminList(); return; }
         openModal('🛠 管理员验证',
-            '<div class="cm-field"><label>管理员密码</label><input id="cmAdminPwd" type="password" placeholder="请输入管理员密码"></div>' +
+            '<div class="cm-field"><label>管理员密码</label><input id="cmAdminPwd" type="text" autocomplete="off" placeholder="请输入管理员密码（明文显示）"></div>' +
             '<div class="cm-msg" id="cmAdminMsg"></div>' +
             '<button class="cm-btn orange" id="cmAdminGo">进入管理面板</button>');
         bind('cmAdminGo', 'click', function () {
@@ -16948,7 +16968,7 @@ body.low-perf #menu::before { filter: none; opacity: .18; }
         <div style="background:linear-gradient(135deg,#1a1a2e,#16213e);border-radius:16px;padding:28px 34px;border:2px solid #4f8eff;min-width:320px;text-align:center;">
             <div style="font-size:34px;margin-bottom:6px;">🔒</div>
             <h2 style="color:#4f8eff;font-size:20px;margin:0 0 14px;">数值设置需要密码</h2>
-            <input id="trainPwdInput" type="password" autocomplete="off" placeholder="输入密码" style="width:100%;box-sizing:border-box;padding:10px 12px;border-radius:8px;border:1px solid #4f8eff;background:#0d1117;color:#fff;font-size:15px;outline:none;" onkeydown="if(event.key==='Enter')submitTrainPwd()">
+            <input id="trainPwdInput" type="text" autocomplete="off" placeholder="输入密码（明文显示）" style="width:100%;box-sizing:border-box;padding:10px 12px;border-radius:8px;border:1px solid #4f8eff;background:#0d1117;color:#fff;font-size:15px;outline:none;" onkeydown="if(event.key==='Enter')submitTrainPwd()">
             <div id="trainPwdErr" style="color:#ff6b6b;font-size:12px;height:16px;margin-top:6px;"></div>
             <div style="display:flex;gap:10px;justify-content:center;margin-top:6px;">
                 <button onclick="submitTrainPwd()" style="background:linear-gradient(45deg,#2ed573,#1e90ff);border:none;color:white;padding:10px 26px;border-radius:8px;font-size:14px;cursor:pointer;font-weight:bold;">确认</button>
