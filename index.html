@@ -2077,6 +2077,7 @@ body.low-perf #menu::before { filter: none; opacity: .18; }
                     <button class="tp-btn" id="tpGodEnemy" onclick="toggleTrainGod('enemy')">🛡 无敌: 关</button>
                     <button class="tp-btn" onclick="resetTrainEnemy()">↺ 重置靶位</button>
                     <button class="tp-btn" onclick="askTrainTune()">⚙ 数值设置</button>
+                    <button class="tp-btn" onclick="openTdEnvPanel()">🌫 环境设置</button>
                 </div>
                 <button class="tp-shop" onclick="openTrainShop('shop')">🏪 装备 / 属性商店</button>
                 <button class="tp-shop" onclick="openStatPanelFromTrain()">📊 全属性面板</button>
@@ -2101,6 +2102,28 @@ body.low-perf #menu::before { filter: none; opacity: .18; }
                 <button class="ts-close" onclick="closeTrainShop()">关闭</button>
             </div>
 
+            <!-- === 俯视环境设置 (毒圈 / 边缘) === -->
+            <div id="tdEnvPanel" style="position:fixed;top:0;left:0;width:100%;height:100%;background:rgba(4,6,14,0.72);backdrop-filter:blur(6px);z-index:10002;display:none;align-items:center;justify-content:center;padding:16px;box-sizing:border-box;">
+                <div style="width:min(460px,94vw);max-height:88vh;overflow:auto;background:linear-gradient(165deg,rgba(22,32,54,0.98),rgba(9,14,26,0.99));border:1px solid rgba(196,120,255,0.4);border-radius:16px;padding:18px 18px 16px;box-shadow:0 24px 70px rgba(0,0,0,0.65),0 0 40px rgba(196,120,255,0.15);">
+                    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px;">
+                        <b style="color:#d9b3ff;font-size:16px;">🌫 环境设置（毒圈 / 边缘）</b>
+                        <button onclick="closeTdEnvPanel()" style="background:rgba(255,255,255,0.1);border:none;color:#cfe0ff;width:30px;height:30px;border-radius:8px;font-size:18px;cursor:pointer;">×</button>
+                    </div>
+                    <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px 12px;">
+                        <label style="font-size:12px;color:#8fa6c8;display:flex;flex-direction:column;gap:4px;">毒圈伤害（每 0.5 秒）<input id="envPoison" type="number" min="1" max="9999" step="1" style="background:rgba(0,0,0,0.35);border:1px solid rgba(120,170,255,0.3);border-radius:8px;color:#fff;padding:8px 10px;font-size:14px;outline:none;"></label>
+                        <label style="font-size:12px;color:#8fa6c8;display:flex;flex-direction:column;gap:4px;">缩圈间隔（秒）<input id="envShrinkSec" type="number" min="3" max="300" step="1" style="background:rgba(0,0,0,0.35);border:1px solid rgba(120,170,255,0.3);border-radius:8px;color:#fff;padding:8px 10px;font-size:14px;outline:none;"></label>
+                        <label style="font-size:12px;color:#8fa6c8;display:flex;flex-direction:column;gap:4px;">每次缩圈半径<input id="envStep" type="number" min="1" max="800" step="1" style="background:rgba(0,0,0,0.35);border:1px solid rgba(120,170,255,0.3);border-radius:8px;color:#fff;padding:8px 10px;font-size:14px;outline:none;"></label>
+                        <label style="font-size:12px;color:#8fa6c8;display:flex;flex-direction:column;gap:4px;">最小毒圈半径<input id="envMinR" type="number" min="40" max="1200" step="1" style="background:rgba(0,0,0,0.35);border:1px solid rgba(120,170,255,0.3);border-radius:8px;color:#fff;padding:8px 10px;font-size:14px;outline:none;"></label>
+                        <label style="font-size:12px;color:#8fa6c8;display:flex;flex-direction:column;gap:4px;">撞边扣血（% 最大生命）<input id="envEdgePct" type="number" min="0" max="100" step="0.5" style="background:rgba(0,0,0,0.35);border:1px solid rgba(120,170,255,0.3);border-radius:8px;color:#fff;padding:8px 10px;font-size:14px;outline:none;"></label>
+                        <label style="font-size:12px;color:#8fa6c8;display:flex;flex-direction:column;gap:4px;">初始半径<input id="envInitR" type="number" min="200" max="4000" step="10" style="background:rgba(0,0,0,0.35);border:1px solid rgba(120,170,255,0.3);border-radius:8px;color:#fff;padding:8px 10px;font-size:14px;outline:none;"></label>
+                    </div>
+                    <div style="display:flex;gap:8px;margin-top:14px;">
+                        <button onclick="saveTdEnv()" style="flex:1;background:linear-gradient(45deg,#8a5cff,#c084ff);border:none;color:#fff;padding:11px;border-radius:9px;font-size:14px;font-weight:bold;cursor:pointer;">保存并生效</button>
+                        <button onclick="resetTdEnv()" style="background:rgba(255,255,255,0.1);border:1px solid rgba(255,255,255,0.2);color:#cfe0ff;padding:11px 14px;border-radius:9px;font-size:13px;cursor:pointer;">恢复默认</button>
+                    </div>
+                    <div id="tdEnvTip" style="font-size:11px;color:#8fa6c8;margin-top:9px;line-height:1.5;">参数保存在本机并随账号同步；保存后立即重置毒圈并应用于正式俯视与俯视训练场。</div>
+                </div>
+            </div>
             <!-- === 训练场数值设置 (人物 / AI 独立, 回车生效, 手动保存) === -->
             <div id="trainTune">
                 <div class="tt-card">
@@ -12596,7 +12619,11 @@ body.low-perf #menu::before { filter: none; opacity: .18; }
                     '登录注册改为强制要求：未登录时主菜单显示「🔒 请先登录 / 注册后再开始游戏」，开始游戏 / 双人对战 / 训练场 / 俯视 PVE / 俯视训练场均会先要求登录；登录后自动解锁，退出登录会重新要求登录',
                     '账号数据改为跟随账号（不再只存本机）：登录 / 自动登录时从云端拉取该账号的键位设置、训练场数值、成就与多槽存档并覆盖本机；此后的修改每 15 秒（以及退出模式 / 关闭页面时）自动同步回该账号，换设备或换账号登录都能带回自己的数据',
                     'UI 全面强化（深空霓虹主题）：主菜单加入动态旋转光斑与流动网格背景、标题发光与色差层、按钮玻璃质感 + 扫光 + 悬浮动效与依次入场；HUD 面板统一玻璃拟态与霓虹描边，血条 / 护盾条加高光与呼吸光；弹窗 / 排行榜 / 留言板 / 管理面板统一发光卡片与入场动画；触控按钮加霓虹描边与按下脉冲；低性能设备与「减少动效」系统设置下自动降级',
-                    '登录 / 注册、管理员密码与训练场密码输入框改为始终明文显示；俯视训练场靶子现在会被子弹与刀剑击退，被击倒后 2 秒在原地满血复活（方向键摆放的位置即复活点），「重置靶位」也回到该位置'
+                    '登录 / 注册、管理员密码与训练场密码输入框改为始终明文显示；俯视训练场靶子现在会被子弹与刀剑击退，被击倒后 2 秒在原地满血复活（方向键摆放的位置即复活点），「重置靶位」也回到该位置',
+                    '俯视模式新增毒圈：圆形安全区初始覆盖全图，每 20 秒收缩 90 半径（最小 260）；完全处于圈外时每 0.5 秒受到 5 点真实伤害（白色「毒」飘字，不参与伤害合并）；一波结束（AI 阵亡）自动重置，不随单条命重置',
+                    '俯视模式新增边界惩罚：身体碰到地图边缘会被向内击退，并扣除 3% 最大生命的真实伤害（0.6 秒冷却，独立飘字）',
+                    '训练场新增「🌫 环境设置」：可调毒圈伤害 / 缩圈间隔 / 每次缩圈半径 / 最小半径 / 撞边扣血百分比 / 初始半径，保存后立即生效并随账号同步',
+                    '俯视 AI 更偏进攻：更少后撤（威胁阈值 0.025→0.06、位移阈值 0.04→0.09）、理想交战距离缩短 14%、开火命中率门槛降低；同时会把毒圈与边界作为软约束参与走位（圈外优先回圈、贴边时向内修正），而不是硬性禁止'
                 ]
             },
             {
@@ -13197,6 +13224,124 @@ body.low-perf #menu::before { filter: none; opacity: .18; }
             pDeadAt: 0, aDeadAt: 0, pRespawnAt: 0, aRespawnAt: 0, over: false,
             lastNow: 0, dt: 0, started: false, _noEnergyAt: 0
         };
+        // === 俯视环境 (毒圈 / 边缘): 参数可在训练场「环境设置」中修改并保存 ===
+        var TD_ENV_KEY = 'shooter_td_env_v1';
+        var TD_ENV_DEFAULT = { poisonDmg: 5, shrinkInterval: 20, shrinkStep: 90, minRadius: 260, edgeDmgPct: 3, initialRadius: 1200 };
+        var TD_ENV = { poisonDmg: 5, shrinkInterval: 20, shrinkStep: 90, minRadius: 260, edgeDmgPct: 3, initialRadius: 1200 };
+        function loadTdEnv() {
+            try {
+                var o = JSON.parse(localStorage.getItem(TD_ENV_KEY) || 'null');
+                if (o && typeof o === 'object') {
+                    ['poisonDmg', 'shrinkInterval', 'shrinkStep', 'minRadius', 'edgeDmgPct', 'initialRadius'].forEach(function (k) {
+                        var v = Number(o[k]);
+                        if (isFinite(v)) TD_ENV[k] = v;
+                    });
+                }
+            } catch (e) { }
+        }
+        loadTdEnv();
+        function resetTdZone() {
+            TD.zone = {
+                cx: TD.W / 2, cy: TD.H / 2,
+                r: Math.max(200, Number(TD_ENV.initialRadius) || 1200),
+                nextShrink: Date.now() + Math.max(3, Number(TD_ENV.shrinkInterval) || 20) * 1000,
+                dmgAt: 0
+            };
+        }
+        function tdZoneTick(now) {
+            if (!TD.zone) resetTdZone();
+            var z = TD.zone;
+            var interval = Math.max(3, Number(TD_ENV.shrinkInterval) || 20) * 1000;
+            var step = Math.max(1, Number(TD_ENV.shrinkStep) || 90);
+            var minR = Math.max(40, Number(TD_ENV.minRadius) || 260);
+            if (now >= z.nextShrink) {
+                z.nextShrink = now + interval;
+                if (z.r > minR) {
+                    z.r = Math.max(minR, z.r - step);
+                    try { _floatSpawn(z.cx, z.cy - 20, '毒圈收缩', '#c084ff', { big: true }); } catch (e) { }
+                }
+            }
+            if (now - z.dmgAt >= 500) {
+                z.dmgAt = now;
+                var pdmg = Math.max(1, Math.round(Number(TD_ENV.poisonDmg) || 0));
+                [player, ai].forEach(function (ent) {
+                    if (!ent || ent.health <= 0) return;
+                    if (now < (ent._tdInvUntil || 0)) return;
+                    var d = Math.hypot(ent.x - z.cx, ent.y - z.cy);
+                    var rr = (ent._tdRadius || TD.radius) * 0.5;
+                    if (d > z.r + rr) {
+                        ent.health -= pdmg;
+                        ent._tdHitAt = now;
+                        try { _floatSpawn(ent.x, ent.y - 26, '毒 ' + pdmg, '#ffffff', { big: true }); } catch (e) { }
+                    }
+                });
+            }
+            var edgePct = Math.max(0, Number(TD_ENV.edgeDmgPct) || 0);
+            if (edgePct > 0) {
+                [player, ai].forEach(function (ent) {
+                    if (!ent || ent.health <= 0) return;
+                    if (now - (ent._tdEdgeAt || 0) < 600) return;
+                    var r = ent._tdRadius || TD.radius;
+                    var kbx = 0, kby = 0;
+                    if (ent.x - r <= TD.MARGIN) kbx = 1;
+                    else if (ent.x + r >= TD.W - TD.MARGIN) kbx = -1;
+                    if (ent.y - r <= TD.MARGIN) kby = 1;
+                    else if (ent.y + r >= TD.H - TD.MARGIN) kby = -1;
+                    if (!kbx && !kby) return;
+                    ent._tdEdgeAt = now;
+                    var edmg = Math.max(1, Math.round(ent.maxHealth * edgePct / 100));
+                    ent.health -= edmg;
+                    ent._tdHitAt = now;
+                    ent._tdKbVX = kbx * 8;
+                    ent._tdKbVY = kby * 8;
+                    try { _floatSpawn(ent.x, ent.y - 34, '撞墙 -' + edmg, '#ffb3b3', { big: true }); } catch (e) { }
+                });
+            }
+        }
+        function openTdEnvPanel() {
+            var map = { envPoison: 'poisonDmg', envShrinkSec: 'shrinkInterval', envStep: 'shrinkStep', envMinR: 'minRadius', envEdgePct: 'edgeDmgPct', envInitR: 'initialRadius' };
+            Object.keys(map).forEach(function (id) {
+                var el = document.getElementById(id);
+                if (el) el.value = TD_ENV[map[id]];
+            });
+            var tip = document.getElementById('tdEnvTip');
+            if (tip) tip.textContent = '参数保存在本机并随账号同步；保存后立即重置毒圈并应用于正式俯视与俯视训练场。';
+            var p = document.getElementById('tdEnvPanel');
+            if (p) p.style.display = 'flex';
+        }
+        function closeTdEnvPanel() {
+            var p = document.getElementById('tdEnvPanel');
+            if (p) p.style.display = 'none';
+        }
+        function readTdEnvInputs() {
+            var map = { envPoison: 'poisonDmg', envShrinkSec: 'shrinkInterval', envStep: 'shrinkStep', envMinR: 'minRadius', envEdgePct: 'edgeDmgPct', envInitR: 'initialRadius' };
+            Object.keys(map).forEach(function (id) {
+                var el = document.getElementById(id);
+                if (!el) return;
+                var v = Number(el.value);
+                if (isFinite(v)) TD_ENV[map[id]] = v;
+            });
+        }
+        function saveTdEnv() {
+            readTdEnvInputs();
+            TD_ENV.poisonDmg = Math.max(1, Math.round(TD_ENV.poisonDmg || 1));
+            TD_ENV.shrinkInterval = Math.max(3, Math.round(TD_ENV.shrinkInterval || 20));
+            TD_ENV.shrinkStep = Math.max(1, Math.round(TD_ENV.shrinkStep || 90));
+            TD_ENV.minRadius = Math.max(40, Math.round(TD_ENV.minRadius || 260));
+            TD_ENV.edgeDmgPct = Math.max(0, Number(TD_ENV.edgeDmgPct) || 0);
+            TD_ENV.initialRadius = Math.max(200, Math.round(TD_ENV.initialRadius || 1200));
+            try { localStorage.setItem(TD_ENV_KEY, JSON.stringify(TD_ENV)); } catch (e) { }
+            resetTdZone();
+            var tip = document.getElementById('tdEnvTip');
+            if (tip) { tip.textContent = '✅ 已保存并生效'; tip.style.color = '#8ff5b8'; }
+            try { showFloatingText('🌫 环境设置已生效', '#c084ff'); } catch (e) { }
+            setTimeout(function () { if (tip) { tip.style.color = '#8fa6c8'; } }, 1600);
+        }
+        function resetTdEnv() {
+            TD_ENV = Object.assign({}, TD_ENV_DEFAULT);
+            openTdEnvPanel();
+            saveTdEnv();
+        }
         const TD_COST = { pistol: 10, rifle: 6, shotgun: 30, smg: 4, sniper: 35, sword: 40 };
         const TD_RANGE = { pistol: 440, rifle: 600, shotgun: 220, smg: 380, sniper: 1000, sword: 110 };
         const TD_IDEAL = { pistol: 300, rifle: 420, shotgun: 120, smg: 250, sniper: 760, sword: 70 };
@@ -13466,6 +13611,7 @@ body.low-perf #menu::before { filter: none; opacity: .18; }
             TD.aWeaponSince = Date.now();
             // 关键: 重生后必须清空死亡标记, 否则下一次死亡不会被结算
             TD.aDeadAt = 0; TD.aRespawnAt = 0;
+            resetTdZone();   // 一波结束 (AI 阵亡) 重置毒圈
         }
 
         function tdUpdatePlayer(now) {
@@ -13651,14 +13797,29 @@ body.low-perf #menu::before { filter: none; opacity: .18; }
             }
 
             // === 移动: 能走位躲开就只走位, 走位也躲不掉才交位移 ===
+            // 环境压力: 毒圈 / 边缘 (非硬性, 与进攻和躲避混合)
+            let envX = 0, envY = 0, envUrgent = false;
+            if (TD.zone) {
+                const _z = TD.zone;
+                const _dz = Math.hypot(ai.x - _z.cx, ai.y - _z.cy) || 1;
+                if (_dz > _z.r - 90) { envX += (_z.cx - ai.x) / _dz; envY += (_z.cy - ai.y) / _dz; }
+                if (_dz > _z.r) envUrgent = true;
+            }
+            const _em = 120;
+            if (ai.x < _em) envX += 1;
+            if (ai.x > TD.W - _em) envX -= 1;
+            if (ai.y < _em) envY += 1;
+            if (ai.y > TD.H - _em) envY -= 1;
+
             let mx = 0, my = 0;
-            if (threat.level >= 0.025) {
+            // 进攻优先: 只有明显威胁才转入躲避 (阈值提高)
+            if (threat.level >= 0.06) {
                 mx = threat.dirX; my = threat.dirY;
-                if (threat.walkRisk >= 0.04 && tdEnergy(ai) >= TD.dashCost && now > TD.aDashLock) {
+                if (threat.walkRisk >= 0.09 && tdEnergy(ai) >= TD.dashCost && now > TD.aDashLock) {
                     if (tdDash(ai, threat.dirX, threat.dirY, now)) TD.aDashLock = now + 900;
                 }
             } else {
-                const ideal = TD_IDEAL[tdWeaponKey(ai)] || 380;
+                const ideal = (TD_IDEAL[tdWeaponKey(ai)] || 380) * 0.86;
                 const nx = dx / dist, ny = dy / dist;
                 const err = dist - ideal;
                 if (err > 60) { mx += nx; my += ny; }
@@ -13670,6 +13831,13 @@ body.low-perf #menu::before { filter: none; opacity: .18; }
                     TD.aStrafeAt = now + 900 + Math.random() * 500;
                     if (Math.random() < 0.5) TD.aStrafeDir = -TD.aStrafeDir;
                 }
+            }
+            // 环境向量混合: 圈外优先回圈, 贴边时向内修正
+            if (envX || envY) {
+                const _el = Math.hypot(envX, envY) || 1;
+                const _w = envUrgent ? 2.2 : 0.75;
+                mx += (envX / _el) * _w;
+                my += (envY / _el) * _w;
             }
             TD.aMoveX = mx; TD.aMoveY = my;
         }
@@ -13734,6 +13902,7 @@ body.low-perf #menu::before { filter: none; opacity: .18; }
                         ai.x = tdClamp(_hx, TD.MARGIN, TD.W - TD.MARGIN);
                         ai.y = tdClamp(_hy, TD.MARGIN, TD.H - TD.MARGIN);
                         TD.aDeadAt = 0;
+                        resetTdZone();
                     }
                 } else {
                     tdRegen(ai, TD.dt || 0);
@@ -13829,7 +13998,7 @@ body.low-perf #menu::before { filter: none; opacity: .18; }
                 const _cost = TD_COST[_key] || 10;
                 // 动态保命储备: 只有近身且确有威胁时才留 30, 远程低威胁不预留
                 const _reserve = (TD.aThreat >= 0.05 && d < 320) ? TD.dashCost : 0;
-                if (ai.weapon && !ai.weapon.isMelee && tdHitChance(_key, d) >= 0.2 && (tdEnergy(ai) - _cost) >= _reserve) {
+                if (ai.weapon && !ai.weapon.isMelee && tdHitChance(_key, d) >= 0.14 && (tdEnergy(ai) - _cost) >= _reserve) {
                     tdFire(ai, ai._tdAim, now);
                 }
             }
@@ -13877,6 +14046,7 @@ body.low-perf #menu::before { filter: none; opacity: .18; }
                 const _ac = 1 * Math.max(0.1, (ai.equip && ai.equip.swordChargeMult) || 1);
                 ai._tdSwordCharge = Math.min(1, (ai._tdSwordCharge || 0) + dt / _ac);
             }
+            tdZoneTick(now);
             tdUpdatePlayer(now);
             tdUpdateAI(now);
             updateBullets();
@@ -14136,6 +14306,25 @@ body.low-perf #menu::before { filter: none; opacity: .18; }
             ctx.strokeStyle = 'rgba(79,142,255,0.55)';
             ctx.lineWidth = 4;
             ctx.strokeRect(2, 2, TD.W - 4, TD.H - 4);
+            // === 毒圈: 圈外紫色迷雾 + 发光边界 ===
+            if (TD.zone) {
+                const _z = TD.zone;
+                ctx.save();
+                ctx.beginPath();
+                ctx.rect(0, 0, TD.W, TD.H);
+                ctx.arc(_z.cx, _z.cy, Math.max(0, _z.r), 0, Math.PI * 2, true);
+                ctx.fillStyle = 'rgba(140,60,255,0.17)';
+                ctx.fill('evenodd');
+                ctx.beginPath();
+                ctx.arc(_z.cx, _z.cy, Math.max(0, _z.r), 0, Math.PI * 2);
+                ctx.strokeStyle = 'rgba(196,120,255,0.9)';
+                ctx.lineWidth = 4;
+                ctx.shadowBlur = 20;
+                ctx.shadowColor = 'rgba(196,120,255,0.95)';
+                ctx.stroke();
+                ctx.shadowBlur = 0;
+                ctx.restore();
+            }
             particles.forEach(function (p) {
                 if (p.life <= 0) return;
                 ctx.globalAlpha = Math.max(0, p.life / (p.maxLife || 48));
@@ -14391,6 +14580,7 @@ body.low-perf #menu::before { filter: none; opacity: .18; }
             TD.started = false;
             TD.fireHeld = false;
             TD.pCharging = false;
+            TD.zone = null;
             (TD._hidden || []).forEach(function (pair) {
                 try { pair[0].style.display = pair[1]; } catch (e) { }
             });
@@ -16049,7 +16239,7 @@ body.low-perf #menu::before { filter: none; opacity: .18; }
     var clockStarted = false;
     var lastFlushAt = 0;
     // 账号数据: 键位 / 训练场数值 / 成就 / 多槽存档 (跟随账号, 不再只存本机)
-    var SYNC_KEYS = ['shooter_touch_cfg_v1', 'shooter_train_tune_v1', 'shooter_td_tune_v1', 'gunfight_achievements', 'gunfight_save_index'];
+    var SYNC_KEYS = ['shooter_touch_cfg_v1', 'shooter_train_tune_v1', 'shooter_td_tune_v1', 'shooter_td_env_v1', 'gunfight_achievements', 'gunfight_save_index'];
     var SYNC_PREFIX = 'gunfight_save_';
     var lastSyncSnap = '';
     var autoSyncStarted = false;
