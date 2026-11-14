@@ -129,6 +129,235 @@
             border-radius: 3px;
         }
 
+        /* ===== 新手教程 (视频样式) ===== */
+        #tutOverlay {
+            position: fixed;
+            inset: 0;
+            z-index: 999999;
+            display: none;
+            align-items: center;
+            justify-content: center;
+            padding: 14px;
+            background: rgba(2, 4, 10, .92);
+            backdrop-filter: blur(6px);
+            -webkit-backdrop-filter: blur(6px);
+        }
+        #tutCard {
+            width: min(94vw, 460px);
+            border-radius: 16px;
+            background: linear-gradient(170deg, #0b1424, #070b16);
+            border: 1px solid rgba(120, 210, 255, .35);
+            box-shadow: 0 20px 60px rgba(0, 0, 0, .7), 0 0 40px rgba(34, 230, 255, .12);
+            overflow: hidden;
+            animation: tutIn .28s ease-out both;
+        }
+        @keyframes tutIn { from { opacity: 0; transform: translateY(18px) scale(.97); } to { opacity: 1; transform: none; } }
+        #tutHead {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            padding: 10px 12px;
+            background: rgba(10, 18, 32, .9);
+            border-bottom: 1px solid rgba(120, 210, 255, .18);
+            font-size: 12px;
+            color: #9fc0ff;
+        }
+        #tutHead .tut-rec { color: #ff4757; font-weight: bold; animation: tutRec 1.1s infinite; }
+        @keyframes tutRec { 0%, 100% { opacity: 1; } 50% { opacity: .25; } }
+        #tutTitle { flex: 1; font-weight: bold; color: #eaf2ff; font-size: 13px; }
+        #tutStepNo { color: #7d8ba1; font-variant-numeric: tabular-nums; }
+        #tutSkip {
+            background: rgba(255, 255, 255, .08);
+            border: 1px solid rgba(120, 170, 255, .3);
+            color: #a9c1e6;
+            border-radius: 999px;
+            padding: 4px 12px;
+            font-size: 11px;
+            cursor: pointer;
+        }
+        #tutScreen {
+            position: relative;
+            height: min(46vh, 300px);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            background: radial-gradient(circle at 50% 40%, #101c33 0%, #060a14 70%);
+            overflow: hidden;
+        }
+        #tutScreen .tut-scan {
+            position: absolute;
+            inset: 0;
+            background: repeating-linear-gradient(0deg, rgba(255, 255, 255, .035) 0 1px, transparent 1px 3px);
+            pointer-events: none;
+        }
+        #tutPhone {
+            position: relative;
+            width: min(34vw, 132px);
+            aspect-ratio: 9 / 17;
+            border-radius: 14px;
+            border: 2px solid rgba(120, 210, 255, .35);
+            background: linear-gradient(180deg, #0a1220, #060a14);
+            box-shadow: 0 0 30px rgba(34, 230, 255, .18), inset 0 0 24px rgba(34, 230, 255, .06);
+        }
+        #tutPhone > div { position: absolute; }
+        #tutPhone .tp-top {
+            top: 5%; left: 50%; transform: translateX(-50%);
+            font-size: 6.6px; color: #e6ccff; white-space: nowrap;
+            padding: 2px 5px; border-radius: 4px; background: rgba(138, 92, 255, .22);
+        }
+        #tutPhone .tp-hp { top: 14%; left: 6%; font-size: 6px; color: #ff6b81; }
+        #tutPhone .tp-score { top: 14%; right: 6%; font-size: 6px; color: #ffd700; }
+        #tutPhone .tp-move {
+            left: 12%; bottom: 18%; width: 30%; aspect-ratio: 1; border-radius: 50%;
+            display: flex; align-items: center; justify-content: center;
+            font-size: 11px; color: #bcd6ff;
+            background: radial-gradient(circle at 35% 30%, rgba(120, 170, 255, .5), rgba(12, 20, 40, .55));
+            border: 1px solid rgba(120, 170, 255, .5);
+        }
+        #tutPhone .tp-fire {
+            right: 12%; bottom: 30%; width: 22%; aspect-ratio: 1; border-radius: 50%;
+            display: flex; align-items: center; justify-content: center; font-size: 9px;
+            background: radial-gradient(circle at 35% 30%, rgba(255, 120, 190, .45), rgba(12, 20, 40, .55));
+            border: 1px solid rgba(255, 120, 190, .5);
+        }
+        #tutPhone .tp-jump {
+            right: 12%; bottom: 18%; width: 22%; aspect-ratio: 1; border-radius: 50%;
+            display: flex; align-items: center; justify-content: center; font-size: 9px;
+            background: radial-gradient(circle at 35% 30%, rgba(170, 140, 255, .45), rgba(12, 20, 40, .55));
+            border: 1px solid rgba(170, 140, 255, .5);
+        }
+        #tutPhone .tp-hotbar {
+            left: 50%; bottom: 2.5%; transform: translateX(-50%);
+            display: flex; gap: 1.5px; padding: 2px; border-radius: 3px;
+            background: rgba(8, 12, 24, .7); border: 1px solid rgba(120, 210, 255, .3);
+        }
+        #tutPhone .tp-hotbar span {
+            width: 10px; height: 10px; border-radius: 2px; font-size: 5.5px;
+            display: flex; align-items: center; justify-content: center;
+            background: rgba(20, 32, 60, .9); color: #9fc0ff;
+            border: .5px solid rgba(120, 170, 255, .35);
+        }
+        #tutPhone .tp-on {
+            animation: tutPulse 1.05s ease-in-out infinite;
+            border-color: #ffe680 !important;
+            box-shadow: 0 0 0 2px rgba(255, 215, 0, .35), 0 0 16px rgba(255, 215, 0, .8) !important;
+            background: linear-gradient(160deg, rgba(255, 215, 0, .9), rgba(255, 159, 67, .85)) !important;
+            color: #1a1200 !important;
+        }
+        @keyframes tutPulse {
+            0%, 100% { transform: scale(1); }
+            50% { transform: scale(1.1); }
+        }
+        #tutProg { height: 3px; background: rgba(255, 255, 255, .1); }
+        #tutProgFill { width: 0%; height: 100%; background: linear-gradient(90deg, #22e6ff, #8a5cff); transition: width .25s linear; }
+        #tutSub {
+            padding: 12px 16px 6px;
+            font-size: 13px;
+            line-height: 1.65;
+            color: #dbe8ff;
+            min-height: 62px;
+        }
+        #tutFoot {
+            display: flex;
+            gap: 10px;
+            justify-content: flex-end;
+            padding: 8px 16px 14px;
+        }
+        #tutFoot button {
+            padding: 9px 18px;
+            border-radius: 10px;
+            border: none;
+            font-size: 13px;
+            font-weight: bold;
+            cursor: pointer;
+        }
+        #tutPrev { background: rgba(255, 255, 255, .08); color: #a9c1e6; border: 1px solid rgba(120, 170, 255, .28) !important; }
+        #tutNext { background: linear-gradient(45deg, #2ed573, #1e90ff); color: #fff; }
+
+        /* ---- 底部物品栏式换枪条 (手游) ---- */
+        #tdHotbar {
+            position: fixed;
+            left: 50%;
+            bottom: calc(6px + var(--safe-bottom));
+            transform: translateX(-50%);
+            z-index: 720;
+            display: none;
+            gap: 4px;
+            padding: 4px;
+            border-radius: 10px;
+            background: rgba(8, 12, 24, .58);
+            border: 1px solid rgba(120, 210, 255, .35);
+            box-shadow: 0 6px 18px rgba(0, 0, 0, .45);
+            touch-action: none;
+            user-select: none;
+            -webkit-user-select: none;
+            -webkit-tap-highlight-color: transparent;
+        }
+        #tdHotbar .hb-slot {
+            width: clamp(38px, 12vw, 52px);
+            height: clamp(38px, 12vw, 52px);
+            border-radius: 8px;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            gap: 1px;
+            background: rgba(20, 32, 60, .72);
+            border: 1.5px solid rgba(120, 170, 255, .35);
+            color: #cfe0ff;
+            transition: transform .12s ease, border-color .12s ease, background .12s ease;
+        }
+        #tdHotbar .hb-slot b { font-size: clamp(14px, 4.2vw, 19px); line-height: 1; }
+        #tdHotbar .hb-slot i { font-size: clamp(8px, 2.2vw, 10px); font-style: normal; opacity: .85; }
+        #tdHotbar .hb-slot.on {
+            background: linear-gradient(160deg, rgba(255, 215, 0, .95), rgba(255, 159, 67, .9));
+            border-color: #ffe680;
+            color: #1a1200;
+            transform: translateY(-4px) scale(1.06);
+            box-shadow: 0 0 14px rgba(255, 215, 0, .7);
+        }
+
+        /* ---- 毒圈倒计时条 (顶部居中) ---- */
+        #tdZoneBar {
+            position: fixed;
+            top: 6px;
+            left: 50%;
+            transform: translateX(-50%);
+            z-index: 620;
+            display: none;
+            flex-direction: column;
+            align-items: center;
+            gap: 3px;
+            width: min(88vw, 420px);
+            padding: 4px 10px 6px;
+            border-radius: 10px;
+            background: linear-gradient(165deg, rgba(21, 34, 62, .86), rgba(8, 14, 28, .9));
+            border: 1px solid rgba(196, 120, 255, .45);
+            box-shadow: 0 6px 18px rgba(0, 0, 0, .5), 0 0 18px rgba(138, 92, 255, .22);
+            pointer-events: none;
+        }
+        #tdZoneTxt {
+            font-size: clamp(10px, 2.7vw, 13px);
+            font-weight: bold;
+            color: #e6ccff;
+            letter-spacing: .5px;
+            white-space: nowrap;
+        }
+        #tdZoneTrack {
+            width: 100%;
+            height: 6px;
+            border-radius: 3px;
+            background: rgba(255, 255, 255, .10);
+            overflow: hidden;
+        }
+        #tdZoneFill {
+            width: 0%;
+            height: 100%;
+            border-radius: 3px;
+            background: linear-gradient(90deg, #8a5cff, #e0a6ff);
+            transition: width .2s linear;
+        }
+
         #score {
             position: fixed;
             top: 12px;
@@ -660,7 +889,7 @@
         }
         #livesInfo {
             position: fixed;
-            top: 12px;
+            top: 6px;
             left: 50%;
             transform: translateX(-50%);
             z-index: 500;
@@ -1225,26 +1454,28 @@
 
         /* 底部居中触控暂停: 小号按钮, 打开既有暂停菜单 */
         #touchPause {
-            left: 50%;
-            top: auto;
-            bottom: calc(10px + var(--safe-bottom));
+            left: auto;
+            right: calc(14px + var(--safe-right));
+            top: 58%;
+            bottom: auto;
             width: calc(var(--touch-size) * 0.56);
             height: calc(var(--touch-size) * 0.56);
-            transform: translateX(-50%) scale(var(--touch-scale));
-            transform-origin: 50% 100%;
+            transform: translateY(-50%) scale(var(--touch-scale));
+            transform-origin: 100% 50%;
             font-size: calc(var(--touch-size) * 0.22);
             z-index: 2;
         }
 
         /* 属性面板键: 位于暂停键正上方 */
         #touchStats {
-            left: 50%;
-            top: auto;
-            bottom: calc(10px + var(--safe-bottom) + var(--touch-size) * 0.56 + 8px);
+            left: auto;
+            right: calc(14px + var(--safe-right));
+            top: 40%;
+            bottom: auto;
             width: calc(var(--touch-size) * 0.56);
             height: calc(var(--touch-size) * 0.56);
-            transform: translateX(-50%) scale(var(--touch-scale));
-            transform-origin: 50% 100%;
+            transform: translateY(-50%) scale(var(--touch-scale));
+            transform-origin: 100% 50%;
             font-size: calc(var(--touch-size) * 0.22);
             z-index: 2;
         }
@@ -1756,7 +1987,7 @@ body[data-device="touch"] #statusPanel { display: none !important; }
 .cm-sql { width: 100%; box-sizing: border-box; background: rgba(0,0,0,0.4); border: 1px solid rgba(120,170,255,0.22); border-radius: 8px; color: #b9cbe6; font-size: 11px; padding: 8px; font-family: Consolas, monospace; resize: vertical; }
 
 @media (max-width: 560px) {
-    body[data-device="touch"] #topStatusPanel { top: calc(10px + 46px * var(--ui-scale)) !important; width: min(92vw, 320px) !important; }
+    body[data-device="touch"] #topStatusPanel { width: min(92vw, 320px) !important; }
 }
 
 /* 未登录: 游戏入口锁定 + 顶部提示 */
@@ -2328,12 +2559,12 @@ body.low-perf #menu::before { filter: none; opacity: .18; }
                 <div id="touchWheel">
                     <div class="tw-ring"></div>
                     <div class="tw-center"></div>
-                    <div class="tw-sec" data-weapon="1" style="--a:15deg;">1</div>
-                    <div class="tw-sec" data-weapon="2" style="--a:45deg;">2</div>
-                    <div class="tw-sec" data-weapon="3" style="--a:75deg;">3</div>
-                    <div class="tw-sec" data-weapon="4" style="--a:105deg;">4</div>
-                    <div class="tw-sec" data-weapon="5" style="--a:135deg;">5</div>
-                    <div class="tw-sec" data-weapon="6" style="--a:165deg;">6</div>
+                    <div class="tw-sec" data-weapon="1" style="--a:0deg;">1</div>
+                    <div class="tw-sec" data-weapon="2" style="--a:60deg;">2</div>
+                    <div class="tw-sec" data-weapon="3" style="--a:120deg;">3</div>
+                    <div class="tw-sec" data-weapon="4" style="--a:180deg;">4</div>
+                    <div class="tw-sec" data-weapon="5" style="--a:240deg;">5</div>
+                    <div class="tw-sec" data-weapon="6" style="--a:300deg;">6</div>
                 </div>
             </div>
             <!-- 底部触控暂停: 打开既有暂停菜单 -->
@@ -2343,6 +2574,52 @@ body.low-perf #menu::before { filter: none; opacity: .18; }
         </div>
         <!-- 属性面板关闭键: 固定在右上角, 仅属性面板打开时显示 -->
         <div id="touchStatsClose">✕</div>
+
+        <!-- 手游新手教程 (注册后自动播放, 视频样式) -->
+        <div id="tutOverlay">
+            <div id="tutCard">
+                <div id="tutHead">
+                    <span class="tut-rec">● REC</span>
+                    <span id="tutTitle">新手教程</span>
+                    <span id="tutStepNo">1 / 7</span>
+                    <button id="tutSkip">跳过</button>
+                </div>
+                <div id="tutScreen">
+                    <div class="tut-scan"></div>
+                    <div id="tutPhone">
+                        <div class="tp-top">毒圈 20s · 玩家❤❤❤ 敌人❤❤</div>
+                        <div class="tp-hp">❤ HP</div>
+                        <div class="tp-score">🏆 0 分</div>
+                        <div class="tp-move">◉</div>
+                        <div class="tp-fire">🔫</div>
+                        <div class="tp-jump">💨</div>
+                        <div class="tp-hotbar"><span>1</span><span>2</span><span>3</span><span>4</span><span>5</span><span>6</span></div>
+                    </div>
+                </div>
+                <div id="tutProg"><div id="tutProgFill"></div></div>
+                <div id="tutSub">正在加载教程…</div>
+                <div id="tutFoot">
+                    <button id="tutPrev">← 上一步</button>
+                    <button id="tutNext">下一步 →</button>
+                </div>
+            </div>
+        </div>
+
+        <!-- 手游: 屏幕最下方物品栏式换枪条 (类似 Minecraft 快捷栏, 6 格 6 把武器) -->
+        <div id="tdHotbar">
+            <div class="hb-slot" data-weapon="1"><b>1</b><i>手枪</i></div>
+            <div class="hb-slot" data-weapon="2"><b>2</b><i>步枪</i></div>
+            <div class="hb-slot" data-weapon="3"><b>3</b><i>霰弹</i></div>
+            <div class="hb-slot" data-weapon="4"><b>4</b><i>冲锋</i></div>
+            <div class="hb-slot" data-weapon="5"><b>5</b><i>狙击</i></div>
+            <div class="hb-slot" data-weapon="6"><b>6</b><i>战刃</i></div>
+        </div>
+
+        <!-- 毒圈倒计时 (全端置顶, 与双方生命一列往下排) -->
+        <div id="tdZoneBar">
+            <span id="tdZoneTxt">毒圈 第 1 次收缩 · 20s / 20s</span>
+            <div id="tdZoneTrack"><div id="tdZoneFill"></div></div>
+        </div>
 
         <!-- === 按键设置覆盖层 (Task 6, 仅触控显示) === -->
         <div id="touchSettings">
@@ -2379,11 +2656,11 @@ body.low-perf #menu::before { filter: none; opacity: .18; }
                 ✅ <b>波次递进+成就系统+自动存档</b><br>
                 ✅ <b>特殊弹药(穿甲/燃烧/冰冻)</b></p>
             <!-- v2 版本: 本文件是独立代码分支; 旧版跳转按钮「开始游戏」已移除, 统一用「开始游戏 2 (v2)」在本文件开局 -->
-            <button class="btn" id="btnStartGame2" onclick="askStartGame()" style="background:linear-gradient(45deg,#ff9f43,#ee5253);">开始游戏 2 (v2)</button>
-            <button id="btnPvP" onclick="askStartPvP()" style="background:linear-gradient(135deg,#6c5ce7,#a29bfe);border:none;color:white;padding:14px 40px;border-radius:10px;font-size:18px;cursor:pointer;margin:10px;font-weight:bold;">⚔️ 双人对战</button>
-            <button class="btn" id="btnTraining" onclick="startTraining()" style="background:linear-gradient(45deg,#2ed573,#1abc9c);">训练场</button>
-            <button class="btn" id="btnTopdown" onclick="askStartTopdown()" style="background:linear-gradient(45deg,#00b894,#55efc4);color:#07231c;margin-top:8px;">🎯 俯视 PVE（实验）</button>
+            <button class="btn" id="btnStartGame2" onclick="askStartGame()" style="background:linear-gradient(45deg,#ff9f43,#ee5253);">🎮 2D 枪战</button>
+            <button class="btn" id="btnTopdown" onclick="askStartTopdown()" style="background:linear-gradient(45deg,#00b894,#55efc4);color:#07231c;margin-top:8px;">🎯 俯视枪战（新）</button>
+            <button class="btn" id="btnTraining" onclick="startTraining()" style="background:linear-gradient(45deg,#2ed573,#1abc9c);margin-top:8px;">训练场</button>
             <button class="btn" id="btnTdTraining" onclick="startTopdownTraining()" style="background:linear-gradient(45deg,#6c5ce7,#a29bfe);margin-top:8px;">🥊 俯视训练场</button>
+            <button id="btnPvP" onclick="askStartPvP()" style="background:linear-gradient(135deg,#6c5ce7,#a29bfe);border:none;color:white;padding:14px 40px;border-radius:10px;font-size:18px;cursor:pointer;margin:10px;font-weight:bold;">⚔️ 双人对战</button>
             <button class="btn" id="openSettingsBtn" onclick="toggleSettings()" style="background:linear-gradient(45deg,#4f8eff,#74b9ff);margin-top:8px;">📖 说明</button>
             <button class="btn" id="openNoticeBtn" onclick="toggleNotice()" style="background:linear-gradient(45deg,#ffd700,#ff9f43);margin-top:8px;color:#1a1a2e;">📢 更新公告（持续开发中）</button>
             <button class="btn touch-only" id="btnTouchSettings" onclick="openTouchSettings()" style="background:linear-gradient(45deg,#6c5ce7,#a29bfe);margin-top:8px;">🎮 按键设置</button>
@@ -2632,14 +2909,13 @@ body.low-perf #menu::before { filter: none; opacity: .18; }
             };
         }
 
-        /** 轮盘角度 (0=正上, 90=正左, 180=正下, 逆时针) → 武器编号 1..6; 右半弧/越界 → 0 (取消) */
+        /** 轮盘角度 (0=正上, 顺时针为正, 任意角度自动归一化到 0~360) → 武器编号 1..6;
+            360° 六等分: 每个扇区 60°, 中心在 0/60/120/180/240/300 */
         function wheelWeaponFromDeg(deg) {
             let d = Number(deg);
-            // 浮点容差: atan2 在正下方可能返回 180.00000000000003
-            if (!isFinite(d) || d < -0.001 || d > 180.001) return 0;
-            d = Math.max(0, Math.min(180, d));
-            if (d >= 180) return 6;
-            return Math.min(6, Math.floor(d / 30) + 1);
+            if (!isFinite(d)) return 0;
+            d = ((d % 360) + 360) % 360;
+            return Math.min(6, Math.floor(((d + 30) % 360) / 60) + 1);
         }
 
         /** 以按钮圆心为原点 (屏幕坐标, y 向下) → 武器编号 */
@@ -2928,6 +3204,59 @@ body.low-perf #menu::before { filter: none; opacity: .18; }
             }
         }
 
+        // ===== 底部物品栏 (Minecraft 快捷栏风格): 点击 / 左右滑动切枪 =====
+        let _hbCurNo = '';
+        function _updateTdHotbar() {
+            const hb = document.getElementById('tdHotbar');
+            if (!hb) return;
+            const touch = document.body.getAttribute('data-device') === 'touch';
+            const inGame = touch && (gameState === 'playing' || gameState === 'pvp' || gameState === 'training' || gameState === 'topdown' || gameState === 'tdtraining');
+            const show = inGame && !isPaused && !isDrafting && !isAwardShowing && !statPanelOpen && !_touchSettingsOpen;
+            const want = show ? 'flex' : 'none';
+            if (hb.style.display !== want) hb.style.display = want;
+            if (!show) return;
+            let p = null;
+            try { p = (gameState === 'pvp' && typeof playerA !== 'undefined' && playerA) ? playerA : player; } catch (e) { p = null; }
+            const map = { pistol: '1', rifle: '2', shotgun: '3', smg: '4', sniper: '5', sword: '6' };
+            const no = map[(p && p.currentWeapon) || ''] || '';
+            if (no !== _hbCurNo) {
+                _hbCurNo = no;
+                hb.querySelectorAll('.hb-slot').forEach(function (el) {
+                    el.classList.toggle('on', el.getAttribute('data-weapon') === no);
+                });
+            }
+        }
+
+        function _bindTdHotbar() {
+            const hb = document.getElementById('tdHotbar');
+            if (!hb) return;
+            let drag = null;
+            hb.addEventListener('pointerdown', function (e) {
+                const slot = (e.target && e.target.closest) ? e.target.closest('.hb-slot') : null;
+                if (!slot) return;
+                e.preventDefault();
+                const no = Number(slot.getAttribute('data-weapon')) || 0;
+                if (!no) return;
+                drag = { x: e.clientX, no: no };
+                _switchWeaponByWheel(no);
+                try { hb.setPointerCapture(e.pointerId); } catch (err) { }
+            });
+            hb.addEventListener('pointermove', function (e) {
+                if (!drag) return;
+                const dx = e.clientX - drag.x;
+                if (Math.abs(dx) < 30) return;
+                let n = drag.no + (dx > 0 ? -1 : 1);
+                if (n < 1) n = 6;
+                if (n > 6) n = 1;
+                drag.no = n;
+                drag.x = e.clientX;
+                _switchWeaponByWheel(n);
+            });
+            const end = function () { drag = null; };
+            hb.addEventListener('pointerup', end);
+            hb.addEventListener('pointercancel', end);
+        }
+
         function _highlightWheel(weapon) {
             const wheel = document.getElementById('touchWheel');
             if (!wheel) return;
@@ -3053,30 +3382,12 @@ body.low-perf #menu::before { filter: none; opacity: .18; }
             if (_tjLabel && _tjLabel.textContent !== (_tdTouch ? '💨' : '⤒')) _tjLabel.textContent = _tdTouch ? '💨' : '⤒';
             const _padEl = document.getElementById('touchMovePad');
             if (_padEl) _padEl.classList.toggle('td-stick', _tdTouch);
-            // 缩圈条基准线: 量底部「属性」键的上沿 (每 400ms 一次, 避免每帧 reflow)
-            try {
-                if (document.body.getAttribute('data-device') === 'touch' && (gameState === 'topdown' || gameState === 'tdtraining')) {
-                    var _bn = performance.now();
-                    if (!window.__tdBarAt || _bn - window.__tdBarAt > 400) {
-                        window.__tdBarAt = _bn;
-                        var _stEl = document.getElementById('touchStats');
-                        if (_stEl) {
-                            var _sr = _stEl.getBoundingClientRect();
-                            if (_sr.height > 0) window.__tdBarY = Math.round(_sr.top - 12);
-                        }
-                        var _mvEl = document.getElementById('touchMovePad');
-                        if (_mvEl) {
-                            var _mr = _mvEl.getBoundingClientRect();
-                            if (_mr.width > 0) window.__tdBarL = Math.round(_mr.right + 8);
-                        }
-                        var _jpEl = document.getElementById('touchJump');
-                        if (_jpEl) {
-                            var _jr = _jpEl.getBoundingClientRect();
-                            if (_jr.width > 0) window.__tdBarR = Math.round(_jr.left - 8);
-                        }
-                    }
-                }
-            } catch (e) { }
+            // 毒圈倒计时条: 仅俯视 / 俯视训练场显示
+            var _zbEl = document.getElementById('tdZoneBar');
+            if (_zbEl) {
+                var _zbWant = (gameState === 'topdown' || gameState === 'tdtraining') ? 'flex' : 'none';
+                if (_zbEl.style.display !== _zbWant) _zbEl.style.display = _zbWant;
+            }
             // 单局游玩时长 (右上分数下方, 仅正式战斗显示)
             var _rt = document.getElementById('cmRunTimer');
             if (_rt) {
@@ -3102,6 +3413,8 @@ body.low-perf #menu::before { filter: none; opacity: .18; }
                     _rt.textContent = '⏱ ' + (_mm < 10 ? '0' : '') + _mm + ':' + (_ss < 10 ? '0' : '') + _ss;
                 }
             }
+            // 底部物品栏 (手游) 显隐 + 当前武器高亮
+            try { _updateTdHotbar(); } catch (e) { }
         }
 
         /** 绑定触控层: Pointer Events + pointerId 所有权 + setPointerCapture */
@@ -3270,6 +3583,49 @@ body.low-perf #menu::before { filter: none; opacity: .18; }
             return Math.max(0.62, Math.min(1.0, raw));
         }
 
+        /* 顶部竖排: 毒圈倒计时 → 双方生命 → (手机: 血量/分数让位) → 状态效果, 全部往上贴 */
+        function layoutTopPanels() {
+            const touch = !!(document.body && document.body.getAttribute('data-device') === 'touch');
+            const zone = document.getElementById('tdZoneBar');
+            const zoneShown = !!(zone && getComputedStyle(zone).display !== 'none');
+            let y = 6;
+            if (zoneShown) {
+                if (zone.style.top !== y + 'px') zone.style.top = y + 'px';
+                const zr = zone.getBoundingClientRect();
+                if (zr.height > 0) y = Math.round(zr.bottom + 4);
+            }
+            const li = document.getElementById('livesInfo');
+            if (li && getComputedStyle(li).display !== 'none') {
+                if (li.style.top !== y + 'px') li.style.top = y + 'px';
+                const lr = li.getBoundingClientRect();
+                if (lr.height > 0) y = Math.round(lr.bottom + 6);
+            }
+            const ts = document.getElementById('topStatusPanel');
+            const tsShown = !!(ts && getComputedStyle(ts).display !== 'none');
+            const hudEl = document.getElementById('hud');
+            const scEl = document.getElementById('score');
+            if (touch && zoneShown) {
+                // 手机上顶部条与左右 HUD 同宽会打架: 血量/分数整体让到生命值下方
+                const ht = y + 'px';
+                if (hudEl && hudEl.style.top !== ht) hudEl.style.top = ht;
+                if (scEl && scEl.style.top !== ht) scEl.style.top = ht;
+                if (tsShown) {
+                    const hr = hudEl ? hudEl.getBoundingClientRect() : null;
+                    const tt = ((hr && hr.height) ? Math.round(hr.bottom + 6) : y) + 'px';
+                    if (ts.style.top !== tt) ts.style.top = tt;
+                }
+                return;
+            }
+            if (touch) {
+                if (hudEl && hudEl.style.top !== '12px') hudEl.style.top = '12px';
+                if (scEl && scEl.style.top !== '12px') scEl.style.top = '12px';
+            }
+            if (tsShown) {
+                const vt = y + 'px';
+                if (ts.style.top !== vt) ts.style.top = vt;
+            }
+        }
+
         /* HUD 上下排布: #hudFullStatus 跟随左上血量面板的实际底边, 不再两个面板都写死 top:10px 叠在一起;
            训练场则让「训练调试」入口跟随血量面板底边, 避免压住 HUD */
         function layoutHudPanels() {
@@ -3319,6 +3675,7 @@ body.low-perf #menu::before { filter: none; opacity: .18; }
             _scalePanel('score', s, '100% 0', false);
             _scalePanel('topStatusPanel', s, '50% 0', true);
             _scalePanel('controls', s, '50% 100%', true);
+            try { layoutTopPanels(); } catch (e) { }
             try { layoutHudPanels(); } catch (e) { }
         }
 
@@ -3335,6 +3692,7 @@ body.low-perf #menu::before { filter: none; opacity: .18; }
 
             touchCfg = loadTouchConfig();
             _bindTouchLayer();
+            _bindTdHotbar();
             _bindTouchSettingsUI();
             applyTouchConfig();
 
@@ -12879,7 +13237,12 @@ body.low-perf #menu::before { filter: none; opacity: .18; }
                     '伤害飘字字号改为按屏幕短边比例（手机约 12~14px、桌面 20px 左右），不再固定 20~30px；卡牌图标与上飘距离同步按字号换算，小屏不再被大字糊住',
                     '俯视 AI 位移大幅优化：原来几乎不会用位移（判定阈值过高且能量被开火打空）。现在 0.3 秒内会被击中、或走位仍要吃掉大半伤害时就位移闪避；新增残血反向脱战位移、距离过远时位移追击、明显在毒圈外时位移回圈；开火会保留一部分能量，确保随时闪得出来',
                     '手游布局：双方生命（玩家 / 敌人）固定到屏幕最上方居中，状态效果面板自动排到它下方；缩圈进度条移到屏幕最底部（底部暂停 / 属性键上沿之上），不再横在画面中间',
-                    '手游按键默认 90% 透明：设置里的「透明度」滑杆现在 0% = 不透明、100% = 完全透明，默认 90%；旧键位存档会自动迁移到新默认（想变实心把滑杆拉回 0% 即可）'
+                    '手游按键默认 90% 透明：设置里的「透明度」滑杆现在 0% = 不透明、100% = 完全透明，默认 90%；旧键位存档会自动迁移到新默认（想变实心把滑杆拉回 0% 即可）',
+                    '主菜单排版整理：「开始游戏 2 (v2)」改名「🎮 2D 枪战」，「俯视 PVE」改名「🎯 俯视枪战（新）」，两个主模式排在最上，训练场 / 俯视训练场紧随其后，其余入口依次往下',
+                    '毒圈倒计时条移到屏幕最上方（桌面 / 手机一致，改为 DOM 绘制），双方生命值紧贴其正下方；手机上血量 / 护盾与右上分数会自动让到生命值下方，顶部不再互相遮挡',
+                    '手游新增底部「物品栏」换枪条（参考 Minecraft 快捷栏）：屏幕最下方 6 格对应 6 把武器，点哪格换哪把、左右滑动也能连续切换，当前武器金色高亮；暂停 / 属性键移到右侧中部给物品栏让位',
+                    '手游武器轮盘从 180° 半环升级为 360° 全环：6 把武器按 60° 平均分布，按住跳跃键向左滑展开后，手指指向任意方向都能切到对应武器',
+                    '手游新注册账号会播放一次「新手教程」（视频样式，可跳过 / 上一步 / 下一步）：依次讲解移动盘、开火、跳跃与能量位移、底部物品栏换枪、360° 轮盘换枪以及顶部毒圈 / 生命、左上血量、右上分数'
                 ]
             },
             {
@@ -14721,6 +15084,24 @@ body.low-perf #menu::before { filter: none; opacity: .18; }
             tdDrawHUD(now);
         }
 
+        // 毒圈倒计时条: 每帧调用, 只在文本/进度变化时写 DOM
+        let _tdZoneBarKey = '';
+        function _updateTdZoneBar(z, now) {
+            if (!z) return;
+            const total = Math.max(3, Number(TD_ENV.shrinkInterval) || 20) * 1000;
+            const left = Math.max(0, z.nextShrink - now);
+            const pct = Math.max(0, Math.min(1, 1 - left / total));
+            const nextNo = (z.shrinkCount || 0) + 1;
+            const txt = '毒圈 第 ' + nextNo + ' 次收缩 · ' + Math.ceil(left / 1000) + 's / ' + Math.round(total / 1000) + 's';
+            const key = txt + '|' + Math.round(pct * 240);
+            if (key === _tdZoneBarKey) return;
+            _tdZoneBarKey = key;
+            const t = document.getElementById('tdZoneTxt');
+            const f = document.getElementById('tdZoneFill');
+            if (t) t.textContent = txt;
+            if (f) f.style.width = (pct * 100).toFixed(1) + '%';
+        }
+
         function tdDrawHUD(now) {
             // 横版 HUD 已完整照搬 (血条 / 护盾 / 武器 / 状态 / 分数 / 命数),
             // 这里只补俯视专属: 双方能量环 (贴左下 / 右下角, 避开跟随角色的效果状态栏) + 刀蓄力 + 准星
@@ -14750,48 +15131,9 @@ body.low-perf #menu::before { filter: none; opacity: .18; }
                 ctx.moveTo(mx, my + 3); ctx.lineTo(mx, my + 9);
                 ctx.stroke();
             }
-            // === 毒圈状态: 底部中央缩毒进度 + 次数 ===
+            // === 毒圈状态: 顶部 DOM 倒计时条 (与双方生命同列, 见 layoutTopPanels) ===
             if (TD.zone) {
-                const _z = TD.zone;
-                const _total = Math.max(3, Number(TD_ENV.shrinkInterval) || 20) * 1000;
-                const _left = Math.max(0, _z.nextShrink - now);
-                const _pct = Math.max(0, Math.min(1, 1 - _left / _total));
-                const _touchUi2 = (document.body.getAttribute('data-device') === 'touch');
-                // 比例化: 手机上条宽 / 条高 / 纵向位置 / 字号全部按画布尺寸取值, 竖屏与横屏都不会压住触控键
-                let _bw = Math.min(340, canvas.width * 0.46);
-                if (_touchUi2) {
-                    const _safeL = (typeof window.__tdBarL === 'number') ? window.__tdBarL : canvas.width * 0.18;
-                    const _safeR = (typeof window.__tdBarR === 'number') ? window.__tdBarR : canvas.width * 0.82;
-                    _bw = Math.min(canvas.width * 0.62, 460, Math.max(140, _safeR - _safeL));
-                }
-                const _bh = _touchUi2 ? Math.max(6, Math.round(canvas.height * 0.012)) : 9;
-                const _bx = (canvas.width - _bw) / 2;
-                // 手机: 贴到屏幕最下方, 上限取底部暂停 / 属性键的上沿 (每 400ms 实测一次)
-                let _by = canvas.height - 64;
-                if (_touchUi2) {
-                    const _lim = (typeof window.__tdBarY === 'number' && window.__tdBarY > 0) ? window.__tdBarY : (canvas.height - 96);
-                    _by = Math.round(Math.max(canvas.height * 0.55, Math.min(canvas.height - 40, _lim)));
-                }
-                const _fs = _touchUi2 ? Math.max(10, Math.min(17, Math.round(canvas.width * 0.027))) : 11;
-                ctx.fillStyle = 'rgba(0,0,0,0.55)';
-                ctx.fillRect(_bx - 2, _by - 2, _bw + 4, _bh + 4);
-                ctx.fillStyle = 'rgba(255,255,255,0.10)';
-                ctx.fillRect(_bx, _by, _bw, _bh);
-                const _gg = ctx.createLinearGradient(_bx, 0, _bx + _bw, 0);
-                _gg.addColorStop(0, '#8a5cff');
-                _gg.addColorStop(1, '#e0a6ff');
-                ctx.fillStyle = _gg;
-                ctx.fillRect(_bx, _by, _bw * _pct, _bh);
-                ctx.strokeStyle = 'rgba(196,120,255,0.75)';
-                ctx.lineWidth = 1;
-                ctx.strokeRect(_bx + 0.5, _by + 0.5, _bw - 1, _bh - 1);
-                ctx.textAlign = 'center';
-                ctx.textBaseline = 'alphabetic';
-                ctx.font = 'bold ' + _fs + 'px Arial';
-                ctx.fillStyle = '#e6ccff';
-                const _nextNo = (_z.shrinkCount || 0) + 1;
-                ctx.fillText('毒圈 第 ' + _nextNo + ' 次收缩 · ' + Math.ceil(_left / 1000) + 's / ' + Math.round(_total / 1000) + 's', canvas.width / 2, _by - Math.max(6, Math.round(_fs * 0.7)));
-                ctx.textAlign = 'left';
+                try { _updateTdZoneBar(TD.zone, now); } catch (e) { }
             }
             if (TD._noEnergyAt && now - TD._noEnergyAt < 500) {
                 ctx.fillStyle = 'rgba(255,120,120,0.9)';
@@ -16468,6 +16810,7 @@ body.low-perf #menu::before { filter: none; opacity: .18; }
             if (!window.__hudLayAt || performance.now() - window.__hudLayAt > 500) {
                 window.__hudLayAt = performance.now();
                 try { layoutHudPanels(); } catch (e) { }
+                try { layoutTopPanels(); } catch (e) { }
             }
 
             requestAnimationFrame(gameLoop);
@@ -16885,6 +17228,74 @@ body.low-perf #menu::before { filter: none; opacity: .18; }
             .then(function () { return track(type || 'login', ''); })
             .then(function () { return user; });
     }
+    // ===================== 手游新手教程 (注册后自动播放) =====================
+    const TUT_STEPS = [
+        { k: '', t: '欢迎来到 2D 枪战！这是一段 30 秒的新手教程，带你认识手游的全部操作。' },
+        { k: 'move', t: '左下角是移动盘：按住拖动即可移动。俯视枪战里它是 360° 摇杆，可以往任意方向走。' },
+        { k: 'fire', t: '右下角 🔫 是开火键：按住连续射击，松手停火；手机端会自动帮你瞄准敌人。' },
+        { k: 'jump', t: '右下角 💨：横版点击跳跃（可二段跳）；俯视枪战里是能量位移，消耗能量冲刺并短暂无敌。' },
+        { k: 'hotbar', t: '屏幕最下方是物品栏：点哪一格就换哪把枪，左右滑动也能连续切换（1 手枪 / 2 步枪 / 3 霰弹 / 4 冲锋 / 5 狙击 / 6 战刃）。' },
+        { k: 'jump', t: '也可以按住跳跃键向左滑：会展开 360° 武器轮盘，手指指向哪个方向就切哪把枪。' },
+        { k: 'top', t: '界面速览：最上方是毒圈倒计时与双方生命；左上血量 / 护盾；右上分数与本局时长。准备好了就开始吧！' }
+    ];
+    let _tutIdx = 0, _tutTimer = 0, _tutUid = '';
+    const TUT_CLASS = { move: '.tp-move', fire: '.tp-fire', jump: '.tp-jump', hotbar: '.tp-hotbar', top: '.tp-top' };
+
+    function _tutPaint() {
+        const st = TUT_STEPS[_tutIdx] || TUT_STEPS[0];
+        const sub = document.getElementById('tutSub');
+        const no = document.getElementById('tutStepNo');
+        const fill = document.getElementById('tutProgFill');
+        const prev = document.getElementById('tutPrev');
+        const next = document.getElementById('tutNext');
+        if (sub) sub.textContent = st.t;
+        if (no) no.textContent = (_tutIdx + 1) + ' / ' + TUT_STEPS.length;
+        if (fill) fill.style.width = Math.round(((_tutIdx + 1) / TUT_STEPS.length) * 100) + '%';
+        if (prev) prev.style.visibility = _tutIdx === 0 ? 'hidden' : 'visible';
+        if (next) next.textContent = (_tutIdx >= TUT_STEPS.length - 1) ? '开始游戏 ✓' : '下一步 →';
+        Object.keys(TUT_CLASS).forEach(function (k) {
+            const el = document.querySelector('#tutPhone ' + TUT_CLASS[k]);
+            if (el) el.classList.toggle('tp-on', st.k === k);
+        });
+        clearTimeout(_tutTimer);
+        _tutTimer = setTimeout(function () {
+            if (_tutIdx >= TUT_STEPS.length - 1) { _tutEnd(); } else { _tutIdx++; _tutPaint(); }
+        }, 5200);
+    }
+
+    function _tutEnd() {
+        clearTimeout(_tutTimer);
+        const ov = document.getElementById('tutOverlay');
+        if (ov) ov.style.display = 'none';
+        try { if (_tutUid) localStorage.setItem('shooter_tut_done_' + _tutUid, '1'); } catch (e) { }
+        try { GameAudio.play('pickup'); } catch (e) { }
+    }
+
+    function showTutorial(uid) {
+        const ov = document.getElementById('tutOverlay');
+        if (!ov) return;
+        // 收起注册成功提示, 避免压住教程画面
+        try { var _ts = document.getElementById('cmToast'); if (_ts) _ts.classList.remove('show'); } catch (e) { }
+        _tutUid = uid || '';
+        _tutIdx = 0;
+        ov.style.display = 'flex';
+        _tutPaint();
+    }
+
+    (function _bindTutorial() {
+        const bind = function (id, fn) {
+            const el = document.getElementById(id);
+            if (el) el.addEventListener('click', fn);
+        };
+        bind('tutSkip', function () { _tutEnd(); });
+        bind('tutPrev', function () {
+            if (_tutIdx > 0) { _tutIdx--; _tutPaint(); }
+        });
+        bind('tutNext', function () {
+            if (_tutIdx >= TUT_STEPS.length - 1) { _tutEnd(); } else { _tutIdx++; _tutPaint(); }
+        });
+    })();
+
     function doRegister(username, password) {
         return findUser(username).then(function (ex) {
             if (ex) throw new Error('用户名已被占用');
@@ -16901,6 +17312,15 @@ body.low-perf #menu::before { filter: none; opacity: .18; }
             updateAccountBtn(); startClock(); updateLockUI();
             try { GameAudio.play('pickup'); } catch (e) { }
             showToast('✅ 注册成功，已登录 ' + u.username);
+            // 新注册账号: 手游播放一次新手教程 (按账号记录, 已看过不再播)
+            try {
+                if (document.body && document.body.getAttribute('data-device') === 'touch') {
+                    var _tutKey = 'shooter_tut_done_' + u.id;
+                    if (!localStorage.getItem(_tutKey)) {
+                        setTimeout(function () { try { showTutorial(u.id); } catch (e) { } }, 800);
+                    }
+                }
+            } catch (e) { }
             syncFromAccount(u);
             return track('register', '').then(function () {
                 return track('login', '').then(function () {
