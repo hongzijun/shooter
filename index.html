@@ -13252,7 +13252,8 @@ body.low-perf #menu::before { filter: none; opacity: .18; }
                     '修复存档计时不独立：俯视枪战「新开一局」原先没有清零计时，会继承上一局的游玩时长；双人存档继续时也没有恢复自己的计时。现在每局计时 / 死亡数完全按存档独立，存档列表里每条也会显示各自的游玩时长',
                     '能量位移调整：位移距离缩短 30%（300→210），速度保持不变，因此闪避 / 无敌时长同步缩短（250→175ms），消耗仍是 30 点能量',
                     '俯视 AI 闪避判定整体收紧一点：响应窗口 0.3→0.23 秒、原地威胁门槛 0.015→0.022、位移门槛 0.02→0.03 且要求走位后仍剩六成伤害，残血脱战改为血量 <30% 且距离 <190；仍保留追击 / 回圈位移',
-                    '手游按键默认透明度从 90% 调整为 70%（不透明度 0.1→0.3），设置里的透明度滑杆默认也显示 70%，旧键位存档会自动迁移'
+                    '手游按键默认透明度从 90% 调整为 70%（不透明度 0.1→0.3），设置里的透明度滑杆默认也显示 70%，旧键位存档会自动迁移',
+                    '电脑端新增「自动瞄准」开关（设置面板，仅电脑端显示）：开启后俯视枪战会自动锁定敌人并按子弹速度预判走位提前量，2D 枪战会自动保持面向敌人；开关状态跟随账号同步，默认关闭'
                 ]
             },
             {
@@ -14334,7 +14335,8 @@ body.low-perf #menu::before { filter: none; opacity: .18; }
             player._tdVX = player.x - px0;
             player._tdVY = player.y - py0;
             // 瞄准: 手机端智能锁定 (按子弹速度预判提前量), PC 端仍由鼠标决定
-            if (_isTouchNow && ai && ai.health > 0) {
+            // 手机端默认智能锁定; 电脑端由设置里的「自动瞄准」开关决定
+            if ((_isTouchNow || (window.pcAutoAimOn && window.pcAutoAimOn())) && ai && ai.health > 0) {
                 const _pw = player.weapon;
                 const _spd = ((_pw && _pw.speed) ? _pw.speed : 22) * (player.cardBulletSpeedMult || 1) * 0.8 * 0.7 * 60; // px/秒
                 const _rx = ai.x - player.x, _ry = ai.y - player.y;
@@ -16569,6 +16571,10 @@ body.low-perf #menu::before { filter: none; opacity: .18; }
                         fxEffectsTick(ai, now);
 
                         if (player && player.health > 0) player.update();
+                        // 电脑端自动瞄准: 横版自动保持面向敌人 (按 A/D 也不会背对)
+                        if (!player.isAI && ai && ai.health > 0 && window.pcAutoAimOn && window.pcAutoAimOn()) {
+                            player.facingRight = (ai.x >= player.x);
+                        }
                         if (ai && ai.health > 0) ai.update();
                         updateBullets(); updateParticles();
                         updateWaveCountdown();
@@ -17020,7 +17026,7 @@ body.low-perf #menu::before { filter: none; opacity: .18; }
     var clockStarted = false;
     var lastFlushAt = 0;
     // 账号数据: 键位 / 训练场数值 / 成就 / 多槽存档 (跟随账号, 不再只存本机)
-    var SYNC_KEYS = ['shooter_touch_cfg_v1', 'shooter_train_tune_v1', 'shooter_td_tune_v1', 'shooter_td_env_v1', 'gunfight_achievements', 'gunfight_save_index'];
+    var SYNC_KEYS = ['shooter_touch_cfg_v1', 'shooter_train_tune_v1', 'shooter_td_tune_v1', 'shooter_td_env_v1', 'shooter_pc_autoaim_v1', 'gunfight_achievements', 'gunfight_save_index'];
     var SYNC_PREFIX = 'gunfight_save_';
     var lastSyncSnap = '';
     var autoSyncStarted = false;
@@ -17775,6 +17781,21 @@ body.low-perf #menu::before { filter: none; opacity: .18; }
     }
 
     // ===================== 设置视图 =====================
+    // ===== 电脑端自动瞄准 (设置开关, 仅 PC 显示) =====
+    var PC_AIM_KEY = 'shooter_pc_autoaim_v1';
+    var _pcAimCache = false, _pcAimAt = 0;
+    function pcAutoAimOn() {
+        var n = (window.performance && performance.now) ? performance.now() : Date.now();
+        if (n - _pcAimAt > 1200) {
+            _pcAimAt = n;
+            try { _pcAimCache = localStorage.getItem(PC_AIM_KEY) === '1'; } catch (e) { _pcAimCache = false; }
+        }
+        return _pcAimCache;
+    }
+    // 暴露到 window: 游戏循环与设置面板处于不同闭包, 必须走 window 调用
+    window.pcAutoAimOn = pcAutoAimOn;
+    window.PC_AIM_KEY = PC_AIM_KEY;
+
     function openSettingsHub() {
         var isTouch = (document.body.getAttribute('data-device') === 'touch');
         var h = '';
@@ -17783,12 +17804,25 @@ body.low-perf #menu::before { filter: none; opacity: .18; }
         if (isTouch) {
             h += '<div class="cm-setting-row"><div><div class="cm-setting-main">🎮 按键设置</div><div class="cm-setting-sub">调整移动盘 / 发射 / 位移按钮的位置、大小与透明度</div></div><button class="cm-btn green" id="cmTouchSet">打开</button></div>';
         }
+        if (!isTouch) {
+            var _aimOn = pcAutoAimOn();
+            h += '<div class="cm-setting-row"><div><div class="cm-setting-main">🎯 自动瞄准（仅电脑端）</div><div class="cm-setting-sub">开启后准星自动锁定敌人；俯视枪战会按子弹速度预判走位提前量</div></div><button class="cm-btn ' + (_aimOn ? 'green' : 'gray') + '" id="cmSetAutoAim">' + (_aimOn ? '已开启' : '已关闭') + '</button></div>';
+        }
         h += '<div class="cm-setting-row"><div><div class="cm-setting-main">☁ 云端服务</div><div class="cm-setting-sub">' + (cloudOn() ? '已配置 Supabase，账号/榜单/留言全服同步' : '未配置，当前为本地模式（数据仅本机）') + '</div></div></div>';
         h += '<details style="margin-top:14px"><summary style="cursor:pointer;color:#9fc0ff;font-size:12px;">建表 SQL（管理员配置用）</summary>' +
             '<textarea class="cm-sql" readonly style="height:230px;margin-top:8px;">' + esc(SQL_TEXT) + '</textarea></details>';
         openModal('⚙ 设置', h);
         bind('cmSetLogin', 'click', openAccount);
         bind('cmSetLogout', 'click', doLogout);
+        bind('cmSetAutoAim', 'click', function () {
+            var _on = !pcAutoAimOn();
+            try { localStorage.setItem(PC_AIM_KEY, _on ? '1' : '0'); } catch (e) { }
+            _pcAimAt = 0;   // 立刻重读缓存
+            _pcAimCache = _on;
+            var _b = document.getElementById('cmSetAutoAim');
+            if (_b) { _b.textContent = _on ? '已开启' : '已关闭'; _b.className = 'cm-btn ' + (_on ? 'green' : 'gray'); }
+            showToast(_on ? '🎯 自动瞄准：已开启' : '自动瞄准：已关闭');
+        });
         bind('cmTouchSet', 'click', function () {
             closeModal();
             try { openTouchSettings(); } catch (e) { }
