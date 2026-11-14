@@ -1941,7 +1941,6 @@ body[data-device="touch"] #killFeedPanel,
 body[data-device="touch"] #livesInfo,
 body[data-device="touch"] #topStatusPanel,
 body[data-device="touch"] #statusPanel,
-body[data-device="touch"] #unifiedStatusPanel,
 body[data-device="touch"] #cmRunTimer {
     backdrop-filter: none !important;
     -webkit-backdrop-filter: none !important;
@@ -3241,6 +3240,34 @@ body.low-perf #menu::before { filter: none; opacity: .18; }
             return Math.max(0.62, Math.min(1.0, raw));
         }
 
+        /* HUD 上下排布: #hudFullStatus 跟随左上血量面板的实际底边, 不再两个面板都写死 top:10px 叠在一起;
+           训练场则让「训练调试」入口跟随血量面板底边, 避免压住 HUD */
+        function layoutHudPanels() {
+            const hud = document.getElementById('hud');
+            if (!hud) return;
+            const r = hud.getBoundingClientRect();
+            if (!r.height || !r.width) return;
+            const top = Math.max(8, Math.round(r.bottom + 8));
+            if (gameState === 'training' || gameState === 'tdtraining') {
+                const tt = document.getElementById('trainToggle');
+                if (tt && tt.style.display !== 'none' && tt._layTop !== top) {
+                    tt._layTop = top;
+                    tt.style.top = top + 'px';
+                }
+                return;
+            }
+            if (gameState !== 'playing' && gameState !== 'topdown') return;
+            const full = document.getElementById('hudFullStatus');
+            if (!full) return;
+            const left = Math.max(8, Math.round(r.left));
+            if (full._layTop !== top || full._layLeft !== left) {
+                full._layTop = top;
+                full._layLeft = left;
+                full.style.top = top + 'px';
+                full.style.left = left + 'px';
+            }
+        }
+
         function _scalePanel(id, scale, origin, keepCenterX) {
             const el = document.getElementById(id);
             if (!el) return;
@@ -3262,6 +3289,7 @@ body.low-perf #menu::before { filter: none; opacity: .18; }
             _scalePanel('score', s, '100% 0', false);
             _scalePanel('topStatusPanel', s, '50% 0', true);
             _scalePanel('controls', s, '50% 100%', true);
+            try { layoutHudPanels(); } catch (e) { }
         }
 
         /* ===== 启动: 设备标记 / 绑定 / 配置应用 / 兼容性修复 ===== */
@@ -12813,7 +12841,8 @@ body.low-perf #menu::before { filter: none; opacity: .18; }
                     '进一步减负：手机端 HUD 面板不再实时模糊背景（保留渐变/霓虹边框与发光，观感接近），HUD 数值仅在变化时写 DOM，省掉每帧无效排版',
                     '新增自适应画质：手机端连续 3 秒低于 26 帧自动进入低性能模式（关闭模糊/重阴影/部分动效），帧率恢复到 52 以上并持续 8 秒后自动还原',
                     '顶部状态面板（横版 v2 与俯视）在没有任何状态时整块隐藏，不再显示「无状态效果」的空框；有灼烧 / 易伤 / 换弹等状态时才出现，且出现位置改为跟随 HUD 缩放比例',
-                    '手游固定像素适配：毒圈进度条（宽度 / 厚度 / 纵向位置 / 字号）改为按画布尺寸比例取值，竖屏与横屏都不再压住移动盘和位移键；右上「本局时长」改为跟随分数面板实时定位，屏幕旋转、缩放后不再重叠或悬空'
+                    '手游固定像素适配：毒圈进度条（宽度 / 厚度 / 纵向位置 / 字号）改为按画布尺寸比例取值，竖屏与横屏都不再压住移动盘和位移键；右上「本局时长」改为跟随分数面板实时定位，屏幕旋转、缩放后不再重叠或悬空',
+                    '修复左上角两块 HUD（血量面板与武器 / 状态面板）都用固定坐标、互相叠在一起看不清的问题：武器状态面板现在自动排在血量面板正下方并在缩放 / 屏幕旋转后重新对齐；训练场的「训练调试」入口同样自动避开血量面板'
                 ]
             },
             {
@@ -14760,8 +14789,8 @@ body.low-perf #menu::before { filter: none; opacity: .18; }
             const _hfs = document.getElementById('hudFullStatus');
             if (_hfs) {
                 if (!TD._hfsPos) TD._hfsPos = { top: _hfs.style.top, left: _hfs.style.left };
-                var _mobHfs = (document.body.getAttribute('data-device') === 'touch');
-                _hfs.style.top = _mobHfs ? '200px' : '224px'; _hfs.style.left = '12px';
+                // 位置统一由 layoutHudPanels() 按 #hud 实际底边计算 (原先写死 手机 200 / 桌面 224)
+                try { layoutHudPanels(); } catch (e) { }
             }
             const _li = document.getElementById('livesInfo');
             if (_li) { if (!TD._livesPos) TD._livesPos = _li.style.top; _li.style.top = '150px'; }
@@ -16360,6 +16389,11 @@ body.low-perf #menu::before { filter: none; opacity: .18; }
 
             // 触控层显隐: 仅游戏进行中且无暂停/选卡/奖励/属性面板时显示
             updateTouchLayerVisibility();
+            // HUD 叠放校正 (低频): 状态效果展开 / 屏幕旋转后重新对齐
+            if (!window.__hudLayAt || performance.now() - window.__hudLayAt > 500) {
+                window.__hudLayAt = performance.now();
+                try { layoutHudPanels(); } catch (e) { }
+            }
 
             requestAnimationFrame(gameLoop);
             keysJustPressed = {};
