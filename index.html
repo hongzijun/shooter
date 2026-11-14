@@ -12093,6 +12093,7 @@ body.low-perf #menu::before { filter: none; opacity: .18; }
 
         function openStatPanelFromTrain() {
             statPanelOpen = true;
+            window.__statRefreshAt = Date.now();
             const sp = document.getElementById('statPanel');
             if (sp) sp.style.display = 'block';
             renderStatPanel();
@@ -13269,7 +13270,9 @@ body.low-perf #menu::before { filter: none; opacity: .18; }
                     '「每波毒圈减疗」改为双方各自可调：训练场数值面板的人物 / AI 页签各新增「每波毒圈减疗(%)」（默认 15%），每次缩圈按各自的数值累加、互不影响；环境设置里重复的那一项已移除，属性面板说明同步为「每波毒圈累加」',
                     '相位臂甲免疫限制：现在只抵挡物理伤害，法术 / 真伤 / 特效伤害不再被免疫（卡牌描述同步）；护盾获取本来就按累计减疗比例削减',
                     '修复减疗累计「重新进场归零」：掉一条命复活时只清空每秒物攻加成，保留每波毒圈累计的减疗；只有一整波命数打完（新一波）、训练场整套重置或横版击杀时才连减疗一起清零',
-                    '减疗累计上限由 95% 下调为 90%（治疗 / 吸血 / 护盾获取统一按 90% 封顶），属性面板说明同步'
+                    '减疗累计上限由 95% 下调为 90%（治疗 / 吸血 / 护盾获取统一按 90% 封顶），属性面板说明同步',
+                    '修复属性面板「减疗(对敌)」停留在 0 不更新的问题：面板打开期间每 5 秒自动刷新一次动态数值（减疗 / 每秒物攻累计等），即使当前为 0 也会及时同步；正在输入倍率时不会打断输入',
+                    '减疗累计改为真正跨波次保留：进入新一波只清空「每秒物攻加成」，毒圈累计的减疗继续保留并继续累加（上限 90%），继续存档 / 重进后也保持，不再回到 0'
                 ]
             },
             {
@@ -14781,7 +14784,8 @@ body.low-perf #menu::before { filter: none; opacity: .18; }
                         wave++;
                         try { resetTdZone(); } catch (e) { }   // 一整波命数打完, 新一波才重置毒圈
                         try { growEntityPerRound(player, 'mine', false); } catch (e) { }
-                        try { resetAtkPerSecBonus(); } catch (e) { }
+                        // 新一波只清每秒物攻, 减疗继续跨波累计 (上限 90%), 不会在进场/换波时归零
+                        try { resetAtkPerSecBonus(true); } catch (e) { }
                         ai.lives = CONFIG.MAX_LIVES;
                         if (wave > 1) setTimeout(function () { showWaveCountdown(wave, wave % 5 === 0); }, 500);
                         setTimeout(function () { if (gameState === 'topdown') openDraft('wave'); }, 1000);
@@ -17553,6 +17557,17 @@ body.low-perf #menu::before { filter: none; opacity: .18; }
             // 单局计时: 仅正式战斗且未暂停/选卡/面板时累计
             if ((g === 'playing' || g === 'topdown') && !isPaused && !isDrafting && !isAwardShowing && !statPanelOpen) {
                 try { runSeconds++; } catch (e) { }
+            }
+            // 属性面板打开时每 5 秒刷新一次动态数值 (减疗 / 物攻累计 / 生命等), 0 也能及时更新;
+            // 正在输入倍率时不打断输入框
+            if (statPanelOpen && Date.now() - (window.__statRefreshAt || 0) > 5000) {
+                window.__statRefreshAt = Date.now();
+                try {
+                    var _sp = document.getElementById('statPanel');
+                    var _ae = document.activeElement;
+                    var _editing = !!(_sp && _ae && _sp.contains(_ae) && (_ae.tagName === 'INPUT' || _ae.tagName === 'SELECT' || _ae.tagName === 'TEXTAREA'));
+                    if (!_editing) renderStatPanel();
+                } catch (e) { }
             }
             checkGameover();
         }, 1000);
