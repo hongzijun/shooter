@@ -1370,7 +1370,7 @@
            ================================================================== */
         :root {
             --ui-scale: 1;
-            --touch-opacity: 0.1;
+            --touch-opacity: 0.3;
             --touch-scale: 1;
             --move-scale: 1;
             --fire-scale: 1;
@@ -2634,7 +2634,7 @@ body.low-perf #menu::before { filter: none; opacity: .18; }
                     <button id="touchSettingsClose" type="button">×</button>
                 </div>
                 <div class="tsc-tip">拖动圆点调整位置 · 当前编辑: <span id="touchSettingsTargetLabel">移动盘</span></div>
-                <div class="tsc-row"><label>透明度</label><input id="touchOpacityRange" type="range" min="0" max="100" step="1" value="90"><span id="touchOpacityVal">90%</span></div>
+                <div class="tsc-row"><label>透明度</label><input id="touchOpacityRange" type="range" min="0" max="100" step="1" value="70"><span id="touchOpacityVal">70%</span></div>
                 <div class="tsc-row"><label>大小</label><input id="touchSizeRange" type="range" min="70" max="160" step="1" value="100"><span id="touchSizeVal">100%</span></div>
                 <div class="tsc-row"><label>X 位置</label><input id="touchXRange" type="range" min="0" max="100" step="1" value="17"><span id="touchXVal">17%</span></div>
                 <div class="tsc-row"><label>Y 位置</label><input id="touchYRange" type="range" min="0" max="100" step="1" value="80"><span id="touchYVal">80%</span></div>
@@ -2874,8 +2874,8 @@ body.low-perf #menu::before { filter: none; opacity: .18; }
 
         const TOUCH_CFG_KEY = 'shooter_touch_cfg_v1';
         const TOUCH_DEFAULT_CFG = {
-            version: 2,
-            opacity: 0.1,          // 实际不透明度: 0.1 = 90% 透明 (设置里的 0% = 不透明)
+            version: 3,
+            opacity: 0.3,          // 实际不透明度: 0.3 = 70% 透明 (设置里的 0% = 不透明)
             scale: 1,                       // legacy 顶层缩放, 仅作旧存档 fallback
             move: { x: 0.17, y: 0.84, scale: 1 },
             fire: { x: 0.84, y: 0.30, scale: 1 },
@@ -2899,9 +2899,9 @@ body.low-perf #menu::before { filter: none; opacity: .18; }
             const legacyScale = clampNumber(src.scale, 0.7, 1.6, TOUCH_DEFAULT_CFG.scale);
             const _ver = Number(src.version) || 1;
             return {
-                version: 2,
-                // 旧存档(version<2)统一迁移到新的默认「90% 透明」; 新存档保留玩家自己调的值
-                opacity: (_ver < 2) ? TOUCH_DEFAULT_CFG.opacity : clampNumber(src.opacity, 0, 1, TOUCH_DEFAULT_CFG.opacity),
+                version: 3,
+                // 旧存档(version<3)统一迁移到新的默认「70% 透明」; 新存档保留玩家自己调的值
+                opacity: (_ver < 3) ? TOUCH_DEFAULT_CFG.opacity : clampNumber(src.opacity, 0, 1, TOUCH_DEFAULT_CFG.opacity),
                 scale: legacyScale,
                 move: _normTouchCtrl(src.move, TOUCH_DEFAULT_CFG.move, legacyScale),
                 fire: _normTouchCtrl(src.fire, TOUCH_DEFAULT_CFG.fire, legacyScale),
@@ -13249,7 +13249,10 @@ body.low-perf #menu::before { filter: none; opacity: .18; }
                     '手游新增底部「物品栏」换枪条（参考 Minecraft 快捷栏）：屏幕最下方 6 格对应 6 把武器，点哪格换哪把、左右滑动也能连续切换，当前武器金色高亮；暂停 / 属性键移到右侧中部给物品栏让位',
                     '手游武器轮盘从 180° 半环升级为 360° 全环：6 把武器按 60° 平均分布，按住跳跃键向左滑展开后，手指指向任意方向都能切到对应武器',
                     '手游新注册账号会播放一次「新手教程」（视频样式，可跳过 / 上一步 / 下一步）：依次讲解移动盘、开火、跳跃与能量位移、底部物品栏换枪、360° 轮盘换枪以及顶部毒圈 / 生命、左上血量、右上分数',
-                    '修复存档计时不独立：俯视枪战「新开一局」原先没有清零计时，会继承上一局的游玩时长；双人存档继续时也没有恢复自己的计时。现在每局计时 / 死亡数完全按存档独立，存档列表里每条也会显示各自的游玩时长'
+                    '修复存档计时不独立：俯视枪战「新开一局」原先没有清零计时，会继承上一局的游玩时长；双人存档继续时也没有恢复自己的计时。现在每局计时 / 死亡数完全按存档独立，存档列表里每条也会显示各自的游玩时长',
+                    '能量位移调整：位移距离缩短 30%（300→210），速度保持不变，因此闪避 / 无敌时长同步缩短（250→175ms），消耗仍是 30 点能量',
+                    '俯视 AI 闪避判定整体收紧一点：响应窗口 0.3→0.23 秒、原地威胁门槛 0.015→0.022、位移门槛 0.02→0.03 且要求走位后仍剩六成伤害，残血脱战改为血量 <30% 且距离 <190；仍保留追击 / 回圈位移',
+                    '手游按键默认透明度从 90% 调整为 70%（不透明度 0.1→0.3），设置里的透明度滑杆默认也显示 70%，旧键位存档会自动迁移'
                 ]
             },
             {
@@ -13838,7 +13841,7 @@ body.low-perf #menu::before { filter: none; opacity: .18; }
             playerSpeed: 5.76, aiSpeed: 5.28,   // 基础上调 60%
             radius: 22,
             energyMax: 1000, regen: 30,
-            dashCost: 30, dashDist: 300, dashMs: 250,
+            dashCost: 30, dashDist: 210, dashMs: 175,   // 距离 300→210 (-30%); 速度保持 1200px/s, 无敌/闪避时长 250→175ms
             mouseX: 0, mouseY: 0,
             fireHeld: false,
             keys: Object.create(null),
@@ -14456,7 +14459,7 @@ body.low-perf #menu::before { filter: none; opacity: .18; }
                     if (t < urgentT) urgentT = t;
                 }
             }
-            return { level: standRisk, walkRisk: bestRisk, dirX: Math.cos(bestDir), dirY: Math.sin(bestDir), urgent: urgentT <= 18, urgentT: urgentT };
+            return { level: standRisk, walkRisk: bestRisk, dirX: Math.cos(bestDir), dirY: Math.sin(bestDir), urgent: urgentT <= 14, urgentT: urgentT };
         }
 
         function tdAIThink(now) {
@@ -14503,10 +14506,10 @@ body.low-perf #menu::before { filter: none; opacity: .18; }
             const ideal = (TD_IDEAL[tdWeaponKey(ai)] || 380) * 0.86;
             const nx = dx / dist, ny = dy / dist;
             // 进攻优先: 有威胁才转入躲避 (阈值下调, 小口径子弹也会反应)
-            if (threat.level >= 0.015 || threat.urgent) {
+            if (threat.level >= 0.022 || threat.urgent) {
                 mx = threat.dirX; my = threat.dirY;
-                // 保命位移: 0.3 秒内必中, 或走位后仍要吃掉一半以上伤害
-                if (_canDash && (threat.urgent || (threat.level > 0.02 && threat.walkRisk > threat.level * 0.55))) {
+                // 保命位移: 约 0.23 秒内必中, 或走位后仍要吃掉六成以上伤害 (阈值较之前略高, 不会轻易交位移)
+                if (_canDash && (threat.urgent || (threat.level > 0.03 && threat.walkRisk > threat.level * 0.62))) {
                     _wantDash = true; _dashX = threat.dirX; _dashY = threat.dirY;
                 }
             } else {
@@ -14526,7 +14529,7 @@ body.low-perf #menu::before { filter: none; opacity: .18; }
                 }
             }
             // 残血脱战: 血量 < 35% 且被贴脸, 向反方向位移拉开距离
-            if (!_wantDash && _canDash && (ai.health / Math.max(1, ai.maxHealth)) < 0.35 && dist < 210) {
+            if (!_wantDash && _canDash && (ai.health / Math.max(1, ai.maxHealth)) < 0.30 && dist < 190) {
                 _wantDash = true; _dashX = -dx / dist; _dashY = -dy / dist;
             }
             // 圈外回圈: 已经明显在圈外才花位移 (圈内贴边只靠走位)
