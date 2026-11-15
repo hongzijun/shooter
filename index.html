@@ -274,47 +274,153 @@
         #tutPrev { background: rgba(255, 255, 255, .08); color: #a9c1e6; border: 1px solid rgba(120, 170, 255, .28) !important; }
         #tutNext { background: linear-gradient(45deg, #2ed573, #1e90ff); color: #fff; }
 
-        /* ---- 底部物品栏式换枪条 (手游) ---- */
+        /* ---- 底部物品栏 (Minecraft 快捷栏): 9 格透明方框 ---- */
         #tdHotbar {
             position: fixed;
             left: 50%;
-            bottom: calc(6px + var(--safe-bottom));
+            bottom: calc(8px + var(--safe-bottom));
             transform: translateX(-50%);
-            z-index: 720;
+            z-index: 730;
             display: none;
-            gap: 4px;
-            padding: 4px;
-            border-radius: 10px;
-            background: rgba(8, 12, 24, .58);
-            border: 1px solid rgba(120, 210, 255, .35);
-            box-shadow: 0 6px 18px rgba(0, 0, 0, .45);
+            align-items: flex-end;
+            gap: 8px;
+            padding: 0;
+            background: none;
+            border: none;
+            box-shadow: none;
             touch-action: none;
             user-select: none;
             -webkit-user-select: none;
             -webkit-tap-highlight-color: transparent;
         }
+        #tdHotbar .hb-slots { display: flex; gap: 4px; }
         #tdHotbar .hb-slot {
-            width: clamp(38px, 12vw, 52px);
-            height: clamp(38px, 12vw, 52px);
-            border-radius: 8px;
+            position: relative;
+            width: clamp(36px, 11vw, 50px);
+            height: clamp(36px, 11vw, 50px);
+            border-radius: 3px;
             display: flex;
-            flex-direction: column;
             align-items: center;
             justify-content: center;
-            gap: 1px;
-            background: rgba(20, 32, 60, .72);
-            border: 1.5px solid rgba(120, 170, 255, .35);
-            color: #cfe0ff;
-            transition: transform .12s ease, border-color .12s ease, background .12s ease;
+            background: rgba(255, 255, 255, .05);
+            border: 2px solid rgba(255, 255, 255, .55);
+            color: #fff;
+            box-shadow: inset 0 0 10px rgba(0, 0, 0, .35);
+            transition: transform .1s ease, border-color .1s ease, box-shadow .1s ease, background .1s ease;
         }
-        #tdHotbar .hb-slot b { font-size: clamp(14px, 4.2vw, 19px); line-height: 1; }
-        #tdHotbar .hb-slot i { font-size: clamp(8px, 2.2vw, 10px); font-style: normal; opacity: .85; }
+        #tdHotbar .hb-slot .hb-no {
+            position: absolute;
+            top: 1px;
+            left: 3px;
+            font-size: 9px;
+            line-height: 1;
+            opacity: .7;
+            padding: 0;
+            font-weight: bold;
+            background: none;
+        }
+        #tdHotbar .hb-slot .hb-ic { font-size: clamp(9px, 2.7vw, 12px); line-height: 1; font-weight: bold; letter-spacing: .5px; }
         #tdHotbar .hb-slot.on {
-            background: linear-gradient(160deg, rgba(255, 215, 0, .95), rgba(255, 159, 67, .9));
-            border-color: #ffe680;
-            color: #1a1200;
-            transform: translateY(-4px) scale(1.06);
-            box-shadow: 0 0 14px rgba(255, 215, 0, .7);
+            border-color: #fff;
+            background: rgba(255, 255, 255, .16);
+            transform: translateY(-3px);
+            box-shadow: 0 0 0 2px rgba(255, 255, 255, .35), 0 0 16px rgba(255, 255, 255, .5), inset 0 0 12px rgba(255, 255, 255, .18);
+        }
+        #tdHotbar .hb-more {
+            width: clamp(36px, 11vw, 50px);
+            height: clamp(36px, 11vw, 50px);
+            border-radius: 4px;
+            background: rgba(150, 150, 150, .85);
+            border: 2px solid rgba(255, 255, 255, .75);
+            color: #2b2b2b;
+            font-size: 18px;
+            font-weight: bold;
+            line-height: 1;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            letter-spacing: 1px;
+            cursor: pointer;
+        }
+        #tdHotbar .hb-more:active { background: rgba(255, 255, 255, .92); }
+
+        /* ---- 背包界面 (Minecraft 风格) ---- */
+        #bagPanel {
+            position: fixed;
+            inset: 0;
+            z-index: 950;
+            display: none;
+            align-items: center;
+            justify-content: center;
+            background: rgba(0, 0, 0, .5);
+            touch-action: none;
+            user-select: none;
+            -webkit-user-select: none;
+            -webkit-tap-highlight-color: transparent;
+        }
+        #bagPanel .bp-win {
+            width: min(94vw, 560px);
+            background: #c6c6c6;
+            border: 2px solid #000;
+            box-shadow: inset -3px -3px 0 #555, inset 3px 3px 0 #fff;
+            padding: 12px 14px 14px;
+            color: #3a3a3a;
+            font-family: 'Consolas', 'Courier New', monospace;
+        }
+        #bagPanel .bp-head {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            margin-bottom: 10px;
+        }
+        #bagPanel .bp-title { font-size: 16px; font-weight: bold; color: #3a3a3a; letter-spacing: 1px; }
+        #bagPanel .bp-close {
+            width: 26px;
+            height: 26px;
+            padding: 0;
+            border: none;
+            cursor: pointer;
+            background: #8b8b8b;
+            color: #fff;
+            font-size: 16px;
+            font-weight: bold;
+            line-height: 1;
+            box-shadow: inset -2px -2px 0 #373737, inset 2px 2px 0 #fff;
+        }
+        #bagPanel .bp-grid { display: grid; grid-template-columns: repeat(9, 1fr); gap: 4px; }
+        #bagPanel .bp-grid.main { margin-bottom: 14px; }
+        #bagPanel .bp-slot {
+            position: relative;
+            aspect-ratio: 1 / 1;
+            background: #8b8b8b;
+            box-shadow: inset -2px -2px 0 #fff, inset 2px 2px 0 #373737;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: clamp(9px, 2.6vw, 12px);
+            font-weight: bold;
+            color: #2b2b2b;
+            cursor: pointer;
+            overflow: hidden;
+        }
+        #bagPanel .bp-slot:hover { background: #9d9d9d; }
+        #bagPanel .bp-slot.on { box-shadow: inset -2px -2px 0 #fff, inset 2px 2px 0 #373737, 0 0 0 2px #fff; }
+        #bagPanel .bp-slot .bp-slot-no { position: absolute; bottom: 1px; right: 3px; font-size: 8px; color: #ddd; font-weight: normal; }
+        #bagPanel .bp-tip { margin-top: 10px; font-size: 11px; color: #4a4a4a; line-height: 1.6; }
+        #bagCursor {
+            position: fixed;
+            z-index: 960;
+            display: none;
+            width: 40px;
+            height: 40px;
+            margin: -20px 0 0 -20px;
+            pointer-events: none;
+            font-size: 11px;
+            font-weight: bold;
+            color: #fff;
+            align-items: center;
+            justify-content: center;
+            text-shadow: 0 0 4px #000, 0 2px 4px #000;
         }
 
         /* ---- 毒圈倒计时条 (顶部居中) ---- */
@@ -1010,7 +1116,7 @@
 
         #controls {
             position: absolute;
-            bottom: 12px;
+            bottom: 74px;
             left: 50%;
             transform: translateX(-50%);
             background: var(--panel);
@@ -2508,8 +2614,8 @@ body.low-perf #menu::before { filter: none; opacity: .18; }
                 <div><span class="key">W</span> 跳跃(二段跳)</div>
                 <div><span class="key">空格</span> 射击</div>
                 <div><span class="key">R</span> 换弹</div>
-                <div><span class="key">E</span> 战刃</div>
-                <div><span class="key">1-5</span> 武器</div>
+                <div><span class="key">1-9</span> 物品栏选格</div>
+                <div><span class="key">···</span> 背包</div>
             </div>
 
             <div id="diagPanel" style="display:none;position:absolute;top:8px;right:8px;width:340px;max-height:calc(100vh - 20px);overflow:hidden;background:rgba(12,12,20,0.10);border:1px solid #4f8eff;border-radius:10px;font-family:'Consolas','Courier New',monospace;font-size:10.5px;color:#ccc;z-index:1000;backdrop-filter:blur(14px);pointer-events:auto;">
@@ -2603,15 +2709,25 @@ body.low-perf #menu::before { filter: none; opacity: .18; }
             </div>
         </div>
 
-        <!-- 手游: 屏幕最下方物品栏式换枪条 (类似 Minecraft 快捷栏, 6 格 6 把武器) -->
+        <!-- 底部物品栏 (Minecraft 快捷栏): 9 格透明方框 + 背包按钮 -->
         <div id="tdHotbar">
-            <div class="hb-slot" data-weapon="1"><b>1</b><i>手枪</i></div>
-            <div class="hb-slot" data-weapon="2"><b>2</b><i>步枪</i></div>
-            <div class="hb-slot" data-weapon="3"><b>3</b><i>霰弹</i></div>
-            <div class="hb-slot" data-weapon="4"><b>4</b><i>冲锋</i></div>
-            <div class="hb-slot" data-weapon="5"><b>5</b><i>狙击</i></div>
-            <div class="hb-slot" data-weapon="6"><b>6</b><i>战刃</i></div>
+            <div class="hb-slots"></div>
+            <div class="hb-more" id="bagOpenBtn" title="打开背包">···</div>
         </div>
+
+        <!-- 背包界面 (Minecraft 风格: 3×9 主背包 + 1×9 快捷栏) -->
+        <div id="bagPanel">
+            <div class="bp-win">
+                <div class="bp-head">
+                    <span class="bp-title">背包</span>
+                    <button class="bp-close" id="bagCloseBtn" title="关闭">×</button>
+                </div>
+                <div class="bp-grid main" id="bagMainGrid"></div>
+                <div class="bp-grid hot" id="bagHotGrid"></div>
+                <div class="bp-tip">点击格子拾起物品，再点其他格子放下 / 交换；快捷栏就是外面那一行（1-9）。</div>
+            </div>
+        </div>
+        <div id="bagCursor"></div>
 
         <!-- 毒圈倒计时 (全端置顶, 与双方生命一列往下排) -->
         <div id="tdZoneBar">
@@ -3207,57 +3323,275 @@ body.low-perf #menu::before { filter: none; opacity: .18; }
             }
         }
 
-        // ===== 底部物品栏 (Minecraft 快捷栏风格): 点击 / 左右滑动切枪 =====
-        let _hbCurNo = '';
-        function _updateTdHotbar() {
-            const hb = document.getElementById('tdHotbar');
+        // ===== 背包 / 快捷栏 (Minecraft 风格) =====
+        // 27 格: 0-17 主背包 (3×9), 18-26 快捷栏 (外部最下面一行, 对应 1-9)
+        var BAG = {
+            key: 'shooter_bag_v1',
+            hotStart: 27,
+            size: 36,
+            slots: new Array(36).fill(null),
+            sel: 0,
+            open: false,
+            held: null,
+            _prevPaused: false,
+            _equippedFor: null,
+            _equippedSel: -1,
+            _built: false
+        };
+        var BAG_LABEL = { pistol: '手枪', rifle: '步枪', shotgun: '霰弹', smg: '冲锋', sniper: '狙击', sword: '战刃' };
+
+        function _bagDefaultSlots() {
+            var s = new Array(36).fill(null);
+            ['pistol', 'rifle', 'shotgun', 'smg', 'sniper', 'sword'].forEach(function (k, i) {
+                s[BAG.hotStart + i] = { type: 'weapon', key: k };
+            });
+            return s;
+        }
+        function _bagLoad() {
+            try {
+                var raw = localStorage.getItem(BAG.key);
+                if (!raw) { BAG.slots = _bagDefaultSlots(); BAG.sel = 0; return; }
+                var d = JSON.parse(raw);
+                var arr = (d && Array.isArray(d.slots)) ? d.slots : null;
+                if (!arr) { BAG.slots = _bagDefaultSlots(); BAG.sel = 0; return; }
+                BAG.slots = new Array(36).fill(null);
+                for (var i = 0; i < 36; i++) {
+                    var it = arr[i];
+                    if (it && it.type === 'weapon' && it.key) BAG.slots[i] = { type: 'weapon', key: String(it.key) };
+                }
+                BAG.sel = Math.max(0, Math.min(8, parseInt(d.sel, 10) || 0));
+            } catch (e) { BAG.slots = _bagDefaultSlots(); BAG.sel = 0; }
+        }
+        function _bagSave() {
+            try { localStorage.setItem(BAG.key, JSON.stringify({ v: 1, slots: BAG.slots, sel: BAG.sel })); } catch (e) { }
+        }
+        function _bagActivePlayer() {
+            try {
+                if (gameState === 'pvp' && typeof playerA !== 'undefined' && playerA) return playerA;
+                return (typeof player !== 'undefined') ? player : null;
+            } catch (e) { return null; }
+        }
+        function _bagIsHorizontal() {
+            return gameState === 'playing' || gameState === 'pvp' || gameState === 'training';
+        }
+        /** 把当前选中格同步到角色: 有武器则装备, 空格则进入空手 (不能开火 / 挥刀) */
+        function _bagEquipSelected() {
+            var p = _bagActivePlayer();
+            if (!p) return;
+            var it = BAG.slots[BAG.hotStart + BAG.sel];
+            if (it && it.type === 'weapon' && p.weapons && p.weapons[it.key]) {
+                p._bagEmptyHanded = false;
+                if (p.currentWeapon !== it.key) p.switchWeapon(it.key);
+            } else {
+                p._bagEmptyHanded = true;
+            }
+        }
+        function _bagSelect(i, silent) {
+            i = Math.max(0, Math.min(8, i | 0));
+            var changed = (i !== BAG.sel);
+            BAG.sel = i;
+            BAG._equippedSel = i;
+            _bagEquipSelected();
+            _bagRenderBar();
+            _bagRenderPanel();
+            if (changed && !silent) { try { GameAudio.play('pickup'); } catch (e) { } }
+            _bagSave();
+        }
+        /** 底部快捷栏渲染 (横版三模式显示) */
+        function _bagRenderBar() {
+            var hb = document.getElementById('tdHotbar');
             if (!hb) return;
-            const touch = document.body.getAttribute('data-device') === 'touch';
-            const inGame = touch && (gameState === 'playing' || gameState === 'pvp' || gameState === 'training' || gameState === 'topdown' || gameState === 'tdtraining');
-            const show = inGame && !isPaused && !isDrafting && !isAwardShowing && !statPanelOpen && !_touchSettingsOpen;
-            const want = show ? 'flex' : 'none';
+            if (!BAG._built) {
+                var wrap = hb.querySelector('.hb-slots');
+                if (wrap) {
+                    var h = '';
+                    for (var i = 0; i < 9; i++) h += '<div class="hb-slot" data-slot="' + i + '"><span class="hb-no">' + (i + 1) + '</span><span class="hb-ic"></span></div>';
+                    wrap.innerHTML = h;
+                }
+                BAG._built = true;
+            }
+            var horizontal = _bagIsHorizontal();
+            if (horizontal) {
+                // 每帧校准: 重生 / 读档 / 换角色后自动回到背包选中格对应的武器 (空格 = 空手)
+                var p = _bagActivePlayer();
+                if (p && p.weapons) {
+                    var selIt = BAG.slots[BAG.hotStart + BAG.sel];
+                    if (selIt && selIt.type === 'weapon' && p.weapons[selIt.key]) {
+                        if (p._bagEmptyHanded) p._bagEmptyHanded = false;
+                        if (p.currentWeapon !== selIt.key) p.switchWeapon(selIt.key);
+                    } else if (!p._bagEmptyHanded) {
+                        p._bagEmptyHanded = true;
+                    }
+                }
+            }
+            var show = horizontal && !BAG.open && !isPaused && !isDrafting && !isAwardShowing && !statPanelOpen && !_touchSettingsOpen;
+            var want = show ? 'flex' : 'none';
             if (hb.style.display !== want) hb.style.display = want;
             if (!show) return;
-            let p = null;
-            try { p = (gameState === 'pvp' && typeof playerA !== 'undefined' && playerA) ? playerA : player; } catch (e) { p = null; }
-            const map = { pistol: '1', rifle: '2', shotgun: '3', smg: '4', sniper: '5', sword: '6' };
-            const no = map[(p && p.currentWeapon) || ''] || '';
-            if (no !== _hbCurNo) {
-                _hbCurNo = no;
-                hb.querySelectorAll('.hb-slot').forEach(function (el) {
-                    el.classList.toggle('on', el.getAttribute('data-weapon') === no);
-                });
+            var wrap2 = hb.querySelector('.hb-slots');
+            if (!wrap2) return;
+            for (var j = 0; j < wrap2.children.length; j++) {
+                var el = wrap2.children[j];
+                var it = BAG.slots[BAG.hotStart + j];
+                el.classList.toggle('on', j === BAG.sel);
+                var ic = el.querySelector('.hb-ic');
+                if (ic) ic.textContent = it ? (BAG_LABEL[it.key] || it.key) : '';
+                el.title = it ? (BAG_LABEL[it.key] || it.key) : '空';
             }
+        }
+        function _updateTdHotbar() { _bagRenderBar(); }
+
+        function _bagRenderPanel() {
+            var main = document.getElementById('bagMainGrid');
+            var hot = document.getElementById('bagHotGrid');
+            if (!main || !hot) return;
+            if (!main._built) {
+                var h1 = '', h2 = '';
+                for (var i = 0; i < 27; i++) h1 += '<div class="bp-slot" data-index="' + i + '"></div>';
+                for (var j = 0; j < 9; j++) h2 += '<div class="bp-slot" data-index="' + (BAG.hotStart + j) + '"><span class="bp-slot-no">' + (j + 1) + '</span></div>';
+                main.innerHTML = h1;
+                hot.innerHTML = h2;
+                main._built = true;
+            }
+            var grids = [main, hot];
+            for (var g = 0; g < grids.length; g++) {
+                var grid = grids[g];
+                for (var k = 0; k < grid.children.length; k++) {
+                    var el = grid.children[k];
+                    var idx = Number(el.getAttribute('data-index'));
+                    var it = BAG.slots[idx];
+                    var label = el.querySelector('.bp-item');
+                    if (!label) {
+                        label = document.createElement('span');
+                        label.className = 'bp-item';
+                        el.appendChild(label);
+                    }
+                    label.textContent = it ? (BAG_LABEL[it.key] || it.key) : '';
+                    el.classList.toggle('on', idx === BAG.hotStart + BAG.sel);
+                }
+            }
+        }
+        function _bagMoveCursor(e) {
+            var cur = document.getElementById('bagCursor');
+            if (!cur || !BAG.held || !e) return;
+            cur.style.left = Math.round(e.clientX) + 'px';
+            cur.style.top = Math.round(e.clientY) + 'px';
+        }
+        function _bagRenderCursor() {
+            var cur = document.getElementById('bagCursor');
+            if (!cur) return;
+            if (BAG.held) {
+                cur.style.display = 'flex';
+                cur.textContent = BAG_LABEL[BAG.held.key] || BAG.held.key;
+            } else {
+                cur.style.display = 'none';
+                cur.textContent = '';
+            }
+        }
+        function _bagClickSlot(i) {
+            if (i < 0 || i >= BAG.size) return;
+            var cur = BAG.slots[i];
+            if (!BAG.held) {
+                if (cur) { BAG.held = cur; BAG.slots[i] = null; }
+            } else {
+                BAG.slots[i] = BAG.held;
+                BAG.held = cur || null;
+            }
+            _bagRenderPanel();
+            _bagRenderCursor();
+            _bagEquipSelected();
+            _bagSave();
+            try { GameAudio.play('pickup'); } catch (e) { }
+        }
+        function _bagOpen() {
+            if (BAG.open || !_bagIsHorizontal()) return;
+            if (isDrafting || isAwardShowing) return;
+            BAG.open = true;
+            BAG._prevPaused = isPaused;
+            isPaused = true;   // 打开背包暂停游戏
+            try { clearTouchInputState(); } catch (e) { }
+            var pm = document.getElementById('pauseMenu');
+            if (pm) pm.style.display = 'none';
+            var panel = document.getElementById('bagPanel');
+            if (panel) panel.style.display = 'flex';
+            _bagRenderPanel();
+            _bagRenderBar();
+            _bagRenderCursor();
+            var cur = document.getElementById('bagCursor');
+            if (cur) {
+                cur.style.left = Math.round(window.innerWidth / 2) + 'px';
+                cur.style.top = Math.round(window.innerHeight / 2) + 'px';
+            }
+            try { updateTouchLayerVisibility(); } catch (e) { }
+        }
+        function _bagClose() {
+            if (!BAG.open) return;
+            if (BAG.held) {
+                var spot = -1;
+                for (var i = 0; i < BAG.size; i++) { if (!BAG.slots[i]) { spot = i; break; } }
+                if (spot >= 0) { BAG.slots[spot] = BAG.held; }
+                BAG.held = null;
+            }
+            BAG.open = false;
+            var panel = document.getElementById('bagPanel');
+            if (panel) panel.style.display = 'none';
+            _bagRenderCursor();
+            isPaused = !!BAG._prevPaused;
+            if (isPaused) {
+                var pm = document.getElementById('pauseMenu');
+                if (pm) pm.style.display = 'flex';
+            }
+            _bagEquipSelected();
+            _bagRenderBar();
+            _bagSave();
+            try { updateTouchLayerVisibility(); } catch (e) { }
+        }
+        function _bagToggle() { if (BAG.open) _bagClose(); else _bagOpen(); }
+        function _bagReloadFromStorage() {
+            _bagLoad();
+            BAG._equippedFor = null;
+            BAG._equippedSel = -1;
+            _bagRenderBar();
+            _bagRenderPanel();
+            if (_bagIsHorizontal()) _bagEquipSelected();
         }
 
         function _bindTdHotbar() {
-            const hb = document.getElementById('tdHotbar');
-            if (!hb) return;
-            let drag = null;
-            hb.addEventListener('pointerdown', function (e) {
-                const slot = (e.target && e.target.closest) ? e.target.closest('.hb-slot') : null;
-                if (!slot) return;
+            _bagLoad();
+            _bagRenderBar();
+            var hb = document.getElementById('tdHotbar');
+            if (hb) {
+                hb.addEventListener('pointerdown', function (e) {
+                    var slot = (e.target && e.target.closest) ? e.target.closest('.hb-slot') : null;
+                    if (!slot) return;
+                    e.preventDefault();
+                    _bagSelect(Number(slot.getAttribute('data-slot')) || 0);
+                });
+            }
+            var more = document.getElementById('bagOpenBtn');
+            if (more) more.addEventListener('click', function (e) {
                 e.preventDefault();
-                const no = Number(slot.getAttribute('data-weapon')) || 0;
-                if (!no) return;
-                drag = { x: e.clientX, no: no };
-                _switchWeaponByWheel(no);
-                try { hb.setPointerCapture(e.pointerId); } catch (err) { }
+                e.stopPropagation();
+                _bagToggle();
             });
-            hb.addEventListener('pointermove', function (e) {
-                if (!drag) return;
-                const dx = e.clientX - drag.x;
-                if (Math.abs(dx) < 30) return;
-                let n = drag.no + (dx > 0 ? -1 : 1);
-                if (n < 1) n = 6;
-                if (n > 6) n = 1;
-                drag.no = n;
-                drag.x = e.clientX;
-                _switchWeaponByWheel(n);
+            var close = document.getElementById('bagCloseBtn');
+            if (close) close.addEventListener('click', function (e) {
+                e.preventDefault();
+                _bagClose();
             });
-            const end = function () { drag = null; };
-            hb.addEventListener('pointerup', end);
-            hb.addEventListener('pointercancel', end);
+            var panel = document.getElementById('bagPanel');
+            if (panel) {
+                panel.addEventListener('pointerdown', function (e) {
+                    _bagMoveCursor(e);
+                    var cell = (e.target && e.target.closest) ? e.target.closest('.bp-slot') : null;
+                    if (!cell) return;
+                    e.preventDefault();
+                    _bagClickSlot(Number(cell.getAttribute('data-index')));
+                });
+            }
+            document.addEventListener('pointermove', function (e) {
+                if (BAG.held) _bagMoveCursor(e);
+            });
         }
 
         function _highlightWheel(weapon) {
@@ -7328,6 +7662,7 @@ body.low-perf #menu::before { filter: none; opacity: .18; }
             }
 
             shoot(accuracyOverride) {
+                if (this._bagEmptyHanded) return;   // 背包选中空格: 空手状态不能发射
                 if (this.frozen || fxIsStunned(this)) return;   // 眩晕: 不能发射任何武器
                 const now = Date.now();
                 const w = this.weapon;
@@ -7460,6 +7795,7 @@ body.low-perf #menu::before { filter: none; opacity: .18; }
             }
 
             slashAttack() {
+                if (this._bagEmptyHanded) return;   // 背包选中空格: 空手状态不能挥刀
                 if (this.frozen || fxIsStunned(this)) return;   // 眩晕: 不能挥刀
                 const now = Date.now();
                 const w = this.weapon;
@@ -8076,17 +8412,7 @@ body.low-perf #menu::before { filter: none; opacity: .18; }
                         if (touchState.fire && this.weapon && !this.weapon.isMelee && this.weapon.ammo === 0 && !this.isReloading) this.reload();
                         if ((keys['r'] || keys['R']) && this.currentWeapon !== 'sword') this.reload();
 
-                        if (keys['e'] || keys['E']) {
-                            if (this.currentWeapon !== 'sword') {
-                                this._lastRangedWeapon = this.currentWeapon;
-                            }
-                            this.switchWeapon('sword');
-                        }
-                        if (keys['1']) this.switchWeapon('pistol');
-                        if (keys['2']) this.switchWeapon('rifle');
-                        if (keys['3']) this.switchWeapon('shotgun');
-                        if (keys['4']) this.switchWeapon('smg');
-                        if (keys['5']) this.switchWeapon('sniper');
+                        // 1-9 与 E 已交给「背包快捷栏」统一处理 (见全局 keydown)
                     }
                 } else if ((gameState === 'training' || gameState === 'tdtraining') && this.isAI) {
                     // 兜底: 仅当靶子未标记 _trainManual 时才会走到 (正常不会命中)
@@ -12920,7 +13246,7 @@ body.low-perf #menu::before { filter: none; opacity: .18; }
                     const wpn = player.weapon;
                     const _tdNoReload = (gameState === 'topdown' || gameState === 'tdtraining');
                     const ammoStr = wpn && wpn.isMelee ? '近战' : (wpn ? (_tdNoReload ? '∞' : wpn.ammo + '/' + (wpn.maxAmmo ?? '?')) : '?');
-                    hudWeaponEl.textContent = '🔫 ' + (player.currentWeapon || '?').toUpperCase() + ' ' + ammoStr;
+                    hudWeaponEl.textContent = player._bagEmptyHanded ? '✋ 空手（不可开火）' : ('🔫 ' + (player.currentWeapon || '?').toUpperCase() + ' ' + ammoStr);
                 }
                 if (hudHpEl) hudHpEl.textContent = '❤ ' + Math.ceil(player.health);
             }
@@ -12986,7 +13312,7 @@ body.low-perf #menu::before { filter: none; opacity: .18; }
             if (!w) return;
 
             const hfsW = _DOM.hfsWeapon;
-            if (hfsW) hfsW.textContent = '🔫 ' + w.name;
+            if (hfsW) hfsW.textContent = (typeof player !== 'undefined' && player && player._bagEmptyHanded) ? '✋ 空手（不可开火）' : ('🔫 ' + w.name);
 
             const ammoEl = _DOM.hfsAmmo;
             if (ammoEl) {
@@ -13227,6 +13553,11 @@ body.low-perf #menu::before { filter: none; opacity: .18; }
             {
                 date: '2026-11-15',
                 items: [
+                    '新增 Minecraft 式背包 / 快捷栏：屏幕最下方 9 格透明方框（右侧「···」打开背包），未打开时只显示这一行；方块端按 1-9、手机端点格子选中对应格，选中武器格立刻换枪，选中空格进入「空手」状态——开火键与近战都无法攻击，只能移动',
+                    '新增背包界面（参考 Minecraft）：上方 3×9 主背包 + 下方 1×9 快捷栏，打开时游戏暂停；点击格子拾起物品，再点其他格子放下或交换，关闭时手中物品自动放回空位；最下面一行就是外部快捷栏',
+                    '默认 6 把武器放在快捷栏第 1-6 格，可自由拖动调整；背包布局与当前选中格写入本地存档并随账号云同步，预留 27 格给后续商店购买 / 道具使用',
+                    '电脑端底部按键提示上移，改为「1-9 物品栏选格 / ··· 背包」；手机端原来的左右滑动换枪改为点格选中',
+
                     '修复进入「毒圈已缩到最小」的存档时减疗显示 0：读档会按该存档已缩圈次数 × 每波减疗回填双方减疗（例如缩了 6 次 = 90% 封顶），旧存档也生效',
                     '俯视能量位移取消内置冷却（原先成功位移后锁 350ms）：现在只要能量够、且上一次位移没结束，就能连续冲刺；触控位移键与空格一致',
                     '修复俯视训练场子弹 / 粒子会往下掉（有重力）的问题：俯视训练场现在和正式俯视一样无重力',
@@ -16578,7 +16909,7 @@ body.low-perf #menu::before { filter: none; opacity: .18; }
             const saNames = { ap: '穿甲弹', fire: '燃烧弹', ice: '冰冻弹' };
             if (wpnA) {
                 _DOM.pvpWeaponDisplayA.style.display = 'block';
-                _DOM.pvpWeaponNameA.textContent = (wpnA.isMelee ? '⚔️ ' : '🔫 ') + wpnA.name;
+                _DOM.pvpWeaponNameA.textContent = playerA._bagEmptyHanded ? '✋ 空手' : ((wpnA.isMelee ? '⚔️ ' : '🔫 ') + wpnA.name);
                 const pctA = wpnA.isMelee ? 100 : (wpnA.maxAmmo > 0 ? (wpnA.ammo / wpnA.maxAmmo * 100) : 100);
                 _DOM.pvpBulletFillA.style.width = pctA + '%';
                 _DOM.pvpAmmoTextA.textContent = wpnA.isMelee ? '— 近战' : wpnA.ammo + '/' + wpnA.maxAmmo;
@@ -17297,6 +17628,14 @@ body.low-perf #menu::before { filter: none; opacity: .18; }
                 if (e.key === '1' || e.key === '2' || e.key === '3') { selectCard(parseInt(e.key) - 1); e.preventDefault(); return; }
                 if (e.key === ' ') { confirmCard(); e.preventDefault(); return; }
             }
+            // === 背包打开时只响应 ESC, 其它按键不触发游戏操作 ===
+            if (BAG.open) { if (e.key === 'Escape') { _bagClose(); e.preventDefault(); } return; }
+            // === 1-9 选中快捷栏对应格 (横版三模式) ===
+            if (_bagIsHorizontal() && !statPanelOpen && /^[1-9]$/.test(e.key)) {
+                _bagSelect(parseInt(e.key, 10) - 1);
+                e.preventDefault();
+                return;
+            }
             // === Task 6: Tab 全属性面板 —— 游戏进行中按 Tab 打开 (暂停实体更新), 再按 Tab/Esc 关闭恢复 ===
             // 复用暂停机制但不弹暂停菜单; 与 isDrafting 互斥 (选卡期间不响应)
             if ((e.key === 'Tab' || (e.key === 'Escape' && statPanelOpen)) &&
@@ -17314,6 +17653,7 @@ body.low-perf #menu::before { filter: none; opacity: .18; }
 
             // 按 ESC 键切换暂停状态
             if (e.key === 'Escape' && (gameState === 'playing' || gameState === 'training' || gameState === 'pvp' || gameState === 'topdown' || gameState === 'tdtraining')) {
+                if (BAG.open) { _bagClose(); return; }
                 if (gameState === 'topdown' && TD.over) { tdExit(); return; }
                 if (isDrafting) return; // 选卡期间禁止 ESC 打断 (isDrafting 独立于 isPaused)
                 if (isAwardShowing) return; // AI 装备获取动画期间同样不响应 ESC
@@ -17469,7 +17809,7 @@ body.low-perf #menu::before { filter: none; opacity: .18; }
     var clockStarted = false;
     var lastFlushAt = 0;
     // 账号数据: 键位 / 训练场数值 / 成就 / 多槽存档 (跟随账号, 不再只存本机)
-    var SYNC_KEYS = ['shooter_touch_cfg_v1', 'shooter_train_tune_v1', 'shooter_td_tune_v1', 'shooter_td_env_v1', 'shooter_pc_autoaim_v1', 'gunfight_achievements', 'gunfight_save_index'];
+    var SYNC_KEYS = ['shooter_touch_cfg_v1', 'shooter_train_tune_v1', 'shooter_td_tune_v1', 'shooter_td_env_v1', 'shooter_pc_autoaim_v1', 'shooter_bag_v1', 'gunfight_achievements', 'gunfight_save_index'];
     var SYNC_PREFIX = 'gunfight_save_';
     var lastSyncSnap = '';
     var autoSyncStarted = false;
@@ -17646,6 +17986,7 @@ body.low-perf #menu::before { filter: none; opacity: .18; }
             }
         } catch (e) { }
         try { if (typeof loadTrainTune === 'function') loadTrainTune(); } catch (e) { }
+        try { if (typeof _bagReloadFromStorage === 'function') _bagReloadFromStorage(); } catch (e) { }
         try { if (typeof updateUI === 'function') updateUI(); } catch (e) { }
         return n > 0;
     }
@@ -17728,7 +18069,7 @@ body.low-perf #menu::before { filter: none; opacity: .18; }
         { k: 'move', t: '左下角是移动盘：按住拖动即可移动。俯视枪战里它是 360° 摇杆，可以往任意方向走。' },
         { k: 'fire', t: '右下角 🔫 是开火键：按住连续射击，松手停火；手机端会自动帮你瞄准敌人。' },
         { k: 'jump', t: '右下角 💨：横版点击跳跃（可二段跳）；俯视枪战里是能量位移，消耗能量冲刺并短暂无敌。' },
-        { k: 'hotbar', t: '屏幕最下方是物品栏：点哪一格就换哪把枪，左右滑动也能连续切换（1 手枪 / 2 步枪 / 3 霰弹 / 4 冲锋 / 5 狙击 / 6 战刃）。' },
+        { k: 'hotbar', t: '屏幕最下方是物品栏：点哪一格（电脑按 1-9）就选中那一格。1-6 格放着 6 把武器，选中武器才能开火；选到空格会变成空手，只能移动。点右侧「···」打开背包，可以像我的世界一样整理物品。' },
         { k: 'jump', t: '也可以按住跳跃键向左滑：会展开 360° 武器轮盘，手指指向哪个方向就切哪把枪。' },
         { k: 'top', t: '界面速览：最上方是毒圈倒计时与双方生命；左上血量 / 护盾；右上分数与本局时长。准备好了就开始吧！' }
     ];
