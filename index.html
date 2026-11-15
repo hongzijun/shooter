@@ -13240,7 +13240,8 @@ body.low-perf #menu::before { filter: none; opacity: .18; }
                     '狙击蓄力数值：蓄满伤害为普通狙击 2 倍、能量 100；0 蓄力为普通狙击伤害、能量 30（线性插值）；能量不足 30 无法起手',
                     '狙击右键蓄力改为必须手动瞄准：蓄力期间自动瞄准（手机智能锁定 / 电脑自动瞄准）完全失效，圆框与射击直线只跟随鼠标方向，角色朝向同步跟手',
                     '修复右键蓄力时浏览器弹出右键菜单 / 触发拖拽选中与鼠标手势：俯视模式下彻底屏蔽右键拖拽、选中、中键快捷与右键菜单',
-                    '修复同一台电脑不同浏览器界面完全不一样（触屏笔记本 / 一体机被误判成手机版）：现在只有移动 UA 或无鼠标悬停的小屏设备才走手机界面；仍可用网址后缀 ?pc=1 / ?touch=1 强制切换'
+                    '修复同一台电脑不同浏览器界面完全不一样（触屏笔记本 / 一体机被误判成手机版）：现在只有移动 UA 或无鼠标悬停的小屏设备才走手机界面；仍可用网址后缀 ?pc=1 / ?touch=1 强制切换',
+                    '狙击右键蓄力恢复自动瞄准：蓄力时会自动锁向敌人（含移动预判），不再强制手动；没有敌人时仍跟随鼠标'
                 ]
             },
             {
@@ -14482,8 +14483,7 @@ body.low-perf #menu::before { filter: none; opacity: .18; }
             player._tdVY = player.y - py0;
             // 瞄准: 手机端智能锁定 (按子弹速度预判提前量), PC 端仍由鼠标决定
             // 手机端默认智能锁定; 电脑端由设置里的「自动瞄准」开关决定
-            if ((_isTouchNow || (window.pcAutoAimOn && window.pcAutoAimOn())) && ai && ai.health > 0
-                && !(TD.sniperAim && TD.sniperAim.active)) {   // 狙击蓄力时强制手动瞄准
+            if ((_isTouchNow || (window.pcAutoAimOn && window.pcAutoAimOn())) && ai && ai.health > 0) {
                 const _pw = player.weapon;
                 const _spd = ((_pw && _pw.speed) ? _pw.speed : 22) * (player.cardBulletSpeedMult || 1) * 0.8 * 0.7 * 60; // px/秒
                 const _rx = ai.x - player.x, _ry = ai.y - player.y;
@@ -14518,9 +14518,8 @@ body.low-perf #menu::before { filter: none; opacity: .18; }
                     TD.sniperAim.active = false;
                     TD.sniperAim = null;
                 } else {
-                    // 狙击蓄力: 角度只由鼠标决定, 不受自动瞄准影响
-                    TD.sniperAim.angle = Math.atan2(wp.y - player.y, wp.x - player.x);
-                    player._tdAim = TD.sniperAim.angle;
+                    // 狙击蓄力: 跟随自动瞄准结果 (没有敌人时回落到鼠标方向)
+                    TD.sniperAim.angle = player._tdAim || 0;
                     TD.sniperAim.progress = Math.min(1, (now - TD.sniperAim.from) / 1000);
                 }
             }
