@@ -13730,7 +13730,8 @@ body.low-perf #menu::before { filter: none; opacity: .18; }
                     '手游竖屏提示：手机竖屏回到主界面时，顶部会闪烁「📱 建议横屏游玩」，横屏或进入游戏后自动消失；竖屏主菜单顶部留出空间避免遮挡标题',
                     '新增第 7 把武器「激光枪」：伤害基值与攻击系数都是狙击枪的 2 倍（基值 160 / 系数 1.8，训练场默认 160 / 2.0）；默认放在背包快捷栏第 7 格，数字键 7 或背包点选即可使用',
                     '俯视右键蓄力从狙击枪移到激光枪：只有手持激光枪时，电脑右键 / Shift、手机长按开火 0.1 秒才会进入激光蓄力（瞄准锁敌红标、普攻同源结算、卡片增伤、装备特效、吸血转盾、击退全部继承）；狙击枪右键不再蓄力',
-                    '训练场数值面板、全属性面板、俯视能量消耗 / 射程 / 理想距离、击杀音效等全部加入激光枪这一行'
+                    '训练场数值面板、全属性面板、俯视能量消耗 / 射程 / 理想距离、击杀音效等全部加入激光枪这一行',
+                    '激光枪瞄准锁敌提示强化：对准敌人的瞬间，红色准星会从约 3 倍大小快速收缩锁定到敌人身上（约 0.24 秒），锁定后半径更大、线条粗很多（6→11），四角刻度与十字持续旋转 + 呼吸闪烁，直到移开瞄准才消失；失去锁定后再对准会重新播放入场动画'
                 ]
             },
             {
@@ -15855,7 +15856,7 @@ body.low-perf #menu::before { filter: none; opacity: .18; }
             }
             // 蓄力环 + 瞄准线
             const st = TD.sniperAim;
-            if (!st || !st.active || !player || player.health <= 0) return;
+            if (!st || !st.active || !player || player.health <= 0) { TD.laserLock = null; return; }
             const p = st.progress || 0;
             const full = p >= 0.999;
             const a = st.angle || 0;
@@ -15888,35 +15889,64 @@ body.low-perf #menu::before { filter: none; opacity: .18; }
                 ctx.lineWidth = 3;
                 ctx.stroke();
             }
-            // 瞄准锁敌: 射线对准敌人时, 在敌人身上落一个红色瞄准标志
+            // 瞄准锁敌: 对准瞬间准星由大收缩锁定到敌人身上, 之后持续旋转, 直到失去瞄准
             try {
                 const fFoe = tdEnemyOf(player);
+                let locked = false;
                 if (fFoe && fFoe.health > 0) {
                     const fdx = fFoe.x - px, fdy = fFoe.y - py;
                     const along = fdx * Math.cos(a) + fdy * Math.sin(a);
                     const perp = Math.abs(-fdx * Math.sin(a) + fdy * Math.cos(a));
                     if (along > 0 && perp <= 26) {
-                        const rr = 21 + Math.sin(now / 120) * 3;
-                        const blink = 0.75 + Math.sin(now / 90) * 0.25;
+                        locked = true;
+                        // 首次锁定的瞬间记录时间: 半径从约 3 倍快速收到锁定量 (约 240ms)
+                        if (!TD.laserLock || TD.laserLock.target !== fFoe) {
+                            TD.laserLock = { target: fFoe, at: now };
+                        }
+                        const age = Math.max(0, now - TD.laserLock.at);
+                        const k = Math.min(1, age / 240);
+                        const ease = 1 - Math.pow(1 - k, 3);
+                        const baseR = 46;                       // 锁定后半径 (比原来大很多)
+                        const rr = baseR * (2.9 - 1.9 * ease) + Math.sin(now / 110) * 2;
+                        const thick = 6 + 5 * ease;             // 线宽 6 → 11 (粗很多)
+                        const rot = now / 240;                  // 持续旋转
+                        const blink = 0.72 + Math.sin(now / 85) * 0.28;
                         ctx.save();
-                        ctx.strokeStyle = 'rgba(255,60,60,' + blink.toFixed(2) + ')';
-                        ctx.shadowColor = '#ff2d2d';
-                        ctx.shadowBlur = 14;
-                        ctx.lineWidth = 2.5;
-                        ctx.beginPath(); ctx.arc(fFoe.x, fFoe.y, rr, 0, Math.PI * 2); ctx.stroke();
+                        ctx.translate(fFoe.x, fFoe.y);
+                        ctx.rotate(rot);
+                        ctx.lineCap = 'round';
+                        ctx.lineJoin = 'round';
+                        ctx.strokeStyle = 'rgba(255,48,48,' + blink.toFixed(2) + ')';
+                        ctx.shadowColor = '#ff2020';
+                        ctx.shadowBlur = 22;
+                        ctx.lineWidth = thick;
+                        // 外圈
+                        ctx.beginPath(); ctx.arc(0, 0, rr, 0, Math.PI * 2); ctx.stroke();
+                        // 四角粗刻度 (向外延伸, 随整体旋转)
+                        const t1 = rr * 0.92, t2 = rr * 1.42;
+                        for (let i = 0; i < 4; i++) {
+                            const ang = i * Math.PI / 2;
+                            const cx0 = Math.cos(ang), sy0 = Math.sin(ang);
+                            ctx.beginPath();
+                            ctx.moveTo(cx0 * t1, sy0 * t1);
+                            ctx.lineTo(cx0 * t2, sy0 * t2);
+                            ctx.stroke();
+                        }
+                        // 内侧十字 (短而粗)
+                        const c1 = rr * 0.16, c2 = rr * 0.62;
                         ctx.beginPath();
-                        ctx.moveTo(fFoe.x - rr - 7, fFoe.y); ctx.lineTo(fFoe.x - rr + 3, fFoe.y);
-                        ctx.moveTo(fFoe.x + rr - 3, fFoe.y); ctx.lineTo(fFoe.x + rr + 7, fFoe.y);
-                        ctx.moveTo(fFoe.x, fFoe.y - rr - 7); ctx.lineTo(fFoe.x, fFoe.y - rr + 3);
-                        ctx.moveTo(fFoe.x, fFoe.y + rr - 3); ctx.lineTo(fFoe.x, fFoe.y + rr + 7);
+                        ctx.moveTo(-c2, 0); ctx.lineTo(-c1, 0);
+                        ctx.moveTo(c1, 0); ctx.lineTo(c2, 0);
+                        ctx.moveTo(0, -c2); ctx.lineTo(0, -c1);
+                        ctx.moveTo(0, c1); ctx.lineTo(0, c2);
                         ctx.stroke();
-                        ctx.beginPath();
-                        ctx.moveTo(fFoe.x - 7, fFoe.y); ctx.lineTo(fFoe.x + 7, fFoe.y);
-                        ctx.moveTo(fFoe.x, fFoe.y - 7); ctx.lineTo(fFoe.x, fFoe.y + 7);
-                        ctx.stroke();
+                        // 中心实心点
+                        ctx.fillStyle = 'rgba(255,70,70,' + blink.toFixed(2) + ')';
+                        ctx.beginPath(); ctx.arc(0, 0, Math.max(2.5, thick * 0.42), 0, Math.PI * 2); ctx.fill();
                         ctx.restore();
                     }
                 }
+                if (!locked && TD.laserLock) TD.laserLock = null;
             } catch (e) { }
             ctx.restore();
         }
