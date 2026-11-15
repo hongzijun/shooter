@@ -13228,7 +13228,9 @@ body.low-perf #menu::before { filter: none; opacity: .18; }
                     '修复毒圈波次清零时减疗没有跟着更新：一整波命数打完、毒圈重置为 0 次的同时，双方减疗也清零，已打开的属性面板会立即刷新显示',
                     '无敌状态（仔仔熊的礼物 / 不败传奇 / 无敌模式 / 俯视能量位移）现在会让角色身体散发金色光晕与呼吸描边，横版与俯视一致，更容易看出无敌中',
                     '修复毒圈伤害成长几乎不生效：每秒毒伤改为「基础% + (波次-1) × 每波成长%」的加法公式（默认 5% + 每波 5%），例如第 3 波为 15%/秒，仍按最大生命百分比结算',
-                    '毒伤成长改为严格跟随毒圈缩圈次数：每秒毒伤 = 基础% + 已缩圈次数 × 成长%（默认 5% + 每次缩圈 5%），每缩一次圈立刻变疼，不再等敌人波次切换；一波结束毒圈重置后回到基础值'
+                    '毒伤成长改为严格跟随毒圈缩圈次数：每秒毒伤 = 基础% + 已缩圈次数 × 成长%（默认 5% + 每次缩圈 5%），每缩一次圈立刻变疼，不再等敌人波次切换；一波结束毒圈重置后回到基础值',
+                    '修复「有时候游戏整体变慢」：2D 枪战是固定步进，掉帧时会出现慢动作；现在按真实帧间隔自动补跑逻辑（最多 3 步），低帧时也能保持接近正常速度',
+                    '性能降级（关闭重效果、减少粒子）现在桌面端同样生效：帧率低于 28 持续 3 秒自动进入低耗模式，回到 52 帧以上 8 秒后恢复'
                 ]
             },
             {
@@ -16687,6 +16689,12 @@ body.low-perf #menu::before { filter: none; opacity: .18; }
             // 透明暂停: 完全冻结 —— 不推进任何状态, 也不重绘, 画面保持暂停前最后一帧
             if (_tpPaused) { requestAnimationFrame(gameLoop); return; }
             const frameStart = performance.now();
+            // === 帧率补偿: 横版是固定步进, 掉帧会整体慢动作; 按真实帧间隔补跑逻辑 (最多 3 步) ===
+            const _rawDtMs = frameStart - (window.__lastLoopPerf || frameStart);
+            window.__lastLoopPerf = frameStart;
+            const _logicSteps = (gameState === 'playing' || gameState === 'pvp' || gameState === 'training')
+                ? Math.max(1, Math.min(3, Math.round(_rawDtMs / 16.67))) : 1;
+            window.__lastSteps = _logicSteps;
             frameCount++; time++;
             _tickCameraDt(); // 相机平滑用的帧步长 (帧率无关)
             // === 实时存档: 每 300ms 写一次盘 (>=3次/秒); 暂停/选卡期间状态不变故跳过 ===
@@ -16699,8 +16707,8 @@ body.low-perf #menu::before { filter: none; opacity: .18; }
             if (now - lastTime >= 1000) {
                 fps = frameCount; frameCount = 0; lastTime = now; const _fp = _DOM.fpsText; if (_fp) _fp.textContent = fps;
                 // 自适应降级: 手机端连续 3 秒低于 26 帧 → 自动进入 low-perf; 回到 52 帧以上 8 秒后恢复
-                if (document.body && document.body.getAttribute('data-device') === 'touch') {
-                    if (fps > 0 && fps < 26) { window.__lowPerfStreak = (window.__lowPerfStreak || 0) + 1; }
+                if (document.body) {
+                    if (fps > 0 && fps < 28) { window.__lowPerfStreak = (window.__lowPerfStreak || 0) + 1; }
                     else if (fps >= 52) { window.__lowPerfStreak = 0; window.__goodPerfStreak = (window.__goodPerfStreak || 0) + 1; }
                     else { window.__lowPerfStreak = 0; window.__goodPerfStreak = 0; }
                     if ((window.__lowPerfStreak || 0) >= 3) document.body.classList.add('low-perf');
@@ -16741,6 +16749,8 @@ body.low-perf #menu::before { filter: none; opacity: .18; }
                     // 波次选卡系统: 选卡期间冻结所有实体更新 (含子弹/碰撞), 但下方渲染照常执行, 避免黑屏
                     // Task 6: Tab 属性面板打开时同样暂停实体更新 (照常渲染)
                     if (!isPaused && !isDrafting && !isAwardShowing && !statPanelOpen) {
+                      for (let _s = 0; _s < _logicSteps; _s++) {
+                        if (_s > 0) time++;   // 补偿步进同步推进逻辑时钟
                         // === Task 4: 炙热长袍 —— 每秒灼烧半径90px内AI 20点法术伤害 (0.2s 步进 4 点) ===
                         robeBurnTick(player, ai, now);
                         // AI 拿到炙热长袍后同样灼烧玩家 (装备效果对等生效)
@@ -16758,6 +16768,7 @@ body.low-perf #menu::before { filter: none; opacity: .18; }
                         if (ai && ai.health > 0) ai.update();
                         updateBullets(); updateParticles();
                         updateWaveCountdown();
+                      }
                         checkAchievements();
                     }
 
