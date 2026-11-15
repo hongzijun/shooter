@@ -1494,8 +1494,8 @@
             --wheel-r: calc(var(--touch-size) * 0.92);
             --sec-size: calc(var(--touch-size) * 0.34);
             --move-x: 17%; --move-y: 80%;
-            --fire-x: 84%; --fire-y: 30%;
-            --jump-x: 84%; --jump-y: 80%;
+            --fire-x: 84%; --fire-y: 80%;
+            --jump-x: 84%; --jump-y: 30%;
             --safe-top: env(safe-area-inset-top, 0px);
             --safe-right: env(safe-area-inset-right, 0px);
             --safe-bottom: env(safe-area-inset-bottom, 0px);
@@ -3006,8 +3006,8 @@ body.low-perf #menu::before { filter: none; opacity: .18; }
             opacity: 0.3,          // 实际不透明度: 0.3 = 70% 透明 (设置里的 0% = 不透明)
             scale: 1,                       // legacy 顶层缩放, 仅作旧存档 fallback
             move: { x: 0.17, y: 0.84, scale: 1 },
-            fire: { x: 0.84, y: 0.30, scale: 1 },
-            jump: { x: 0.84, y: 0.84, scale: 1 }
+            fire: { x: 0.84, y: 0.84, scale: 1 },
+            jump: { x: 0.84, y: 0.30, scale: 1 }
         };
 
         /** 控件位置 + 独立大小; 旧存档无 per-key scale 时使用顶层 legacyScale */
@@ -3026,8 +3026,8 @@ body.low-perf #menu::before { filter: none; opacity: .18; }
             // 旧存档只有顶层 scale: 作为三个控件的 fallback; 新存档以 per-key 为准
             const legacyScale = clampNumber(src.scale, 0.7, 1.6, TOUCH_DEFAULT_CFG.scale);
             const _ver = Number(src.version) || 1;
-            return {
-                version: 3,
+            const _cfg = {
+                version: 4,
                 // 旧存档(version<3)统一迁移到新的默认「70% 透明」; 新存档保留玩家自己调的值
                 opacity: (_ver < 3) ? TOUCH_DEFAULT_CFG.opacity : clampNumber(src.opacity, 0, 1, TOUCH_DEFAULT_CFG.opacity),
                 scale: legacyScale,
@@ -3035,6 +3035,16 @@ body.low-perf #menu::before { filter: none; opacity: .18; }
                 fire: _normTouchCtrl(src.fire, TOUCH_DEFAULT_CFG.fire, legacyScale),
                 jump: _normTouchCtrl(src.jump, TOUCH_DEFAULT_CFG.jump, legacyScale)
             };
+            // version < 4: 旧默认是「右上开火 / 右下跳跃」, 仍是旧默认位置的配置自动交换到新布局
+            if (_ver < 4) {
+                const _oldFire = Math.abs(_cfg.fire.x - 0.84) < 0.02 && Math.abs(_cfg.fire.y - 0.30) < 0.02;
+                const _oldJump = Math.abs(_cfg.jump.x - 0.84) < 0.02 && Math.abs(_cfg.jump.y - 0.84) < 0.02;
+                if (_oldFire && _oldJump) {
+                    _cfg.fire = { x: 0.84, y: 0.84, scale: _cfg.fire.scale };
+                    _cfg.jump = { x: 0.84, y: 0.30, scale: _cfg.jump.scale };
+                }
+            }
+            return _cfg;
         }
 
         /** 轮盘角度 (0=正上, 顺时针为正, 任意角度自动归一化到 0~360) → 武器编号 1..6;
@@ -3057,7 +3067,10 @@ body.low-perf #menu::before { filter: none; opacity: .18; }
         // __TOUCH_TEST_END__
 
         const TOUCH_WHEEL_TO_WEAPON = { 1: 'pistol', 2: 'rifle', 3: 'shotgun', 4: 'smg', 5: 'sniper', 6: 'sword' };
-        const touchState = { left: false, right: false, fire: false, jumpQueued: false, mx: 0, my: 0 };
+        const touchState = {
+            left: false, right: false, fire: false, jumpQueued: false, mx: 0, my: 0,
+            aimX: 0, aimY: 0, aimActive: false, fireDownAt: 0, chargeStarted: false
+        };
         const _touchPointers = new Map();
         const _touchFirePointers = new Set();
         let _touchJumpPointer = null;
@@ -3657,6 +3670,10 @@ body.low-perf #menu::before { filter: none; opacity: .18; }
             touchState.fire = false;
             touchState.jumpQueued = false;
             touchState.mx = 0; touchState.my = 0;
+            touchState.aimActive = false;
+            touchState.fireDownAt = 0;
+            touchState.chargeStarted = false;
+            try { if (TD.sniperAim && TD.sniperAim._touch) TD.sniperAim = null; } catch (e) { }
             _touchPointers.clear();
             _touchFirePointers.clear();
             _touchJumpPointer = null;
@@ -3826,14 +3843,34 @@ body.low-perf #menu::before { filter: none; opacity: .18; }
             pad.addEventListener('pointercancel', endMove);
 
             // --- 开火: 按住持续射击, 松开停止 ---
+            // 以「开火键中心 → 手指」的方向作为瞄准方向 (自动瞄准关闭时)
+            const _fireAimFromPoint = function (clientX, clientY) {
+                try {
+                    const r = fire.getBoundingClientRect();
+                    const dx = clientX - (r.left + r.width / 2);
+                    const dy = clientY - (r.top + r.height / 2);
+                    const len = Math.hypot(dx, dy);
+                    if (len > 6) { touchState.aimX = dx / len; touchState.aimY = dy / len; touchState.aimActive = true; }
+                    else { touchState.aimActive = false; }
+                } catch (err) { touchState.aimActive = false; }
+            };
             fire.addEventListener('pointerdown', function (e) {
                 e.preventDefault();
                 _touchPointers.set(e.pointerId, { control: 'fire' });
                 _touchFirePointers.add(e.pointerId);
                 touchState.fire = true;
+                touchState.fireDownAt = Date.now();
+                touchState.chargeStarted = false;
+                _fireAimFromPoint(e.clientX, e.clientY);
                 if (_isTdTouchMode()) TD.firePressed = true;   // 俯视: 刀剑按一下即挥
                 fire.classList.add('pressed');
                 try { fire.setPointerCapture(e.pointerId); } catch (err) { }
+            });
+            // 按住滑动: 实时更新瞄准方向 (长按狙击时同时就是蓄力方向)
+            fire.addEventListener('pointermove', function (e) {
+                const rec = _touchPointers.get(e.pointerId);
+                if (!rec || rec.control !== 'fire') return;
+                _fireAimFromPoint(e.clientX, e.clientY);
             });
             const endFire = function (e) {
                 const rec = _touchPointers.get(e.pointerId);
@@ -3843,6 +3880,18 @@ body.low-perf #menu::before { filter: none; opacity: .18; }
                 if (_touchFirePointers.size === 0) {
                     touchState.fire = false;
                     fire.classList.remove('pressed');
+                    // 手机端狙击蓄力: 松手 = 电脑右键松开, 立即沿蓄力方向发射
+                    try {
+                        if (touchState.chargeStarted && TD.sniperAim && TD.sniperAim._touch && player && player.health > 0) {
+                            const _st = TD.sniperAim;
+                            _st.active = false;
+                            tdSniperShot(player, _st.angle, _st.progress, Date.now());
+                            TD.sniperAim = null;
+                        }
+                    } catch (err) { }
+                    touchState.chargeStarted = false;
+                    touchState.fireDownAt = 0;
+                    touchState.aimActive = false;
                 }
             };
             fire.addEventListener('pointerup', endFire);
@@ -13619,7 +13668,10 @@ body.low-perf #menu::before { filter: none; opacity: .18; }
                     '修复「有时候新开一波毒圈没有重置」：整波重生与波次选卡后的重生现在都会兜底重置毒圈（半径回初始值、缩圈次数清零、倒计时重新计时），不再依赖单一死亡分支，毒死 / 边界撞死等收尾方式也能正常重置',
                     '背包改为「每个存档独立」：背包布局与选中格会随每个存档槽一起保存，读取哪个存档就显示哪个存档的背包，互不影响；旧存档没有背包数据时沿用当前布局',
                     '俯视右键蓄力狙击改为按「狙击枪普攻」结算：固定造成普通狙击 2 倍伤害，并完整触发卡片增伤（伤害强化 / 连杀狂热 / 处决）、装备普攻特效、禁跳诅咒、吸血与吸血转盾、击退等效果，不再只做一次孤立伤害',
-                    '俯视右键狙击新增锁敌提示：蓄力时瞄准线对准敌人，会在敌人身上显示红色瞄准标志（圆环 + 十字 + 四角刻度，随蓄力呼吸闪烁）'
+                    '俯视右键狙击新增锁敌提示：蓄力时瞄准线对准敌人，会在敌人身上显示红色瞄准标志（圆环 + 十字 + 四角刻度，随蓄力呼吸闪烁）',
+                    '手游新增「自动瞄准」开关（设置面板，全端显示，默认关闭）：关闭时以「开火键中心 → 手指」的方向作为人物朝向，开启时自动锁定敌人并按子弹速度预判提前量',
+                    '手游开火键支持手势瞄准：按住开火并滑动手指即可转向；按住超过 0.1 秒且当前为狙击枪时自动进入蓄力（等同电脑右键），拖动手指调整方向、松手立即发射，短按仍是普通射击',
+                    '手游默认键位调整：左下移动盘、右上位移 / 跳跃键、右下发射键；旧配置如果仍是原默认位置会自动交换到新布局，自定义过的位置保持不变'
                 ]
             },
             {
@@ -14861,9 +14913,11 @@ body.low-perf #menu::before { filter: none; opacity: .18; }
             tdMove(player, mx, my, tdMoveSpeedOf(player), now);
             player._tdVX = player.x - px0;
             player._tdVY = player.y - py0;
-            // 瞄准: 手机端智能锁定 (按子弹速度预判提前量), PC 端仍由鼠标决定
-            // 手机端默认智能锁定; 电脑端由设置里的「自动瞄准」开关决定
-            if ((_isTouchNow || (window.pcAutoAimOn && window.pcAutoAimOn())) && ai && ai.health > 0 && !(TD.sniperAim && TD.sniperAim.active)) {
+            // 瞄准:
+            //  · 自动瞄准开启 → 智能锁定敌人 (按子弹速度预判提前量)
+            //  · 自动瞄准关闭 (默认) → 手机端以「开火键中心 → 手指」为朝向; PC 仍跟随鼠标
+            const _aimOn = !!(window.pcAutoAimOn && window.pcAutoAimOn());
+            if (_aimOn && ai && ai.health > 0 && !(TD.sniperAim && TD.sniperAim.active)) {
                 const _pw = player.weapon;
                 const _spd = ((_pw && _pw.speed) ? _pw.speed : 22) * (player.cardBulletSpeedMult || 1) * 0.8 * 0.7 * 60; // px/秒
                 const _rx = ai.x - player.x, _ry = ai.y - player.y;
@@ -14889,17 +14943,31 @@ body.low-perf #menu::before { filter: none; opacity: .18; }
                 const _tx = ai.x + (_pw && _pw.isMelee ? 0 : _avx * _t);
                 const _ty = ai.y + (_pw && _pw.isMelee ? 0 : _avy * _t);
                 player._tdAim = Math.atan2(_ty - player.y, _tx - player.x);
-            } else {
+            } else if (_isTouchNow && typeof touchState !== 'undefined' && touchState.aimActive && !(TD.sniperAim && TD.sniperAim.active)) {
+                player._tdAim = Math.atan2(touchState.aimY, touchState.aimX);
+            } else if (!_isTouchNow) {
                 player._tdAim = Math.atan2(wp.y - player.y, wp.x - player.x);
             }
-            // 狙击右键蓄力: 进度按真实时间推进, 武器切换 / 眩晕 / 死亡自动取消
+            // === 手机端狙击长按蓄力: 按住 >= 0.1 秒且当前为狙击枪 → 等同电脑右键, 松手发射 ===
+            if (_isTouchNow && typeof touchState !== 'undefined' && touchState.fire && !touchState.chargeStarted
+                && touchState.fireDownAt && (now - touchState.fireDownAt) >= 100
+                && tdWeaponKey(player) === 'sniper' && player.health > 0 && tdEnergy(player) >= 30) {
+                touchState.chargeStarted = true;
+                TD.sniperAim = { active: true, from: now, progress: 0, angle: player._tdAim || 0, _touch: true };
+            }
+            // 狙击蓄力: 进度按真实时间推进, 武器切换 / 眩晕 / 死亡自动取消
             if (TD.sniperAim && TD.sniperAim.active) {
                 if (player.health <= 0 || fxIsStunned(player) || tdWeaponKey(player) !== 'sniper') {
                     TD.sniperAim.active = false;
                     TD.sniperAim = null;
                 } else {
-                    // 狙击蓄力: 强制手动瞄准, 角度只跟随鼠标 (含 Shift 蓄力), 角色朝向同步跟手
-                    TD.sniperAim.angle = Math.atan2(wp.y - player.y, wp.x - player.x);
+                    if (TD.sniperAim._touch) {
+                        // 手机端: 蓄力方向跟随开火手指 (手指没偏离按钮中心时保持当前朝向)
+                        if (touchState.aimActive) TD.sniperAim.angle = Math.atan2(touchState.aimY, touchState.aimX);
+                    } else {
+                        // 电脑端: 蓄力只跟随鼠标
+                        TD.sniperAim.angle = Math.atan2(wp.y - player.y, wp.x - player.x);
+                    }
                     player._tdAim = TD.sniperAim.angle;
                     TD.sniperAim.progress = Math.min(1, (now - TD.sniperAim.from) / 1000);
                 }
@@ -14914,7 +14982,8 @@ body.low-perf #menu::before { filter: none; opacity: .18; }
                         player._tdSwordCharge = 0;
                     }
                 }
-            } else if (!_bagEmptyTd && (TD.fireHeld || (_isTouchNow && typeof touchState !== 'undefined' && touchState.fire))) {
+            } else if (!_bagEmptyTd && !(typeof touchState !== 'undefined' && touchState.chargeStarted)
+                && (TD.fireHeld || (_isTouchNow && typeof touchState !== 'undefined' && touchState.fire))) {
                 tdFire(player, player._tdAim, now);
             }
             TD.firePressed = false;
@@ -17463,6 +17532,10 @@ body.low-perf #menu::before { filter: none; opacity: .18; }
                         // 电脑端自动瞄准: 横版自动保持面向敌人 (按 A/D 也不会背对)
                         if (!player.isAI && ai && ai.health > 0 && window.pcAutoAimOn && window.pcAutoAimOn()) {
                             player.facingRight = (ai.x >= player.x);
+                        } else if (document.body.getAttribute('data-device') === 'touch' && typeof touchState !== 'undefined'
+                            && touchState.fire && touchState.aimActive) {
+                            // 自动瞄准关闭: 开火手指在按钮中心左侧 / 右侧决定朝向
+                            player.facingRight = (touchState.aimX >= 0);
                         }
                         if (ai && ai.health > 0) ai.update();
                         updateBullets(); updateParticles();
@@ -18763,9 +18836,9 @@ body.low-perf #menu::before { filter: none; opacity: .18; }
         if (isTouch) {
             h += '<div class="cm-setting-row"><div><div class="cm-setting-main">🎮 按键设置</div><div class="cm-setting-sub">调整移动盘 / 发射 / 位移按钮的位置、大小与透明度</div></div><button class="cm-btn green" id="cmTouchSet">打开</button></div>';
         }
-        if (!isTouch) {
+        {
             var _aimOn = pcAutoAimOn();
-            h += '<div class="cm-setting-row"><div><div class="cm-setting-main">🎯 自动瞄准（仅电脑端）</div><div class="cm-setting-sub">开启后准星自动锁定敌人；俯视枪战会按子弹速度预判走位提前量</div></div><button class="cm-btn ' + (_aimOn ? 'green' : 'gray') + '" id="cmSetAutoAim">' + (_aimOn ? '已开启' : '已关闭') + '</button></div>';
+            h += '<div class="cm-setting-row"><div><div class="cm-setting-main">🎯 自动瞄准（默认关闭）</div><div class="cm-setting-sub">开启后准星自动锁定敌人并按子弹速度预判；关闭时手机以「开火键中心 → 手指」的方向作为朝向，按住狙击 0.1 秒进入蓄力</div></div><button class="cm-btn ' + (_aimOn ? 'green' : 'gray') + '" id="cmSetAutoAim">' + (_aimOn ? '已开启' : '已关闭') + '</button></div>';
         }
         h += '<div class="cm-setting-row"><div><div class="cm-setting-main">☁ 云端服务</div><div class="cm-setting-sub">' + (cloudOn() ? '已配置 Supabase，账号/榜单/留言全服同步' : '未配置，当前为本地模式（数据仅本机）') + '</div></div></div>';
         h += '<details style="margin-top:14px"><summary style="cursor:pointer;color:#9fc0ff;font-size:12px;">建表 SQL（管理员配置用）</summary>' +
