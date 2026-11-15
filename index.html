@@ -3562,6 +3562,23 @@ body.low-perf #menu::before { filter: none; opacity: .18; }
             try { updateTouchLayerVisibility(); } catch (e) { }
         }
         function _bagToggle() { if (BAG.open) _bagClose(); else _bagOpen(); }
+        /** 应用某个存档自带的背包 (旧存档没有 bag 字段时保留当前背包) */
+        function _bagApplySnapshot(snap) {
+            try {
+                if (!snap || !Array.isArray(snap.slots)) return;
+                BAG.slots = new Array(36).fill(null);
+                for (var i = 0; i < 36; i++) {
+                    var it = snap.slots[i];
+                    if (it && it.type === 'weapon' && it.key) BAG.slots[i] = { type: 'weapon', key: String(it.key) };
+                }
+                BAG.sel = Math.max(0, Math.min(8, parseInt(snap.sel, 10) || 0));
+                BAG._equippedFor = null;
+                _bagSave();
+                _bagRenderBar();
+                _bagRenderPanel();
+                _bagEquipSelected();
+            } catch (e) { }
+        }
         function _bagReloadFromStorage() {
             _bagLoad();
             BAG._equippedFor = null;
@@ -6883,7 +6900,8 @@ body.low-perf #menu::before { filter: none; opacity: .18; }
                             shrinkCount: TD.zone.shrinkCount || 0,
                             nextShrinkIn: Math.max(0, (TD.zone.nextShrink || 0) - Date.now())
                         } : null
-                    } : null
+                    } : null,
+                    bag: { slots: BAG.slots, sel: BAG.sel }
                 };
                 if (!_runId) _beginNewRun();
                 const _payload = JSON.stringify(data);
@@ -7121,6 +7139,7 @@ body.low-perf #menu::before { filter: none; opacity: .18; }
             _runId = String(id);
             const _idxEntry = _readSaveIndex().find(function (s) { return s.id === _runId; });
             _runName = (data.name || (_idxEntry && _idxEntry.name) || '') || null;
+            _bagApplySnapshot(data.bag);   // 每个存档独立的背包布局
             if (data.state === 'pvp') loadPvpSave(data);
             else if (data.state === 'topdown') loadTopdownSave(data);
             else loadSingleSave(data);
@@ -13597,7 +13616,10 @@ body.low-perf #menu::before { filter: none; opacity: .18; }
                     '修复手机端底部物品栏过大：9 格整体缩小并降低层级，横屏不再压住左右摇杆 / 跳跃键与暂停、属性键，竖屏也不再超出屏幕右边缘（三点背包按钮始终可见）',
                     '物品栏与背包现在同样适用于俯视枪战 / 俯视训练场：底部显示同一套 9 格，按 1-9 或点格选枪，选中空格时俯视也无法开火 / 蓄力，但仍可移动与能量位移；俯视的旧数字键与 E 键切枪已统一交给背包',
                     '修复手持战刃（或任意枪械）切换到空格时，角色手上的武器模型没有消失的问题：空手状态现在只保留角色本体，不绘制任何武器',
-                    '修复「有时候新开一波毒圈没有重置」：整波重生与波次选卡后的重生现在都会兜底重置毒圈（半径回初始值、缩圈次数清零、倒计时重新计时），不再依赖单一死亡分支，毒死 / 边界撞死等收尾方式也能正常重置'
+                    '修复「有时候新开一波毒圈没有重置」：整波重生与波次选卡后的重生现在都会兜底重置毒圈（半径回初始值、缩圈次数清零、倒计时重新计时），不再依赖单一死亡分支，毒死 / 边界撞死等收尾方式也能正常重置',
+                    '背包改为「每个存档独立」：背包布局与选中格会随每个存档槽一起保存，读取哪个存档就显示哪个存档的背包，互不影响；旧存档没有背包数据时沿用当前布局',
+                    '俯视右键蓄力狙击改为按「狙击枪普攻」结算：固定造成普通狙击 2 倍伤害，并完整触发卡片增伤（伤害强化 / 连杀狂热 / 处决）、装备普攻特效、禁跳诅咒、吸血与吸血转盾、击退等效果，不再只做一次孤立伤害',
+                    '俯视右键狙击新增锁敌提示：蓄力时瞄准线对准敌人，会在敌人身上显示红色瞄准标志（圆环 + 十字 + 四角刻度，随蓄力呼吸闪烁）'
                 ]
             },
             {
@@ -15583,7 +15605,8 @@ body.low-perf #menu::before { filter: none; opacity: .18; }
             ent.lastShot = now;
             let actual = (w.dmgBase != null ? w.dmgBase : (w.damage || 10)) + (ent.getAtk ? ent.getAtk() : 100) * (w.atkCoef != null ? w.atkCoef : 0);
             if (ent.damageBoost && ent.damageMultiplier) actual *= ent.damageMultiplier;
-            const dmg = Math.round(actual * (1 + p));
+            // 右键蓄力视为「狙击枪普攻」: 固定 2 倍伤害, 后续完整走普攻结算 (卡片增伤 / 装备特效 / 吸血 / 转盾)
+            let dmg = Math.round(actual * 2);
             const foe = tdEnemyOf(ent);
             const cosA = Math.cos(angle), sinA = Math.sin(angle);
             // 射线终点: 地图边界
@@ -15605,9 +15628,63 @@ body.low-perf #menu::before { filter: none; opacity: .18; }
                     endY = ent.y + sinA * along;
                     let crit = { isCrit: false };
                     try { if (typeof checkCrit === 'function') crit = checkCrit(ent); } catch (e) { }
+                    // === 与普通狙击子弹命中同源的伤害修正 (卡片增伤 / AI 倍率 / 制裁减速) ===
+                    let hitDmg = dmg;
+                    try {
+                        if (ent.isAI && ent.aiDamageMult) hitDmg = Math.round(hitDmg * ent.aiDamageMult);
+                        if ((ent.activeEffects || []).some(function (e) { return e.effect === 'bandSlow'; })) hitDmg = Math.round(hitDmg * 0.85);
+                        if (ent === player && foe.isAI && player.cardPerks) {
+                            hitDmg = Math.round(hitDmg * (player.cardDamageMult || 1));
+                            if (player.cardPerks.killFrenzy > 0 && player.frenzyUntil && performance.now() < player.frenzyUntil) {
+                                hitDmg = Math.round(hitDmg * (1 + 0.25 * player.cardPerks.killFrenzy));
+                            }
+                            if (player.cardPerks.execute > 0 && foe.health > 0 && foe.health < foe.maxHealth * 0.15) {
+                                hitDmg = Math.round(hitDmg * Math.min(3, 1 + player.cardPerks.execute));
+                            }
+                        }
+                    } catch (e) { }
+                    // 伪子弹: 共享 volleyId, 让「崎岖外壳 / 反弹马甲」按一次开火去重
+                    let fakeBullet = null;
+                    try {
+                        ent._tdVolley = (ent._tdVolley || 0) + 1;
+                        fakeBullet = { volleyId: ent._tdVolley, owner: ent, fxMult: (w.fxMult || 1), isCrit: crit.isCrit, x: ent.x, y: ent.y, color: w.color };
+                    } catch (e) { }
+                    // 装备卡普攻特效: 与普通子弹一致, 逐条独立结算并弹绿色飘字
+                    let fxExtra = 0;
+                    try {
+                        const fxList = (ent.equip && typeof applyEquipOnHitList === 'function') ? applyEquipOnHitList(ent, foe, (w.fxMult || 1)) : [];
+                        for (let fi = 0; fi < fxList.length; fi++) {
+                            fxExtra += fxList[fi].dmg;
+                            const fr = foe.takeDamage(fxList[fi].dmg, ent, false, 'phys', true);
+                            if (fr && (fr.dmg + (fr.absorbed || 0)) > 0) {
+                                showFloatingNumber(foe.x, foe.y - 72 - fi * 22, '-' + (fr.dmg + (fr.absorbed || 0)), DMG_COLORS.fx, { prefix: (fr.shield ? '🛡' : ''), iconId: fxList[fi].id === 'photon' ? 'photonbow' : fxList[fi].id, type: 'fx' });
+                            }
+                        }
+                    } catch (e) { }
                     try {
                         // 伤害飘字由 takeDamage 内部统一弹出 (含暴击 ✦ / 护盾 🛡 前缀), 这里不再重复显示
-                        foe.takeDamage(dmg, ent, crit.isCrit, 'phys', false, false, true);
+                        foe.takeDamage(hitDmg, ent, crit.isCrit, 'phys', false, false, true, undefined, fakeBullet);
+                    } catch (e) { }
+                    // 禁跳诅咒等普攻命中特效
+                    try { if (typeof fxTryNoJump === 'function') fxTryNoJump(ent, foe, Date.now()); } catch (e) { }
+                    // 吸血: 与普通子弹同源 (getLifesteal → fxDrainHeal), 吸血转盾由 takeDamage 内的 fxOnHit 处理
+                    try {
+                        const _ls = ent.getLifesteal ? ent.getLifesteal() : 0;
+                        if (_ls > 0 && ent.health > 0) {
+                            const got = fxDrainHeal(ent, Math.round((hitDmg + fxExtra) * _ls));
+                            if (got > 0) {
+                                if (ent === player) { showFloatingNumber(ent.x, ent.y - 60, '+' + got, DMG_COLORS.fx, { prefix: '❤', type: 'fx' }); updateUI(); }
+                                else showFloatingNumber(ent.x, ent.y - 60, '+' + got, DMG_COLORS.fx, { prefix: '❤', type: 'fx' });
+                            }
+                        }
+                    } catch (e) { }
+                    // 击退: 与俯视子弹同向推开
+                    try {
+                        if (!fxIsStunned(foe)) {
+                            const kp = (4.5 + hitDmg * 0.008) * (w.knockbackMultiplier || 1) * 0.75;
+                            foe._tdKbVX = (foe._tdKbVX || 0) + Math.cos(angle) * kp;
+                            foe._tdKbVY = (foe._tdKbVY || 0) + Math.sin(angle) * kp;
+                        }
                     } catch (e) { }
                 }
             }
@@ -15683,6 +15760,36 @@ body.low-perf #menu::before { filter: none; opacity: .18; }
                 ctx.lineWidth = 3;
                 ctx.stroke();
             }
+            // 瞄准锁敌: 射线对准敌人时, 在敌人身上落一个红色瞄准标志
+            try {
+                const fFoe = tdEnemyOf(player);
+                if (fFoe && fFoe.health > 0) {
+                    const fdx = fFoe.x - px, fdy = fFoe.y - py;
+                    const along = fdx * Math.cos(a) + fdy * Math.sin(a);
+                    const perp = Math.abs(-fdx * Math.sin(a) + fdy * Math.cos(a));
+                    if (along > 0 && perp <= 26) {
+                        const rr = 21 + Math.sin(now / 120) * 3;
+                        const blink = 0.75 + Math.sin(now / 90) * 0.25;
+                        ctx.save();
+                        ctx.strokeStyle = 'rgba(255,60,60,' + blink.toFixed(2) + ')';
+                        ctx.shadowColor = '#ff2d2d';
+                        ctx.shadowBlur = 14;
+                        ctx.lineWidth = 2.5;
+                        ctx.beginPath(); ctx.arc(fFoe.x, fFoe.y, rr, 0, Math.PI * 2); ctx.stroke();
+                        ctx.beginPath();
+                        ctx.moveTo(fFoe.x - rr - 7, fFoe.y); ctx.lineTo(fFoe.x - rr + 3, fFoe.y);
+                        ctx.moveTo(fFoe.x + rr - 3, fFoe.y); ctx.lineTo(fFoe.x + rr + 7, fFoe.y);
+                        ctx.moveTo(fFoe.x, fFoe.y - rr - 7); ctx.lineTo(fFoe.x, fFoe.y - rr + 3);
+                        ctx.moveTo(fFoe.x, fFoe.y + rr - 3); ctx.lineTo(fFoe.x, fFoe.y + rr + 7);
+                        ctx.stroke();
+                        ctx.beginPath();
+                        ctx.moveTo(fFoe.x - 7, fFoe.y); ctx.lineTo(fFoe.x + 7, fFoe.y);
+                        ctx.moveTo(fFoe.x, fFoe.y - 7); ctx.lineTo(fFoe.x, fFoe.y + 7);
+                        ctx.stroke();
+                        ctx.restore();
+                    }
+                }
+            } catch (e) { }
             ctx.restore();
         }
 
@@ -15943,8 +16050,8 @@ body.low-perf #menu::before { filter: none; opacity: .18; }
                 _ctrl.innerHTML = '<div><span class="key">WASD</span> 移动</div>' +
                     '<div><span class="key">鼠标</span> 瞄准 / 射击</div>' +
                     '<div><span class="key">空格</span> 能量位移</div>' +
-                    '<div><span class="key">1-5</span> 武器</div>' +
-                    '<div><span class="key">E / 6</span> 战刃</div>';
+                    '<div><span class="key">1-9</span> 物品栏选格</div>' +
+                    '<div><span class="key">···</span> 背包</div>';
             }
             const _hfs = document.getElementById('hudFullStatus');
             if (_hfs) {
@@ -16003,8 +16110,8 @@ body.low-perf #menu::before { filter: none; opacity: .18; }
                 _ctrl.innerHTML = '<div><span class="key">WASD</span> 移动</div>' +
                     '<div><span class="key">鼠标</span> 瞄准 / 射击</div>' +
                     '<div><span class="key">空格</span> 能量位移</div>' +
-                    '<div><span class="key">1-5</span> 武器</div>' +
-                    '<div><span class="key">E / 6</span> 战刃</div>';
+                    '<div><span class="key">1-9</span> 物品栏选格</div>' +
+                    '<div><span class="key">···</span> 背包</div>';
             }
 
             resizeCanvas();
