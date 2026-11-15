@@ -1912,6 +1912,9 @@
 #menu > * { flex: 0 0 auto; }
 body[data-device="touch"] #menu,
 body[data-device="touch"] #menu > * { touch-action: pan-y !important; }
+/* 手机滚动更跟手: 主菜单巨型模糊光斑不再旋转 (低端机滚动掉帧的主要来源) */
+body[data-device="touch"] #menu::before { animation: none !important; filter: blur(40px); }
+body.low-perf #menu::before { animation: none !important; }
 body[data-device="touch"] #menu > h1 { margin-top: 6px; margin-bottom: 6px; }
 
 /* --- 手机竖屏: 主界面闪烁「建议横屏游玩」 --- */
@@ -2975,32 +2978,6 @@ body.low-perf #menu::before { filter: none; opacity: .18; }
             var menuShown = !menu || !menu.classList.contains('hidden');
             el.style.display = (touch && portrait && menuShown) ? 'block' : 'none';
         }
-        // === 主菜单触摸滚动兜底: 某些手机 WebView 上 overflow 滚动偶发失效 ===
-        (function () {
-            var menu = document.getElementById('menu');
-            if (!menu) return;
-            var startY = 0, startTop = 0, tracking = false, moved = false;
-            menu.addEventListener('touchstart', function (e) {
-                if (e.touches.length !== 1) return;
-                if (menu.scrollHeight <= menu.clientHeight + 2) return;
-                tracking = true; moved = false;
-                startY = e.touches[0].clientY;
-                startTop = menu.scrollTop;
-            }, { passive: true });
-            menu.addEventListener('touchmove', function (e) {
-                if (!tracking || e.touches.length !== 1) return;
-                var dy = e.touches[0].clientY - startY;
-                if (!moved && Math.abs(dy) < 8) return;
-                moved = true;
-                // 原生滚动已生效时不接管, 仅在其失效时手动滚动
-                if (Math.abs(menu.scrollTop - startTop) > 1) return;
-                if (e.cancelable) e.preventDefault();
-                menu.scrollTop = startTop - dy;
-            }, { passive: false });
-            var end = function () { tracking = false; moved = false; };
-            menu.addEventListener('touchend', end, { passive: true });
-            menu.addEventListener('touchcancel', end, { passive: true });
-        })();
         resizeCanvas();
         _updateRotateHint();
         try {
@@ -13802,7 +13779,8 @@ body.low-perf #menu::before { filter: none; opacity: .18; }
                     '修复旧存档 / 旧背包没有激光枪：读取旧背包时会自动把激光枪补进快捷栏第 7 格（占用了就找第一个空位），2D 枪战、训练场、俯视都能直接使用',
                     '修复激光枪普通射击会打出粉色圆形子弹：激光枪子弹改为细长发光的红色激光脉冲（横版与俯视一致），伤害 / 命中判定保持不变，不再出现粉色子弹',
                     '修复手机主菜单有时上下滑动不了：移除部分 WebView 会卡住的滚动属性、菜单及其子元素统一允许纵向滑动，并加入触摸滚动兜底（原生滚动失效时自动接管），内容超出时始终可以上下滑',
-                    '激光枪手机瞄准吸附：蓄力时「开火键中心 → 手指」的方向与实际「玩家 → 敌人」方向夹角小于 10° 时，直接吸附到敌人中心，命中更稳（超过 10° 仍完全跟随手指）'
+                    '激光枪手机瞄准吸附：蓄力时「开火键中心 → 手指」的方向与实际「玩家 → 敌人」方向夹角小于 10° 时，直接吸附到敌人中心，命中更稳（超过 10° 仍完全跟随手指）',
+                    '修复手游主菜单滑动一卡一卡：移除了与原生滚动冲突的手动滚动接管，改回纯原生滑动；手机端主菜单的超大模糊旋转光斑不再动画、模糊半径下调，低端机滚动更顺滑'
                 ]
             },
             {
