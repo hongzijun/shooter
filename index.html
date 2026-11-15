@@ -6590,7 +6590,7 @@ body.low-perf #menu::before { filter: none; opacity: .18; }
                 player._tdSwordCharge = 0; ai._tdSwordCharge = 0;
                 player._tdKbVX = 0; player._tdKbVY = 0; ai._tdKbVX = 0; ai._tdKbVY = 0;
                 player._tdInvUntil = Date.now() + 1200; ai._tdInvUntil = Date.now() + 1200;
-                player._tdAim = 0; ai._tdAim = Math.PI;
+                player._tdAim = 0; ai._tdAim = Math.PI; TD.sniperAim = null; TD.sniperBeams = [];
                 player.invincible = false; player.invincibleEnd = 0;
                 ai.invincible = false; ai.invincibleEnd = 0;
                 player.lives = Math.min(CONFIG.PLAYER_MAX_LIVES, Math.max(1, _num(data.player && data.player.lives, CONFIG.PLAYER_MAX_LIVES)));
@@ -13230,7 +13230,9 @@ body.low-perf #menu::before { filter: none; opacity: .18; }
                     '修复毒圈伤害成长几乎不生效：每秒毒伤改为「基础% + (波次-1) × 每波成长%」的加法公式（默认 5% + 每波 5%），例如第 3 波为 15%/秒，仍按最大生命百分比结算',
                     '毒伤成长改为严格跟随毒圈缩圈次数：每秒毒伤 = 基础% + 已缩圈次数 × 成长%（默认 5% + 每次缩圈 5%），每缩一次圈立刻变疼，不再等敌人波次切换；一波结束毒圈重置后回到基础值',
                     '修复「有时候游戏整体变慢」：2D 枪战是固定步进，掉帧时会出现慢动作；现在按真实帧间隔自动补跑逻辑（最多 3 步），低帧时也能保持接近正常速度',
-                    '性能降级（关闭重效果、减少粒子）现在桌面端同样生效：帧率低于 28 持续 3 秒自动进入低耗模式，回到 52 帧以上 8 秒后恢复'
+                    '性能降级（关闭重效果、减少粒子）现在桌面端同样生效：帧率低于 28 持续 3 秒自动进入低耗模式，回到 52 帧以上 8 秒后恢复',
+                    '俯视狙击新增右键蓄力射击（参考几何决斗）：按住右键出现朝向缺口圆框 + 瞄准直线，内圈显示蓄力进度，1 秒蓄满闭合成整圈并全部变红，松开立即沿直线结算；直线上有敌人时直接造成伤害、弹出冲击环与强震动',
+                    '狙击蓄力数值：蓄满伤害为普通狙击 2 倍、能量 100；0 蓄力为普通狙击伤害、能量 30（线性插值）；能量不足 30 无法起手'
                 ]
             },
             {
@@ -14501,6 +14503,16 @@ body.low-perf #menu::before { filter: none; opacity: .18; }
             } else {
                 player._tdAim = Math.atan2(wp.y - player.y, wp.x - player.x);
             }
+            // 狙击右键蓄力: 进度按真实时间推进, 武器切换 / 眩晕 / 死亡自动取消
+            if (TD.sniperAim && TD.sniperAim.active) {
+                if (player.health <= 0 || fxIsStunned(player) || tdWeaponKey(player) !== 'sniper') {
+                    TD.sniperAim.active = false;
+                    TD.sniperAim = null;
+                } else {
+                    TD.sniperAim.angle = player._tdAim || 0;
+                    TD.sniperAim.progress = Math.min(1, (now - TD.sniperAim.from) / 1000);
+                }
+            }
             const w = player.weapon;
             if (w && w.isMelee) {
                 // 刀剑为内置蓄力: 点一下左键立即按当前蓄力挥砍, 用完清零
@@ -15186,6 +15198,126 @@ body.low-perf #menu::before { filter: none; opacity: .18; }
             ctx.textBaseline = 'alphabetic';
         }
 
+        // ===== 俯视狙击: 右键蓄力直线射击 (参考几何决斗) =====
+        // 蓄力 1 秒满: 伤害 1x→2x, 能量 30→100; 直线命中立即结算
+        function tdSniperShot(ent, angle, prog, now) {
+            if (!ent || ent.health <= 0) return false;
+            const w = ent.weapon;
+            if (!w || w.isMelee) return false;
+            const energyHave = tdEnergy(ent);
+            if (energyHave < 30) { if (!ent.isAI) TD._noEnergyAt = now; return false; }
+            let p = Math.max(0, Math.min(1, prog));
+            const want = 30 + 70 * p;
+            if (energyHave < want) p = Math.max(0, (energyHave - 30) / 70);
+            ent._tdEnergy = Math.max(0, energyHave - (30 + 70 * p));
+            ent.lastShot = now;
+            let actual = (w.dmgBase != null ? w.dmgBase : (w.damage || 10)) + (ent.getAtk ? ent.getAtk() : 100) * (w.atkCoef != null ? w.atkCoef : 0);
+            if (ent.damageBoost && ent.damageMultiplier) actual *= ent.damageMultiplier;
+            const dmg = Math.round(actual * (1 + p));
+            const foe = tdEnemyOf(ent);
+            const cosA = Math.cos(angle), sinA = Math.sin(angle);
+            // 射线终点: 地图边界
+            let rayLen = 4000;
+            const bx = cosA > 0 ? (TD.W - ent.x) / Math.max(0.0001, cosA) : (cosA < 0 ? -ent.x / cosA : 4000);
+            const by = sinA > 0 ? (TD.H - ent.y) / Math.max(0.0001, sinA) : (sinA < 0 ? -ent.y / sinA : 4000);
+            rayLen = Math.min(rayLen, Math.max(0, Math.min(bx, by)));
+            let endX = ent.x + cosA * rayLen;
+            let endY = ent.y + sinA * rayLen;
+            let hit = false;
+            if (foe && foe.health > 0) {
+                const dx = foe.x - ent.x, dy = foe.y - ent.y;
+                const along = dx * cosA + dy * sinA;
+                const perp = Math.abs(-dx * sinA + dy * cosA);
+                const hitR = 26;
+                if (along > 0 && along < rayLen && perp <= hitR) {
+                    hit = true;
+                    endX = ent.x + cosA * along;
+                    endY = ent.y + sinA * along;
+                    let crit = { isCrit: false };
+                    try { if (typeof checkCrit === 'function') crit = checkCrit(ent); } catch (e) { }
+                    try {
+                        const res = foe.takeDamage(dmg, ent, crit.isCrit, 'phys', false, false, true);
+                        const shown = (res && res.dmg) ? (res.dmg + (res.absorbed || 0)) : dmg;
+                        const col = (typeof DMG_COLORS !== 'undefined' && (DMG_COLORS.crit || DMG_COLORS.phys)) || '#ffb347';
+                        showFloatingNumber(foe.x, foe.y - 64, '-' + shown, col, { prefix: crit.isCrit ? '✦' : '', type: 'phys' });
+                    } catch (e) { }
+                }
+            }
+            (TD.sniperBeams = TD.sniperBeams || []).push({ x1: ent.x, y1: ent.y, x2: endX, y2: endY, t0: now, life: 240, full: p >= 0.999, hit: hit });
+            try {
+                screenShake.intensity = hit ? (10 + 16 * p) : 4;
+                screenShake.duration = hit ? 16 : 8;
+            } catch (e) { }
+            try { createParticles(endX, endY, hit ? '#ffd0a0' : '#cfd6e6', hit ? 26 : 8); } catch (e) { }
+            try { GameAudio.play('shoot_sniper'); } catch (e) { }
+            return true;
+        }
+
+        // 蓄力画面 + 射击光束 (世界坐标层)
+        function tdDrawSniperFx(now) {
+            // 光束 / 冲击环
+            if (TD.sniperBeams && TD.sniperBeams.length) {
+                TD.sniperBeams = TD.sniperBeams.filter(function (b) { return now - b.t0 < b.life; });
+                TD.sniperBeams.forEach(function (b) {
+                    const k = Math.max(0, 1 - (now - b.t0) / b.life);
+                    ctx.save();
+                    ctx.lineCap = 'round';
+                    ctx.globalAlpha = k;
+                    ctx.strokeStyle = b.full ? 'rgba(255,80,80,0.95)' : 'rgba(255,236,195,0.95)';
+                    ctx.lineWidth = 2 + 9 * k;
+                    ctx.beginPath(); ctx.moveTo(b.x1, b.y1); ctx.lineTo(b.x2, b.y2); ctx.stroke();
+                    ctx.strokeStyle = 'rgba(255,255,255,0.92)';
+                    ctx.lineWidth = 1 + 2.4 * k;
+                    ctx.beginPath(); ctx.moveTo(b.x1, b.y1); ctx.lineTo(b.x2, b.y2); ctx.stroke();
+                    if (b.hit) {
+                        const r = 12 + (1 - k) * 52;
+                        ctx.globalAlpha = Math.max(0, k * 0.9);
+                        ctx.strokeStyle = b.full ? 'rgba(255,90,90,0.9)' : 'rgba(255,210,120,0.9)';
+                        ctx.lineWidth = 3;
+                        ctx.beginPath(); ctx.arc(b.x2, b.y2, r, 0, Math.PI * 2); ctx.stroke();
+                        ctx.beginPath(); ctx.arc(b.x2, b.y2, r * 0.55, 0, Math.PI * 2); ctx.stroke();
+                    }
+                    ctx.restore();
+                });
+            }
+            // 蓄力环 + 瞄准线
+            const st = TD.sniperAim;
+            if (!st || !st.active || !player || player.health <= 0) return;
+            const p = st.progress || 0;
+            const full = p >= 0.999;
+            const a = st.angle || 0;
+            const R = 46, px = player.x, py = player.y;
+            const gap = full ? 0 : (56 * Math.PI / 180);   // 蓄满闭合整圈
+            const startA = a + Math.PI * 2 - gap / 2;      // 从瞄准方向一侧起扫
+            const sweep = Math.PI * 2 - gap;
+            const pulse = full ? (0.75 + Math.sin(now / 90) * 0.25) : 1;
+            ctx.save();
+            ctx.lineCap = 'round';
+            // 瞄准直线
+            ctx.globalAlpha = 1;
+            ctx.beginPath();
+            ctx.moveTo(px + Math.cos(a) * (R + 2), py + Math.sin(a) * (R + 2));
+            ctx.lineTo(px + Math.cos(a) * (R + 2 + 1400), py + Math.sin(a) * (R + 2 + 1400));
+            ctx.strokeStyle = full ? 'rgba(255,70,70,' + pulse.toFixed(2) + ')' : 'rgba(190,190,196,0.55)';
+            ctx.lineWidth = full ? 2.6 : 2;
+            ctx.stroke();
+            // 外框 (缺口朝向瞄准方向)
+            ctx.beginPath();
+            ctx.arc(px, py, R, startA, startA + sweep);
+            ctx.strokeStyle = full ? 'rgba(255,50,50,' + (0.85 * pulse + 0.15).toFixed(2) + ')' : 'rgba(16,16,20,0.9)';
+            ctx.lineWidth = 3.5;
+            ctx.stroke();
+            // 内圈蓄力弧
+            if (p > 0.001) {
+                ctx.beginPath();
+                ctx.arc(px, py, R - 7, startA, startA + sweep * p);
+                ctx.strokeStyle = full ? 'rgba(255,95,95,0.95)' : 'rgba(150,152,160,0.9)';
+                ctx.lineWidth = 3;
+                ctx.stroke();
+            }
+            ctx.restore();
+        }
+
         function tdDraw(now) {
             const sc = tdScale();
             ctx.fillStyle = '#070d18';
@@ -15268,6 +15400,7 @@ body.low-perf #menu::before { filter: none; opacity: .18; }
             });
             if (player && player.health > 0) tdDrawEntity(player, '#4f8eff', now);
             if (ai && ai.health > 0) tdDrawEntity(ai, '#ff6b6b', now);
+            try { tdDrawSniperFx(now); } catch (e) { }
             ctx.restore();
             // 训练场: AI 头顶总伤害 / 秒伤面板 (与横版同源, 屏幕空间绘制)
             if (gameState === 'tdtraining' && ai && ai.health > 0) {
@@ -15379,7 +15512,7 @@ body.low-perf #menu::before { filter: none; opacity: .18; }
             TD.aThinkAt = 0; TD.aWeaponAt = 0; TD.aMeleeAt = 0; TD.aMeleeUntil = 0;
             TD.fireHeld = false; TD.firePressed = false; TD.aThreat = 0; TD._achAt = 0;
             TD.lastNow = Date.now(); TD.dt = 0; TD._noEnergyAt = 0;
-            player._tdAim = 0; ai._tdAim = Math.PI;
+            player._tdAim = 0; ai._tdAim = Math.PI; TD.sniperAim = null; TD.sniperBeams = [];
             player.lastShot = 0; ai.lastShot = 0;
             TD._tdTargetHomeX = ai.x; TD._tdTargetHomeY = ai.y;
             player._tdEnergy = tdEnergyMaxOf(player); ai._tdEnergy = tdEnergyMaxOf(ai);
@@ -15504,7 +15637,7 @@ body.low-perf #menu::before { filter: none; opacity: .18; }
             TD.aWantsDash = false; TD.aStrafeDir = 1;
             TD.fireHeld = false;
             TD.lastNow = Date.now(); TD.dt = 0; TD._noEnergyAt = 0;
-            player._tdAim = 0; ai._tdAim = Math.PI;
+            player._tdAim = 0; ai._tdAim = Math.PI; TD.sniperAim = null; TD.sniperBeams = [];
             player.lastShot = 0; ai.lastShot = 0;
 
             isPaused = false; isDrafting = false; statPanelOpen = false; isAwardShowing = false;
@@ -15549,14 +15682,33 @@ body.low-perf #menu::before { filter: none; opacity: .18; }
         }
         window.addEventListener('mousemove', tdOnMouseMove);
         window.addEventListener('mousedown', function (e) {
-            if ((gameState !== 'topdown' && gameState !== 'tdtraining') || e.button !== 0) return;
-            // 点击任何 UI 面板/按钮/输入框时不应触发射击
+            if ((gameState !== 'topdown' && gameState !== 'tdtraining')) return;
+            // 点击任何 UI 面板/按钮/输入框时不应触发
             const _tg = e.target;
             if (_tg && _tg.closest && _tg.closest('button, input, textarea, select, #trainPanel, #trainToggle, #trainShop, #trainTunePanel, #pauseMenu, #statPanel, #draftOverlay, #freePickOverlay, #startChoice, #gameOver, #touchLayer, #touchStatsClose')) return;
+            if (e.button === 2) {
+                // 右键: 狙击枪蓄力 (仅为俯视)
+                if (!player || player.health <= 0) return;
+                if (tdWeaponKey(player) !== 'sniper') return;
+                if (TD.sniperAim && TD.sniperAim.active) return;
+                if (tdEnergy(player) < 30) { TD._noEnergyAt = Date.now(); return; }
+                TD.sniperAim = { active: true, from: Date.now(), progress: 0, angle: player._tdAim || 0 };
+                return;
+            }
+            if (e.button !== 0) return;
             TD.fireHeld = true;
             TD.firePressed = true;
         });
         window.addEventListener('mouseup', function (e) {
+            if (e.button === 2) {
+                const _st = TD.sniperAim;
+                if (_st && _st.active && (gameState === 'topdown' || gameState === 'tdtraining') && player && player.health > 0) {
+                    _st.active = false;
+                    try { tdSniperShot(player, _st.angle, _st.progress, Date.now()); } catch (err) { }
+                }
+                TD.sniperAim = null;
+                return;
+            }
             if (e.button !== 0) return;
             TD.fireHeld = false;
         });
