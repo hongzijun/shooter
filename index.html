@@ -13247,7 +13247,8 @@ body.low-perf #menu::before { filter: none; opacity: .18; }
                     '新增 Edge 鼠标手势提示：桌面版 Edge 首次进入俯视模式会弹一次说明，附「edge://settings/mouseGesture」地址与一键复制按钮；浏览器不开放手势开关的读取与修改权限，因此提示按浏览器类型触发、只出现一次，已关闭手势可直接点「知道了」忽略',
                     '狙击右键蓄力取消自动瞄准：蓄力期间（含 Shift 蓄力）圆框与射击直线只跟随鼠标方向，角色朝向同步跟手，不再自动锁敌；不蓄力时电脑端自动瞄准照常生效',
                     '修复排行榜死亡次数 / 时长显示为 0：此前只有「波次更高」才写榜，早期记录（统计上线前达成）永远停在 0；现在同一波次也会补写（旧数据两项全 0 时直接补齐，正常记录只在死亡更少或用时更短时才更新），历史全 0 记录临时显示「—」',
-                    '俯视模式 / 俯视训练场去掉左上角完整状态面板（武器名、弹药 ∞、图标冷却数值、❤ 命数、波次与分数），横版 2D 枪战保持不变'
+                    '俯视模式 / 俯视训练场去掉左上角完整状态面板（武器名、弹药 ∞、图标冷却数值、❤ 命数、波次与分数），横版 2D 枪战保持不变',
+                    '修复俯视狙击右键蓄力命中时伤害数字显示两次（takeDamage 已统一弹字，蓄力射击里又补了一次），现在只显示一个，暴击 ✦ 与护盾 🛡 前缀由统一飘字负责'
                 ]
             },
             {
@@ -15253,10 +15254,8 @@ body.low-perf #menu::before { filter: none; opacity: .18; }
                     let crit = { isCrit: false };
                     try { if (typeof checkCrit === 'function') crit = checkCrit(ent); } catch (e) { }
                     try {
-                        const res = foe.takeDamage(dmg, ent, crit.isCrit, 'phys', false, false, true);
-                        const shown = (res && res.dmg) ? (res.dmg + (res.absorbed || 0)) : dmg;
-                        const col = (typeof DMG_COLORS !== 'undefined' && (DMG_COLORS.crit || DMG_COLORS.phys)) || '#ffb347';
-                        showFloatingNumber(foe.x, foe.y - 64, '-' + shown, col, { prefix: crit.isCrit ? '✦' : '', type: 'phys' });
+                        // 伤害飘字由 takeDamage 内部统一弹出 (含暴击 ✦ / 护盾 🛡 前缀), 这里不再重复显示
+                        foe.takeDamage(dmg, ent, crit.isCrit, 'phys', false, false, true);
                     } catch (e) { }
                 }
             }
