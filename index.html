@@ -3411,11 +3411,11 @@ body.low-perf #menu::before { filter: none; opacity: .18; }
             _equippedSel: -1,
             _built: false
         };
-        var BAG_LABEL = { pistol: '手枪', rifle: '步枪', shotgun: '霰弹', smg: '冲锋', sniper: '狙击', sword: '战刃' };
+        var BAG_LABEL = { pistol: '手枪', rifle: '步枪', shotgun: '霰弹', smg: '冲锋', sniper: '狙击', laser: '激光', sword: '战刃' };
 
         function _bagDefaultSlots() {
             var s = new Array(36).fill(null);
-            ['pistol', 'rifle', 'shotgun', 'smg', 'sniper', 'sword'].forEach(function (k, i) {
+            ['pistol', 'rifle', 'shotgun', 'smg', 'sniper', 'sword', 'laser'].forEach(function (k, i) {
                 s[BAG.hotStart + i] = { type: 'weapon', key: k };
             });
             return s;
@@ -4276,11 +4276,13 @@ body.low-perf #menu::before { filter: none; opacity: .18; }
             shotgun: { name: '霰弹枪', sps: 1.4, dmgBase: 20, atkCoef: 0.3, damage: 50, fireRate: 714, ammo: 10, maxAmmo: 10, reserve: 9999, reloadTime: 1800, speed: 18, spread: 0.24, pellets: 6, color: '#ff6b35', knockbackMultiplier: 1.8, closeRangeBonus: true },
             smg: { name: '冲锋枪', sps: 12, dmgBase: 3, atkCoef: 0.04, fxMult: 1, damage: 7, fireRate: 83, ammo: 45, maxAmmo: 45, reserve: 9999, reloadTime: 1100, speed: 19, spread: 0.095, color: '#a29bfe', knockbackMultiplier: 0.7 },
             sniper: { name: '狙击枪', sps: 1.1, dmgBase: 80, atkCoef: 0.9, damage: 170, fireRate: 909, ammo: 6, maxAmmo: 6, reserve: 9999, reloadTime: 2800, speed: 34, spread: 0.006, color: '#2ed573', knockbackMultiplier: 2.0 },
+            // 激光枪: 伤害基值与攻击系数均为狙击枪的 2 倍 (80×2 / 0.9×2)
+            laser: { name: '激光枪', sps: 1.1, dmgBase: 160, atkCoef: 1.8, damage: 340, fireRate: 1000, ammo: 6, maxAmmo: 6, reserve: 9999, reloadTime: 2800, speed: 40, spread: 0.002, color: '#ff2d95', knockbackMultiplier: 2.2 },
             sword: { name: '⚔️ 战刃', sps: 1.8, dmgBase: 80, atkCoef: 0.3, fxMult: 1.5, damage: 110, fireRate: 556, chargeFullMs: 3000, attackRange: 95, maxCombo: 5, color: '#e0e0e0', knockbackMultiplier: 1.5, isMelee: true, ammo: Infinity, maxAmmo: Infinity }
         };
 
         // === 训练场数值设置: 默认值表 (人物 / AI 各一份, 结构一致便于保存) ===
-        const TRAIN_WEAPON_KEYS = ['pistol', 'rifle', 'shotgun', 'smg', 'sniper', 'sword'];
+        const TRAIN_WEAPON_KEYS = ['pistol', 'rifle', 'shotgun', 'smg', 'sniper', 'laser', 'sword'];
         // 训练场数值默认 (与 TRAIN_TUNE 面板默认一致; 仅此处维护)
         const TRAIN_WEAPON_DEF = {
             pistol: { sps: 6, dmgBase: 20, atkCoef: 0.4 },
@@ -4288,6 +4290,8 @@ body.low-perf #menu::before { filter: none; opacity: .18; }
             shotgun: { sps: 1.4, dmgBase: 12, atkCoef: 0.15 },
             smg: { sps: 12, dmgBase: 10, atkCoef: 0.07 },
             sniper: { sps: 1.1, dmgBase: 80, atkCoef: 1 },
+            // 激光枪 = 狙击枪默认值的 2 倍 (160 / 2.0)
+            laser: { sps: 1.1, dmgBase: 160, atkCoef: 2 },
             sword: { sps: 1.8, dmgBase: 80, atkCoef: 0.5 }
         };
         function _trainDefaultTune(side) {
@@ -11036,7 +11040,7 @@ body.low-perf #menu::before { filter: none; opacity: .18; }
                 }
 
                 const weaponLines = [];
-                ['pistol', 'rifle', 'shotgun', 'smg', 'sniper', 'sword'].forEach(function (wk) {
+                ['pistol', 'rifle', 'shotgun', 'smg', 'sniper', 'laser', 'sword'].forEach(function (wk) {
                     const ww = (e.weapons && e.weapons[wk]) || WEAPONS[wk];
                     if (!ww) return;
                     const coef = (ww.atkCoef != null ? ww.atkCoef : 0);
@@ -13723,7 +13727,10 @@ body.low-perf #menu::before { filter: none; opacity: .18; }
                     '手游新增「自动瞄准」开关（设置面板，全端显示，默认关闭）：关闭时以「开火键中心 → 手指」的方向作为人物朝向，开启时自动锁定敌人并按子弹速度预判提前量',
                     '手游开火键支持手势瞄准：按住开火并滑动手指即可转向；按住超过 0.1 秒且当前为狙击枪时自动进入蓄力（等同电脑右键），拖动手指调整方向、松手立即发射，短按仍是普通射击',
                     '手游默认键位调整：左下移动盘、右上位移 / 跳跃键、右下发射键；旧配置如果仍是原默认位置会自动交换到新布局，自定义过的位置保持不变',
-                    '手游竖屏提示：手机竖屏回到主界面时，顶部会闪烁「📱 建议横屏游玩」，横屏或进入游戏后自动消失；竖屏主菜单顶部留出空间避免遮挡标题'
+                    '手游竖屏提示：手机竖屏回到主界面时，顶部会闪烁「📱 建议横屏游玩」，横屏或进入游戏后自动消失；竖屏主菜单顶部留出空间避免遮挡标题',
+                    '新增第 7 把武器「激光枪」：伤害基值与攻击系数都是狙击枪的 2 倍（基值 160 / 系数 1.8，训练场默认 160 / 2.0）；默认放在背包快捷栏第 7 格，数字键 7 或背包点选即可使用',
+                    '俯视右键蓄力从狙击枪移到激光枪：只有手持激光枪时，电脑右键 / Shift、手机长按开火 0.1 秒才会进入激光蓄力（瞄准锁敌红标、普攻同源结算、卡片增伤、装备特效、吸血转盾、击退全部继承）；狙击枪右键不再蓄力',
+                    '训练场数值面板、全属性面板、俯视能量消耗 / 射程 / 理想距离、击杀音效等全部加入激光枪这一行'
                 ]
             },
             {
@@ -14571,9 +14578,9 @@ body.low-perf #menu::before { filter: none; opacity: .18; }
             try { showFloatingText('已恢复默认（点「保存数值」才写入全局）', '#8fa6c8'); } catch (e) { }
         }
         // 枪械 / 刀剑能量消耗整体减半 (位移 dashCost 不在此列)
-        const TD_COST = { pistol: 5, rifle: 3, shotgun: 15, smg: 2, sniper: 17.5, sword: 20 };
-        const TD_RANGE = { pistol: 440, rifle: 600, shotgun: 220, smg: 380, sniper: 1000, sword: 110 };
-        const TD_IDEAL = { pistol: 300, rifle: 420, shotgun: 120, smg: 250, sniper: 760, sword: 70 };
+        const TD_COST = { pistol: 5, rifle: 3, shotgun: 15, smg: 2, sniper: 17.5, laser: 17.5, sword: 20 };
+        const TD_RANGE = { pistol: 440, rifle: 600, shotgun: 220, smg: 380, sniper: 1000, laser: 1200, sword: 110 };
+        const TD_IDEAL = { pistol: 300, rifle: 420, shotgun: 120, smg: 250, sniper: 760, laser: 820, sword: 70 };
 
         function tdClamp(v, a, b) { return v < a ? a : (v > b ? b : v); }
         function tdScale() {
@@ -14698,7 +14705,7 @@ body.low-perf #menu::before { filter: none; opacity: .18; }
                     : (_wk === 'rifle') ? 'shoot_rifle'
                     : (_wk === 'shotgun') ? 'shoot_shotgun'
                     : (_wk === 'smg') ? 'shoot_smg'
-                    : (_wk === 'sniper') ? 'shoot_sniper' : 'shoot_pistol';
+                    : (_wk === 'sniper' || _wk === 'laser') ? 'shoot_sniper' : 'shoot_pistol';
                 GameAudio.play(_snd);
             } catch (e) { }
             return true;
@@ -15003,13 +15010,13 @@ body.low-perf #menu::before { filter: none; opacity: .18; }
             // === 手机端狙击长按蓄力: 按住 >= 0.1 秒且当前为狙击枪 → 等同电脑右键, 松手发射 ===
             if (_isTouchNow && typeof touchState !== 'undefined' && touchState.fire && !touchState.chargeStarted
                 && touchState.fireDownAt && (now - touchState.fireDownAt) >= 100
-                && tdWeaponKey(player) === 'sniper' && player.health > 0 && tdEnergy(player) >= 30) {
+                && tdWeaponKey(player) === 'laser' && player.health > 0 && tdEnergy(player) >= 30) {
                 touchState.chargeStarted = true;
                 TD.sniperAim = { active: true, from: now, progress: 0, angle: player._tdAim || 0, _touch: true };
             }
             // 狙击蓄力: 进度按真实时间推进, 武器切换 / 眩晕 / 死亡自动取消
             if (TD.sniperAim && TD.sniperAim.active) {
-                if (player.health <= 0 || fxIsStunned(player) || tdWeaponKey(player) !== 'sniper') {
+                if (player.health <= 0 || fxIsStunned(player) || tdWeaponKey(player) !== 'laser') {
                     TD.sniperAim.active = false;
                     TD.sniperAim = null;
                 } else {
@@ -15726,8 +15733,8 @@ body.low-perf #menu::before { filter: none; opacity: .18; }
             ent.lastShot = now;
             let actual = (w.dmgBase != null ? w.dmgBase : (w.damage || 10)) + (ent.getAtk ? ent.getAtk() : 100) * (w.atkCoef != null ? w.atkCoef : 0);
             if (ent.damageBoost && ent.damageMultiplier) actual *= ent.damageMultiplier;
-            // 右键蓄力视为「狙击枪普攻」: 固定 2 倍伤害, 后续完整走普攻结算 (卡片增伤 / 装备特效 / 吸血 / 转盾)
-            let dmg = Math.round(actual * 2);
+            // 激光枪蓄力: 伤害 = 武器公式本身 (激光的基值与系数已是狙击的 2 倍), 后续完整走普攻结算
+            let dmg = Math.round(actual);
             const foe = tdEnemyOf(ent);
             const cosA = Math.cos(angle), sinA = Math.sin(angle);
             // 射线终点: 地图边界
@@ -16340,7 +16347,7 @@ body.low-perf #menu::before { filter: none; opacity: .18; }
                 try { e.preventDefault(); } catch (err) { }
                 if (!player || player.health <= 0) return;
                 if (player._bagEmptyHanded) return;   // 空手不能蓄力
-                if (tdWeaponKey(player) !== 'sniper') return;
+                if (tdWeaponKey(player) !== 'laser') return;
                 if (TD.sniperAim && TD.sniperAim.active) return;
                 if (tdEnergy(player) < 30) { TD._noEnergyAt = Date.now(); return; }
                 TD.sniperAim = { active: true, from: Date.now(), progress: 0, angle: player._tdAim || 0 };
@@ -16391,7 +16398,7 @@ body.low-perf #menu::before { filter: none; opacity: .18; }
             // Shift: 狙击备用蓄力键 (规避浏览器右键手势)
             if ((e.key === 'Shift' || e.code === 'ShiftLeft' || e.code === 'ShiftRight') && player) {
                 if (e.preventDefault) e.preventDefault();
-                if (!player._bagEmptyHanded && tdWeaponKey(player) === 'sniper' && player.health > 0 && tdEnergy(player) >= 30 && !(TD.sniperAim && TD.sniperAim.active)) {
+                if (!player._bagEmptyHanded && tdWeaponKey(player) === 'laser' && player.health > 0 && tdEnergy(player) >= 30 && !(TD.sniperAim && TD.sniperAim.active)) {
                     TD.sniperAim = { active: true, from: Date.now(), progress: 0, angle: player._tdAim || 0 };
                     TD._sniperKeyHold = true;
                 }
@@ -18310,7 +18317,7 @@ body.low-perf #menu::before { filter: none; opacity: .18; }
         { k: 'move', t: '左下角是移动盘：按住拖动即可移动。俯视枪战里它是 360° 摇杆，可以往任意方向走。' },
         { k: 'fire', t: '右下角 🔫 是开火键：按住连续射击，松手停火；手机端会自动帮你瞄准敌人。' },
         { k: 'jump', t: '右下角 💨：横版点击跳跃（可二段跳）；俯视枪战里是能量位移，消耗能量冲刺并短暂无敌。' },
-        { k: 'hotbar', t: '屏幕最下方是物品栏：点哪一格（电脑按 1-9）就选中那一格。1-6 格放着 6 把武器，选中武器才能开火；选到空格会变成空手，只能移动。点右侧「···」打开背包，可以像我的世界一样整理物品。' },
+        { k: 'hotbar', t: '屏幕最下方是物品栏：点哪一格（电脑按 1-9）就选中那一格。1-7 格放着 7 把武器（手枪 / 步枪 / 霰弹 / 冲锋 / 狙击 / 战刃 / 激光枪），选中武器才能开火；选到空格会变成空手，只能移动。点右侧「···」打开背包，可以像我的世界一样整理物品。' },
         { k: 'jump', t: '也可以按住跳跃键向左滑：会展开 360° 武器轮盘，手指指向哪个方向就切哪把枪。' },
         { k: 'top', t: '界面速览：最上方是毒圈倒计时与双方生命；左上血量 / 护盾；右上分数与本局时长。准备好了就开始吧！' }
     ];
