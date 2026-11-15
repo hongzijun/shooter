@@ -3972,6 +3972,10 @@ body.low-perf #menu::before { filter: none; opacity: .18; }
                             _st.active = false;
                             tdSniperShot(player, _st.angle, _st.progress, Date.now());
                             TD.sniperAim = null;
+                        } else if (!touchState.chargeStarted && typeof player !== 'undefined' && player && player.health > 0
+                            && typeof tdWeaponKey === 'function' && tdWeaponKey(player) === 'laser') {
+                            // 短按激光枪: 0 秒蓄力瞬间打出一发 (伤害等同狙击枪)
+                            try { tdSniperShot(player, player._tdAim || 0, 0, Date.now()); } catch (e2) { }
                         }
                     } catch (err) { }
                     touchState.chargeStarted = false;
@@ -4311,7 +4315,7 @@ body.low-perf #menu::before { filter: none; opacity: .18; }
             smg: { name: '冲锋枪', sps: 12, dmgBase: 3, atkCoef: 0.04, fxMult: 1, damage: 7, fireRate: 83, ammo: 45, maxAmmo: 45, reserve: 9999, reloadTime: 1100, speed: 19, spread: 0.095, color: '#a29bfe', knockbackMultiplier: 0.7 },
             sniper: { name: '狙击枪', sps: 1.1, dmgBase: 80, atkCoef: 0.9, damage: 170, fireRate: 909, ammo: 6, maxAmmo: 6, reserve: 9999, reloadTime: 2800, speed: 34, spread: 0.006, color: '#2ed573', knockbackMultiplier: 2.0 },
             // 激光枪: 伤害基值与攻击系数均为狙击枪的 2 倍 (80×2 / 0.9×2)
-            laser: { name: '激光枪', sps: 1.1, dmgBase: 160, atkCoef: 1.8, damage: 340, fireRate: 1000, ammo: 6, maxAmmo: 6, reserve: 9999, reloadTime: 2800, speed: 40, spread: 0.002, color: '#ff3b3b', knockbackMultiplier: 2.2 },
+            laser: { name: '激光枪', sps: 1.1, dmgBase: 160, atkCoef: 1.8, damage: 340, fireRate: 1000, ammo: 6, maxAmmo: 6, reserve: 9999, reloadTime: 2800, speed: 40, spread: 0.002, color: '#7df9ff', knockbackMultiplier: 2.2 },
             sword: { name: '⚔️ 战刃', sps: 1.8, dmgBase: 80, atkCoef: 0.3, fxMult: 1.5, damage: 110, fireRate: 556, chargeFullMs: 3000, attackRange: 95, maxCombo: 5, color: '#e0e0e0', knockbackMultiplier: 1.5, isMelee: true, ammo: Infinity, maxAmmo: Infinity }
         };
 
@@ -12217,33 +12221,17 @@ body.low-perf #menu::before { filter: none; opacity: .18; }
                     }
                 }
 
-                if (b.isLaser) {
-                    // 激光弹: 细长发光线段 (不再画普通圆形子弹)
-                    const ang = Math.atan2(b.vy, b.vx);
-                    const len = 30;
-                    ctx.strokeStyle = b.color || '#ff3b3b';
-                    ctx.shadowColor = b.color || '#ff3b3b';
-                    ctx.shadowBlur = 20;
-                    ctx.lineWidth = 3;
-                    ctx.lineCap = 'round';
-                    ctx.beginPath();
-                    ctx.moveTo(sx - Math.cos(ang) * len, sy - Math.sin(ang) * len);
-                    ctx.lineTo(sx + Math.cos(ang) * 4, sy + Math.sin(ang) * 4);
-                    ctx.stroke();
-                    ctx.shadowBlur = 0;
+                const _lowBulletFx = (document.body && document.body.getAttribute('data-device') === 'touch');
+                if (_lowBulletFx) {
+                    ctx.globalAlpha = 0.22;
+                    ctx.fillStyle = b.color || '#fff'; ctx.beginPath(); ctx.arc(sx, sy, Math.max(2, b.size * 2.1), 0, Math.PI * 2); ctx.fill();
+                    ctx.globalAlpha = 1;
                 } else {
-                    const _lowBulletFx = (document.body && document.body.getAttribute('data-device') === 'touch');
-                    if (_lowBulletFx) {
-                        ctx.globalAlpha = 0.22;
-                        ctx.fillStyle = b.color || '#fff'; ctx.beginPath(); ctx.arc(sx, sy, Math.max(2, b.size * 2.1), 0, Math.PI * 2); ctx.fill();
-                        ctx.globalAlpha = 1;
-                    } else {
-                        ctx.shadowColor = b.color || '#fff'; ctx.shadowBlur = 28;
-                    }
-                    ctx.fillStyle = b.color || '#fff'; ctx.beginPath(); ctx.arc(sx, sy, Math.max(1, b.size), 0, Math.PI * 2); ctx.fill();
-                    ctx.shadowBlur = 0;
-                    ctx.fillStyle = '#fff'; ctx.beginPath(); ctx.arc(sx, sy, Math.max(1, b.size * 0.48), 0, Math.PI * 2); ctx.fill();
+                    ctx.shadowColor = b.color || '#fff'; ctx.shadowBlur = 28;
                 }
+                ctx.fillStyle = b.color || '#fff'; ctx.beginPath(); ctx.arc(sx, sy, Math.max(1, b.size), 0, Math.PI * 2); ctx.fill();
+                ctx.shadowBlur = 0;
+                ctx.fillStyle = '#fff'; ctx.beginPath(); ctx.arc(sx, sy, Math.max(1, b.size * 0.48), 0, Math.PI * 2); ctx.fill();
                 ctx.restore();
             });
         }
@@ -13789,7 +13777,10 @@ body.low-perf #menu::before { filter: none; opacity: .18; }
                     '修复手机主菜单有时上下滑动不了：移除部分 WebView 会卡住的滚动属性、菜单及其子元素统一允许纵向滑动，并加入触摸滚动兜底（原生滚动失效时自动接管），内容超出时始终可以上下滑',
                     '激光枪手机瞄准吸附：蓄力时「开火键中心 → 手指」的方向与实际「玩家 → 敌人」方向夹角小于 10° 时，直接吸附到敌人中心，命中更稳（超过 10° 仍完全跟随手指）',
                     '修复手游主菜单滑动一卡一卡：移除了与原生滚动冲突的手动滚动接管，改回纯原生滑动；手机端主菜单的超大模糊旋转光斑不再动画、模糊半径下调，低端机滚动更顺滑',
-                    '暂停菜单与 Tab 属性查看面板改为 30% 透明（背景 alpha 0.70，带轻微背景模糊）：暂停 / 查看属性时能直接看到后面的游戏画面，文字与按钮保持清晰'
+                    '暂停菜单与 Tab 属性查看面板改为 30% 透明（背景 alpha 0.70，带轻微背景模糊）：暂停 / 查看属性时能直接看到后面的游戏画面，文字与按钮保持清晰',
+                    '激光枪蓄力伤害曲线调整：0 秒蓄力瞬间打出 = 狙击枪同等伤害，随蓄力时长实时线性提升，1 秒满蓄 = 狙击枪 300% 伤害（过程中也按当前进度计算）；能量消耗不变',
+                    '激光枪不再发射普通子弹：俯视普通开火不再产生任何子弹，只通过右键 / Shift / 手机长按（或短按 0 秒蓄力）发射；横版激光枪普通子弹改回青色圆形弹，不再出现红色细线',
+                    '说明书全面更新：补充背包 / 快捷栏、7 把武器（含激光枪伤害曲线与战刃锁敌）、手机手势瞄准与长按蓄力、自动瞄准开关、新默认键位、暂停 / 属性面板透明度等最新内容'
                 ]
             },
             {
@@ -14078,106 +14069,121 @@ body.low-perf #menu::before { filter: none; opacity: .18; }
             if (!content) return;
 
             content.innerHTML = `
-                <!-- === 新手指南 (重写) === -->
+                <!-- === 说明书 (2026-11 更新) === -->
                 <div style="display:flex;flex-direction:column;gap:14px;color:#dfe6f5;font-size:13px;line-height:1.65;">
-                    <!-- 1. 标题 + 一句话玩法 -->
                     <div style="background:linear-gradient(135deg,rgba(46,213,115,0.16),rgba(79,142,255,0.12));border:1px solid rgba(46,213,115,0.35);border-radius:14px;padding:14px 16px;">
-                        <div style="font-size:20px;font-weight:bold;color:#2ed573;margin-bottom:4px;">🎮 2D 枪战游戏 · 新手指南</div>
-                        <div style="color:#9fb2d8;">一句话玩法：<span style="color:#fff;">选模式 → 移动 / 跳跃 / 射击 → 击败敌人 → 每波抽卡变强。</span></div>
+                        <div style="font-size:20px;font-weight:bold;color:#2ed573;margin-bottom:4px;">🎮 2D 枪战游戏 · 说明书</div>
+                        <div style="color:#9fb2d8;">一句话玩法：<span style="color:#fff;">选模式 → 移动 / 跳跃 / 瞄准射击 → 击败敌人 → 每波抽卡变强。</span></div>
+                        <div style="color:#8fa6c8;font-size:12px;margin-top:4px;">本次更新：背包 / 物品栏、第 7 把武器「激光枪」、手机手势瞄准与长按蓄力、自动瞄准开关、新默认键位。</div>
                     </div>
 
-                    <!-- 2. 模式选择 -->
                     <section style="background:rgba(255,255,255,0.05);border:1px solid rgba(255,255,255,0.1);border-radius:12px;padding:12px 14px;">
                         <h3 style="color:#4f8eff;margin:0 0 8px;font-size:15px;">🧭 模式选择</h3>
                         <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:8px;">
-                            <div style="background:rgba(0,0,0,0.25);border-radius:10px;padding:9px 10px;"><span style="color:#ffd700;font-weight:bold;">开始游戏 2（v2）</span><br>当前版本，推荐从这里开始。</div>
-                            <div style="background:rgba(0,0,0,0.25);border-radius:10px;padding:9px 10px;"><span style="color:#ff9f43;font-weight:bold;">开始游戏</span><br>会跳转到旧版 v1，想体验旧内容时再用。</div>
-                            <div style="background:rgba(0,0,0,0.25);border-radius:10px;padding:9px 10px;"><span style="color:#a29bfe;font-weight:bold;">双人对战</span><br>同一键盘两人，回合制；每回合双方各抽卡，命打光的一方输掉本回合。</div>
-                            <div style="background:rgba(0,0,0,0.25);border-radius:10px;padding:9px 10px;"><span style="color:#2ed573;font-weight:bold;">训练场</span><br>无限命、无限弹药，可调数值、自由装配卡牌，适合练枪。</div>
+                            <div style="background:rgba(0,0,0,0.25);border-radius:10px;padding:9px 10px;"><span style="color:#ffd700;font-weight:bold;">🎮 2D 枪战</span><br>横版无尽模式：打 AI、每波抽卡，玩家 3 条命。</div>
+                            <div style="background:rgba(0,0,0,0.25);border-radius:10px;padding:9px 10px;"><span style="color:#2ed573;font-weight:bold;">🎯 俯视枪战（新）</span><br>俯视视角 PVE：走位、能量位移、毒圈与激光蓄力。</div>
+                            <div style="background:rgba(0,0,0,0.25);border-radius:10px;padding:9px 10px;"><span style="color:#a29bfe;font-weight:bold;">⚔️ 双人对战</span><br>同一键盘两人回合制，各抽各的卡。</div>
+                            <div style="background:rgba(0,0,0,0.25);border-radius:10px;padding:9px 10px;"><span style="color:#ff9f43;font-weight:bold;">训练场 / 俯视训练场</span><br>调数值、自由装配卡牌、测武器伤害。</div>
                         </div>
                     </section>
 
-                    <!-- 3. 操作说明 -->
                     <section style="background:rgba(255,255,255,0.05);border:1px solid rgba(255,255,255,0.1);border-radius:12px;padding:12px 14px;">
                         <h3 style="color:#ffd700;margin:0 0 8px;font-size:15px;">🎮 操作说明</h3>
                         <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(210px,1fr));gap:8px;">
                             <div style="background:rgba(79,142,255,0.08);border:1px solid rgba(79,142,255,0.25);border-radius:10px;padding:10px;">
-                                <div style="color:#4f8eff;font-weight:bold;margin-bottom:6px;">🖥 电脑 · PvE / 训练场</div>
+                                <div style="color:#4f8eff;font-weight:bold;margin-bottom:6px;">🖥 电脑 · 横版</div>
                                 <div style="display:flex;flex-wrap:wrap;gap:4px 10px;">
                                     <span><b style="color:#fff;">A/D</b> 移动</span>
-                                    <span><b style="color:#fff;">W</b> 跳跃（二段跳）</span>
+                                    <span><b style="color:#fff;">W</b> 跳跃</span>
                                     <span><b style="color:#fff;">V</b> 射击</span>
                                     <span><b style="color:#fff;">R</b> 换弹</span>
-                                    <span><b style="color:#fff;">1-5</b> 切换枪械</span>
-                                    <span><b style="color:#fff;">E</b> 战刃</span>
+                                    <span><b style="color:#fff;">1-9</b> 物品栏选格</span>
+                                    <span><b style="color:#fff;">···</b> 打开背包</span>
                                     <span><b style="color:#fff;">Esc</b> 暂停</span>
                                     <span><b style="color:#fff;">Tab</b> 全属性面板</span>
                                     <span><b style="color:#fff;">Caps</b> 透明暂停</span>
                                 </div>
                             </div>
-                            <div style="background:rgba(162,155,254,0.08);border:1px solid rgba(162,155,254,0.3);border-radius:10px;padding:10px;">
-                                <div style="color:#a29bfe;font-weight:bold;margin-bottom:6px;">⚔️ 双人对战（同一键盘）</div>
-                                <div>1P：<b style="color:#fff;">A/D</b> 移动、<b style="color:#fff;">W</b> 跳跃、<b style="color:#fff;">V</b> 射击</div>
-                                <div>2P：<b style="color:#fff;">←/→</b> 移动、<b style="color:#fff;">↑</b> 跳跃、<b style="color:#fff;">L</b> 射击</div>
-                            </div>
                             <div style="background:rgba(46,213,115,0.08);border:1px solid rgba(46,213,115,0.3);border-radius:10px;padding:10px;">
-                                <div style="color:#2ed573;font-weight:bold;margin-bottom:6px;">📱 手机 / 非电脑</div>
-                                <div>左下移动盘：左半区左移，右半区右移。</div>
-                                <div>右上「发射」：按住持续射击。</div>
-                                <div>右下「跳」：点击跳跃。</div>
-                                <div>按住「跳」向左滑：展开 1-6 武器轮盘，松手切枪。</div>
-                                <div>底部中间：暂停按钮。</div>
-                                <div>大厅「🎮 按键设置」：调整位置、大小、透明度。</div>
+                                <div style="color:#2ed573;font-weight:bold;margin-bottom:6px;">🎯 电脑 · 俯视</div>
+                                <div><b style="color:#fff;">WASD</b> 移动，<b style="color:#fff;">鼠标</b> 瞄准，<b style="color:#fff;">左键</b> 射击</div>
+                                <div><b style="color:#fff;">右键 / Shift</b>：手持激光枪时蓄力，松开发射</div>
+                                <div><b style="color:#fff;">空格</b> 能量位移，<b style="color:#fff;">1-9</b> 物品栏选格</div>
+                            </div>
+                            <div style="background:rgba(162,155,254,0.08);border:1px solid rgba(162,155,254,0.3);border-radius:10px;padding:10px;">
+                                <div style="color:#a29bfe;font-weight:bold;margin-bottom:6px;">📱 手机 / 非电脑</div>
+                                <div>左下：移动盘；右上：跳跃 / 位移键；右下：发射键。</div>
+                                <div>按住发射并滑动手指即可转向瞄准（自动瞄准关闭时）。</div>
+                                <div>手持激光枪时按住发射 0.1 秒进入蓄力，拖动调向、松手发射；短按为 0 秒蓄力。</div>
+                                <div>底部 9 格物品栏：点格选武器，右侧「···」打开背包。</div>
+                                <div>大厅「⚙ 设置 / 🎮 按键设置」可开关自动瞄准、调整按键位置与大小。</div>
                             </div>
                         </div>
                     </section>
 
-                    <!-- 4. 战斗基础 -->
+                    <section style="background:rgba(255,255,255,0.05);border:1px solid rgba(255,255,255,0.1);border-radius:12px;padding:12px 14px;">
+                        <h3 style="color:#c084ff;margin:0 0 8px;font-size:15px;">🎒 背包 / 物品栏（Minecraft 式）</h3>
+                        <div style="display:flex;flex-direction:column;gap:6px;background:rgba(192,132,255,0.08);border:1px solid rgba(192,132,255,0.28);border-radius:10px;padding:10px 12px;">
+                            <div>• 屏幕最下方 9 格就是快捷栏，按 <b style="color:#fff;">1-9</b> 或点格选中；右侧「···」打开背包。</div>
+                            <div>• 背包 = 上方 3×9 主背包 + 下方 1×9 快捷栏；打开时游戏暂停。</div>
+                            <div>• 点格子拾起物品，再点其他格子放下 / 交换；关闭时手中物品自动放回空位。</div>
+                            <div>• 默认 7 把武器放在快捷栏 1-7 格，可自由拖动。背包按每个存档独立保存。</div>
+                            <div>• 选中空格会变成「空手」：不能开火 / 挥刀，只能移动（方便跳跃走位）。</div>
+                        </div>
+                    </section>
+
+                    <section style="background:rgba(255,255,255,0.05);border:1px solid rgba(255,255,255,0.1);border-radius:12px;padding:12px 14px;">
+                        <h3 style="color:#ff6b35;margin:0 0 8px;font-size:15px;">🔫 武器一览</h3>
+                        <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:8px;">
+                            <div style="background:rgba(0,0,0,0.25);border-radius:10px;padding:9px 10px;"><b style="color:#fff;">手枪 / 步枪 / 冲锋枪</b><br>常规连发，适合中近距离。</div>
+                            <div style="background:rgba(0,0,0,0.25);border-radius:10px;padding:9px 10px;"><b style="color:#fff;">霰弹枪</b><br>近距离多弹丸，击退强。</div>
+                            <div style="background:rgba(0,0,0,0.25);border-radius:10px;padding:9px 10px;"><b style="color:#fff;">狙击枪</b><br>远距离高单发，俯视不再蓄力。</div>
+                            <div style="background:rgba(0,0,0,0.25);border-radius:10px;padding:9px 10px;"><b style="color:#fff;">⚔️ 战刃</b><br>近战蓄力挥砍；手持时无论自动瞄准开关都会自动面向敌人。</div>
+                            <div style="background:rgba(0,0,0,0.25);border-radius:10px;padding:9px 10px;"><b style="color:#fff;">💠 激光枪（第 7 格）</b><br>俯视专属蓄力武器：0 秒 = 狙击伤害，1 秒满蓄 = 狙击 300%，过程中实时增长；手机瞄准与敌人夹角 ≤10° 会自动吸附。不发射普通子弹。</div>
+                        </div>
+                    </section>
+
                     <section style="background:rgba(255,255,255,0.05);border:1px solid rgba(255,255,255,0.1);border-radius:12px;padding:12px 14px;">
                         <h3 style="color:#e74c3c;margin:0 0 8px;font-size:15px;">❤️ 战斗基础</h3>
                         <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(230px,1fr));gap:8px;">
-                            <div style="background:rgba(231,76,60,0.12);border:1px solid rgba(231,76,60,0.3);border-radius:10px;padding:10px;"><b style="color:#fff;">生命与命数</b><br>PvE 有 2 条命，命打光本局结束；PvP 每回合命打光的一方判负。</div>
-                            <div style="background:rgba(79,142,255,0.1);border:1px solid rgba(79,142,255,0.28);border-radius:10px;padding:10px;"><b style="color:#fff;">护盾</b><br>最多 4 条最大生命，受到伤害时优先扣除护盾。</div>
-                            <div style="background:rgba(255,215,0,0.08);border:1px solid rgba(255,215,0,0.25);border-radius:10px;padding:10px;"><b style="color:#fff;">伤害颜色</b><br>物理=红，法术=紫，真实伤害=白，特效伤害=绿，暴击=黄。</div>
-                            <div style="background:rgba(255,255,255,0.06);border:1px solid rgba(255,255,255,0.15);border-radius:10px;padding:10px;"><b style="color:#fff;">防御与穿透</b><br>防御降低受到的物理伤害，穿透抵消对方防御；减伤率表示最终减伤的百分比。</div>
+                            <div style="background:rgba(231,76,60,0.12);border:1px solid rgba(231,76,60,0.3);border-radius:10px;padding:10px;"><b style="color:#fff;">生命与命数</b><br>横版 PvE 玩家 3 条命；俯视一波内 AI 命打光才算过波。</div>
+                            <div style="background:rgba(79,142,255,0.1);border:1px solid rgba(79,142,255,0.28);border-radius:10px;padding:10px;"><b style="color:#fff;">护盾</b><br>最多 4 条最大生命，受伤优先扣护盾。</div>
+                            <div style="background:rgba(255,215,0,0.08);border:1px solid rgba(255,215,0,0.25);border-radius:10px;padding:10px;"><b style="color:#fff;">伤害颜色</b><br>物理=红，法术=紫，真实=白，特效=绿，暴击=黄。</div>
+                            <div style="background:rgba(255,255,255,0.06);border:1px solid rgba(255,255,255,0.15);border-radius:10px;padding:10px;"><b style="color:#fff;">毒圈（俯视）</b><br>每隔一段时间收缩，圈外持续掉血并累加减疗；每过一波重置。</div>
                         </div>
                     </section>
 
-                    <!-- 5. 卡牌与成长 -->
                     <section style="background:rgba(255,255,255,0.05);border:1px solid rgba(255,255,255,0.1);border-radius:12px;padding:12px 14px;">
                         <h3 style="color:#a29bfe;margin:0 0 8px;font-size:15px;">🎴 卡牌与成长</h3>
                         <div style="display:flex;flex-direction:column;gap:6px;background:rgba(162,155,254,0.08);border:1px solid rgba(162,155,254,0.28);border-radius:10px;padding:10px 12px;">
-                            <div>• 每波 / 每回合从 3 张卡里选 1 张，卡牌永久生效，可叠层。</div>
-                            <div>• 装备卡增加基础属性；效果卡提供特殊能力。</div>
-                            <div>• 稀有度越高，通常越强。</div>
-                            <div>• 训练场可自由装配卡牌、调整数值。</div>
+                            <div>• 每波 / 每回合从 3 张卡里选 1 张，永久生效，可叠层。</div>
+                            <div>• 装备卡加基础属性；效果卡提供特殊能力，稀有度越高通常越强。</div>
+                            <div>• 训练场可自由装配卡牌、调数值，伤害面板实时显示。</div>
                         </div>
                     </section>
 
-                    <!-- 6. 新手建议 -->
                     <section style="background:rgba(255,255,255,0.05);border:1px solid rgba(255,255,255,0.1);border-radius:12px;padding:12px 14px;">
                         <h3 style="color:#ffd700;margin:0 0 8px;font-size:15px;">💡 新手建议</h3>
                         <ol style="margin:0;padding-left:20px;display:flex;flex-direction:column;gap:4px;color:#dfe6f5;">
-                            <li>保持距离，边跳边打，避免原地站桩。</li>
-                            <li>优先选生存或攻速 / 伤害类卡牌，站得住才有输出。</li>
-                            <li>留意弹药，打空及时换弹，不要等贴脸才想起。</li>
-                            <li>有护盾和减伤时优先拿，容错率更高。</li>
+                            <li>保持距离、边跳边打；空手不能开火，别把武器拖出快捷栏。</li>
+                            <li>优先选生存 / 攻速 / 伤害类卡牌，站得住才有输出。</li>
+                            <li>留意弹药，打空及时换弹。</li>
+                            <li>激光枪蓄满 1 秒再打收益最高；手机可利用 10° 吸附稳定命中。</li>
                             <li>打不过先回训练场练枪、装配卡牌和调数值。</li>
                         </ol>
                     </section>
 
-                    <!-- 7. 常见问题 -->
                     <section style="background:rgba(255,255,255,0.05);border:1px solid rgba(255,255,255,0.1);border-radius:12px;padding:12px 14px;">
                         <h3 style="color:#4f8eff;margin:0 0 8px;font-size:15px;">❓ 常见问题</h3>
                         <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(230px,1fr));gap:8px;">
-                            <div style="background:rgba(0,0,0,0.25);border-radius:10px;padding:9px 10px;"><b style="color:#fff;">卡住了怎么办？</b><br>按 Esc 打开暂停菜单，可继续、重开或返回主页。</div>
-                            <div style="background:rgba(0,0,0,0.25);border-radius:10px;padding:9px 10px;"><b style="color:#fff;">手机上看不到按键？</b><br>在大厅打开「🎮 按键设置」，调整触控按键位置、大小和透明度。</div>
-                            <div style="background:rgba(0,0,0,0.25);border-radius:10px;padding:9px 10px;"><b style="color:#fff;">双人怎么玩？</b><br>同一键盘：1P 用 A/D/W/V，2P 用 ←/→/↑/L。</div>
-                            <div style="background:rgba(0,0,0,0.25);border-radius:10px;padding:9px 10px;"><b style="color:#fff;">训练场靶子怎么动？</b><br>用 ←/→ 移动、↑ 跳跃、L 开火。</div>
+                            <div style="background:rgba(0,0,0,0.25);border-radius:10px;padding:9px 10px;"><b style="color:#fff;">激光枪左键没反应？</b><br>激光枪不发射普通子弹：电脑用右键 / Shift 蓄力，手机长按发射，短按为 0 秒蓄力。</div>
+                            <div style="background:rgba(0,0,0,0.25);border-radius:10px;padding:9px 10px;"><b style="color:#fff;">手机怎么瞄准？</b><br>设置里「自动瞄准」默认关闭：按住右下发射键并滑动手指即可转向；开启后自动锁定敌人。</div>
+                            <div style="background:rgba(0,0,0,0.25);border-radius:10px;padding:9px 10px;"><b style="color:#fff;">找不到某个武器？</b><br>点物品栏右侧「···」打开背包，把武器从主背包拖到最下面一行快捷栏即可。</div>
+                            <div style="background:rgba(0,0,0,0.25);border-radius:10px;padding:9px 10px;"><b style="color:#fff;">按键位置不合适？</b><br>大厅「🎮 按键设置」可调整移动 / 跳跃 / 发射键的位置、大小与透明度。</div>
+                            <div style="background:rgba(0,0,0,0.25);border-radius:10px;padding:9px 10px;"><b style="color:#fff;">卡住了怎么办？</b><br>按 Esc 或点暂停键打开暂停菜单，可继续、重开或返回主页。</div>
                         </div>
                     </section>
                 </div>
-            
             `;
         }
 
@@ -14704,6 +14710,7 @@ body.low-perf #menu::before { filter: none; opacity: .18; }
 
         // 开火: 能量 + 弹药双资源, 全向弹道
         function tdFire(ent, angle, now) {
+            if (tdWeaponKey(ent) === 'laser') return false;   // 激光枪只通过蓄力发射, 不产生普通子弹
             if (ent.frozen || fxIsStunned(ent)) return false;   // 眩晕/冰冻: 不能发射任何武器
             const w = ent.weapon;
             if (!w || w.isMelee) return false;
@@ -15806,8 +15813,9 @@ body.low-perf #menu::before { filter: none; opacity: .18; }
             ent.lastShot = now;
             let actual = (w.dmgBase != null ? w.dmgBase : (w.damage || 10)) + (ent.getAtk ? ent.getAtk() : 100) * (w.atkCoef != null ? w.atkCoef : 0);
             if (ent.damageBoost && ent.damageMultiplier) actual *= ent.damageMultiplier;
-            // 激光枪蓄力: 伤害 = 武器公式本身 (激光的基值与系数已是狙击的 2 倍), 后续完整走普攻结算
-            let dmg = Math.round(actual);
+            // 激光枪蓄力伤害曲线: 0 秒 = 狙击枪同等伤害, 1 秒满蓄 = 狙击枪 300%, 过程中实时按当前进度线性计算
+            // 激光武器公式本身是狙击的 2 倍, 因此倍率取 (0.5 + p): p=0 → 1 倍狙击, p=1 → 3 倍狙击
+            let dmg = Math.round(actual * (0.5 + p));
             const foe = tdEnemyOf(ent);
             const cosA = Math.cos(angle), sinA = Math.sin(angle);
             // 射线终点: 地图边界
@@ -16086,26 +16094,10 @@ body.low-perf #menu::before { filter: none; opacity: .18; }
             ctx.globalAlpha = 1;
             bullets.forEach(function (b) {
                 if (!b.active) return;
-                if (b.isLaser) {
-                    const ang = Math.atan2(b.vy, b.vx);
-                    const len = 34;
-                    ctx.save();
-                    ctx.strokeStyle = b.color || '#ff3b3b';
-                    ctx.shadowColor = b.color || '#ff3b3b';
-                    ctx.shadowBlur = 18;
-                    ctx.lineWidth = 3.2;
-                    ctx.lineCap = 'round';
-                    ctx.beginPath();
-                    ctx.moveTo(b.x - Math.cos(ang) * len, b.y - Math.sin(ang) * len);
-                    ctx.lineTo(b.x + Math.cos(ang) * 5, b.y + Math.sin(ang) * 5);
-                    ctx.stroke();
-                    ctx.restore();
-                } else {
-                    ctx.fillStyle = b.color || '#ffd700';
-                    ctx.beginPath();
-                    ctx.arc(b.x, b.y, Math.max(4, (b.size || 12) * 0.75), 0, Math.PI * 2);
-                    ctx.fill();
-                }
+                ctx.fillStyle = b.color || '#ffd700';
+                ctx.beginPath();
+                ctx.arc(b.x, b.y, Math.max(4, (b.size || 12) * 0.75), 0, Math.PI * 2);
+                ctx.fill();
                 if (b.trailPositions && b.trailPositions.length) {
                     const t = b.trailPositions[Math.min(2, b.trailPositions.length - 1)];
                     if (t) {
