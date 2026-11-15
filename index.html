@@ -13241,7 +13241,8 @@ body.low-perf #menu::before { filter: none; opacity: .18; }
                     '修复右键蓄力时浏览器弹出右键菜单 / 触发拖拽选中与鼠标手势：俯视模式下彻底屏蔽右键拖拽、选中、中键快捷与右键菜单',
                     '修复同一台电脑不同浏览器界面完全不一样（触屏笔记本 / 一体机被误判成手机版）：现在只有移动 UA 或无鼠标悬停的小屏设备才走手机界面；仍可用网址后缀 ?pc=1 / ?touch=1 强制切换',
                     '狙击右键蓄力恢复自动瞄准：蓄力时会自动锁向敌人（含移动预判），不再强制手动；没有敌人时仍跟随鼠标',
-                    '新增狙击备用蓄力键：俯视狙击除右键外，也可按住 Shift 蓄力、松开射击；Edge 等浏览器自带的「鼠标手势」在右键拖动时会弹出「无效手势」提示，属浏览器功能、网页无法屏蔽，可在 edge://settings/mouseGesture 关闭，或直接用 Shift 蓄力'
+                    '新增狙击备用蓄力键：俯视狙击除右键外，也可按住 Shift 蓄力、松开射击；Edge 等浏览器自带的「鼠标手势」在右键拖动时会弹出「无效手势」提示，属浏览器功能、网页无法屏蔽，可在 edge://settings/mouseGesture 关闭，或直接用 Shift 蓄力',
+                    '新增 Edge 鼠标手势提示：桌面版 Edge 首次进入俯视模式会弹一次说明，附「edge://settings/mouseGesture」地址与一键复制按钮；浏览器不开放手势开关的读取与修改权限，因此提示按浏览器类型触发、只出现一次，已关闭手势可直接点「知道了」忽略'
                 ]
             },
             {
@@ -15479,9 +15480,60 @@ body.low-perf #menu::before { filter: none; opacity: .18; }
             // 失败界面已改为照搬横版 #gameOver 面板, 不再自绘
         }
 
+        // ===== Edge 鼠标手势提示 =====
+        // 说明: 浏览器不提供读取「鼠标手势是否开启」的接口, 也无法通过任何权限修改浏览器设置。
+        // 因此只按 UA 识别桌面版 Edge, 首次进入俯视时提示一次, 并给出设置地址与复制按钮。
+        function _edgeGestureTipCopy(txt) {
+            try {
+                if (navigator.clipboard && navigator.clipboard.writeText) { navigator.clipboard.writeText(txt); return true; }
+            } catch (e) { }
+            try {
+                var ta = document.createElement('textarea');
+                ta.value = txt;
+                ta.style.position = 'fixed'; ta.style.left = '-9999px'; ta.style.opacity = '0';
+                document.body.appendChild(ta);
+                ta.focus(); ta.select();
+                var ok = document.execCommand('copy');
+                document.body.removeChild(ta);
+                return ok;
+            } catch (e) { return false; }
+        }
+        function _maybeEdgeGestureTip() {
+            try {
+                var ua = navigator.userAgent || '';
+                if (!/Edg\//.test(ua)) return;                 // 仅桌面版 Edge
+                if (localStorage.getItem('edge_gesture_tip_v1') === '1') return;
+                localStorage.setItem('edge_gesture_tip_v1', '1');
+                if (document.getElementById('edgeGestureTip')) return;
+                var mask = document.createElement('div');
+                mask.id = 'edgeGestureTip';
+                mask.style.cssText = 'position:fixed;left:0;top:0;right:0;bottom:0;z-index:99999;background:rgba(4,6,10,.62);display:flex;align-items:center;justify-content:center;padding:16px;';
+                mask.innerHTML = '<div style="width:100%;max-width:470px;background:#151821;border:1px solid rgba(255,255,255,.16);border-radius:16px;padding:20px 22px;color:#e9eef7;font-size:14px;line-height:1.7;box-shadow:0 24px 60px rgba(0,0,0,.65);">'
+                    + '<div style="font-weight:800;font-size:16px;margin-bottom:8px;">Edge 鼠标手势提示</div>'
+                    + '<div style="color:#c7d3e6;">按住右键拖动瞄准时，Edge 会把它识别成「鼠标手势」并弹出「无效手势」提示。这是浏览器自带功能，网页无权读取或修改该设置。</div>'
+                    + '<div style="margin-top:12px;color:#9fb4d8;">两个解决办法：</div>'
+                    + '<div style="margin-top:6px;color:#c7d3e6;">① 直接用 <b style="color:#7ee0a9;">Shift</b> 蓄力、松开发射（已支持，最省事）</div>'
+                    + '<div style="margin-top:4px;color:#c7d3e6;">② 到 Edge 设置里关掉「鼠标手势」：</div>'
+                    + '<div id="edgeGesturePath" style="margin:8px 0 16px;padding:9px 11px;background:#0b0d12;border:1px dashed rgba(255,255,255,.22);border-radius:9px;font-family:Consolas,monospace;font-size:13px;color:#8fd0ff;user-select:all;-webkit-user-select:all;">edge://settings/mouseGesture</div>'
+                    + '<div style="display:flex;gap:10px;justify-content:flex-end;flex-wrap:wrap;">'
+                    + '<button id="edgeGestureCopy" style="cursor:pointer;border:1px solid rgba(255,255,255,.22);background:#1e2430;color:#e9eef7;padding:9px 14px;border-radius:9px;font-size:13px;font-weight:600;">复制设置地址</button>'
+                    + '<button id="edgeGestureOk" style="cursor:pointer;border:0;background:#3d7fff;color:#fff;padding:9px 16px;border-radius:9px;font-size:13px;font-weight:700;">知道了</button>'
+                    + '</div></div>';
+                document.body.appendChild(mask);
+                var _c = document.getElementById('edgeGestureCopy');
+                if (_c) _c.onclick = function () {
+                    var ok = _edgeGestureTipCopy('edge://settings/mouseGesture');
+                    _c.textContent = ok ? '已复制 ✓' : '请手动选中复制';
+                    setTimeout(function () { _c.textContent = '复制设置地址'; }, 1800);
+                };
+                var _o = document.getElementById('edgeGestureOk');
+                if (_o) _o.onclick = function () { try { document.body.removeChild(mask); } catch (e) { } };
+            } catch (e) { }
+        }
         function startTopdownTraining() {
             _initDOMCache();
             window._lastGameMode = 'tdtraining';
+            setTimeout(_maybeEdgeGestureTip, 700);
             closeStartChoice();
             _enterTdTune();
             loadTrainTune();
@@ -15560,6 +15612,7 @@ body.low-perf #menu::before { filter: none; opacity: .18; }
         function startTopdown() {
             _initDOMCache();
             window._lastGameMode = 'topdown';
+            setTimeout(_maybeEdgeGestureTip, 700);
             closeStartChoice();   // 修复: 俯视入口不会自动关闭开始弹窗
             _beginNewRun();   // 俯视独立存档槽, 不能覆盖横版存档
             // 每局独立计时 / 死亡数 (原先这里漏了重置, 新开一局会沿用上一局的时间)
