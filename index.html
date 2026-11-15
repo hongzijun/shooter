@@ -11511,7 +11511,7 @@ body.low-perf #menu::before { filter: none; opacity: .18; }
                     b.y += b.vy * ts;
 
                     // === Task 3: 子弹重力(统一0.058; 俯视模式为平面, 无重力) ===
-                    if (gameState !== 'topdown') b.vy += 0.058;
+                    if (gameState !== 'topdown' && gameState !== 'tdtraining') b.vy += 0.058;   // 俯视训练场同样无重力
                 b.life--;
                 // 弹射子弹卡: 弹射后的命中免疫间隔逐帧递减 (防止一帧内反复命中同一目标)
                 if (b.ricochetCooldown > 0) b.ricochetCooldown--;
@@ -11722,7 +11722,7 @@ body.low-perf #menu::before { filter: none; opacity: .18; }
             });
         }
 
-        function updateParticles() { particles = particles.filter(p => { if (!isFinite(p.x) || !isFinite(p.y)) { return false; } p.x += p.vx; p.y += p.vy; if (gameState !== 'topdown') p.vy += 0.14; p.life--; return p.life > 0 }) }
+        function updateParticles() { particles = particles.filter(p => { if (!isFinite(p.x) || !isFinite(p.y)) { return false; } p.x += p.vx; p.y += p.vy; if (gameState !== 'topdown' && gameState !== 'tdtraining') p.vy += 0.14; p.life--; return p.life > 0 }) }
         function drawParticles() {
             particles.forEach(p => {
                 if (!isFinite(p.x) || !isFinite(p.y) || !isFinite(p.size)) return;
@@ -13215,7 +13215,9 @@ body.low-perf #menu::before { filter: none; opacity: .18; }
                 date: '2026-11-15',
                 items: [
                     '修复进入「毒圈已缩到最小」的存档时减疗显示 0：读档会按该存档已缩圈次数 × 每波减疗回填双方减疗（例如缩了 6 次 = 90% 封顶），旧存档也生效',
-                    '俯视能量位移取消内置冷却（原先成功位移后锁 350ms）：现在只要能量够、且上一次位移没结束，就能连续冲刺；触控位移键与空格一致'
+                    '俯视能量位移取消内置冷却（原先成功位移后锁 350ms）：现在只要能量够、且上一次位移没结束，就能连续冲刺；触控位移键与空格一致',
+                    '修复俯视训练场子弹 / 粒子会往下掉（有重力）的问题：俯视训练场现在和正式俯视一样无重力',
+                    '所有枪械与刀剑的能量消耗减半（手枪 10→5、步枪 6→3、霰弹 30→15、冲锋 4→2、狙击 35→17.5、刀剑 40→20，蓄力附加 6→3），能量位移消耗 30 保持不变'
                 ]
             },
             {
@@ -14062,7 +14064,8 @@ body.low-perf #menu::before { filter: none; opacity: .18; }
             openTdEnvPanel();
             try { showFloatingText('已恢复默认（点「保存数值」才写入全局）', '#8fa6c8'); } catch (e) { }
         }
-        const TD_COST = { pistol: 10, rifle: 6, shotgun: 30, smg: 4, sniper: 35, sword: 40 };
+        // 枪械 / 刀剑能量消耗整体减半 (位移 dashCost 不在此列)
+        const TD_COST = { pistol: 5, rifle: 3, shotgun: 15, smg: 2, sniper: 17.5, sword: 20 };
         const TD_RANGE = { pistol: 440, rifle: 600, shotgun: 220, smg: 380, sniper: 1000, sword: 110 };
         const TD_IDEAL = { pistol: 300, rifle: 420, shotgun: 120, smg: 250, sniper: 760, sword: 70 };
 
@@ -14206,7 +14209,7 @@ body.low-perf #menu::before { filter: none; opacity: .18; }
             const _cd = ent.isAI ? Math.round(_cdBase * 1.2) : _cdBase;
             if (now - (ent._tdMeleeAt || 0) < _cd) return false;
             const sec = Math.max(0, Math.min(1, chargeSec || 0));
-            const cost = TD_COST.sword + 6 * sec;
+            const cost = TD_COST.sword + 3 * sec;   // 蓄力附加消耗同步减半 (6→3)
             if (tdEnergy(ent) < cost) return false;
             ent._tdEnergy -= cost;
             ent._tdMeleeAt = now;
