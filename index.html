@@ -2390,7 +2390,7 @@ body.low-perf #menu::before { filter: none; opacity: .18; }
                     </div>
                     <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px 12px;">
                         <label style="font-size:12px;color:#8fa6c8;display:flex;flex-direction:column;gap:4px;">毒圈伤害（% 最大生命 / 秒）<input id="envPoisonPct" type="number" min="0" max="100" step="0.5" style="background:rgba(0,0,0,0.35);border:1px solid rgba(120,170,255,0.3);border-radius:8px;color:#fff;padding:8px 10px;font-size:14px;outline:none;"></label>
-                        <label style="font-size:12px;color:#8fa6c8;display:flex;flex-direction:column;gap:4px;">毒圈伤害每波成长（%）<input id="envPoisonGrowth" type="number" min="0" max="1000" step="1" style="background:rgba(0,0,0,0.35);border:1px solid rgba(120,170,255,0.3);border-radius:8px;color:#fff;padding:8px 10px;font-size:14px;outline:none;"></label>
+                        <label style="font-size:12px;color:#8fa6c8;display:flex;flex-direction:column;gap:4px;">毒圈伤害每缩圈成长（%）<input id="envPoisonGrowth" type="number" min="0" max="1000" step="1" style="background:rgba(0,0,0,0.35);border:1px solid rgba(120,170,255,0.3);border-radius:8px;color:#fff;padding:8px 10px;font-size:14px;outline:none;"></label>
                         <label style="font-size:12px;color:#8fa6c8;display:flex;flex-direction:column;gap:4px;">缩圈间隔（秒）<input id="envShrinkSec" type="number" min="3" max="300" step="1" style="background:rgba(0,0,0,0.35);border:1px solid rgba(120,170,255,0.3);border-radius:8px;color:#fff;padding:8px 10px;font-size:14px;outline:none;"></label>
                         <label style="font-size:12px;color:#8fa6c8;display:flex;flex-direction:column;gap:4px;">每次缩圈半径<input id="envStep" type="number" min="1" max="800" step="1" style="background:rgba(0,0,0,0.35);border:1px solid rgba(120,170,255,0.3);border-radius:8px;color:#fff;padding:8px 10px;font-size:14px;outline:none;"></label>
                         <label style="font-size:12px;color:#8fa6c8;display:flex;flex-direction:column;gap:4px;">最小毒圈半径<input id="envMinR" type="number" min="40" max="1200" step="1" style="background:rgba(0,0,0,0.35);border:1px solid rgba(120,170,255,0.3);border-radius:8px;color:#fff;padding:8px 10px;font-size:14px;outline:none;"></label>
@@ -13227,7 +13227,8 @@ body.low-perf #menu::before { filter: none; opacity: .18; }
                     '账号数据彻底改为云端独立：登录 / 注册时会先清空本机该账号体系的数据（键位、训练场数值、环境、成就、所有存档槽）再套用云端数据；新账号不再继承本机旧数据；旧账号云端缺少的存档槽会自动从本机同 id 槽补齐并上传；同步体积上限提高到 3.5MB，存档槽也能完整上云',
                     '修复毒圈波次清零时减疗没有跟着更新：一整波命数打完、毒圈重置为 0 次的同时，双方减疗也清零，已打开的属性面板会立即刷新显示',
                     '无敌状态（仔仔熊的礼物 / 不败传奇 / 无敌模式 / 俯视能量位移）现在会让角色身体散发金色光晕与呼吸描边，横版与俯视一致，更容易看出无敌中',
-                    '修复毒圈伤害成长几乎不生效：每秒毒伤改为「基础% + (波次-1) × 每波成长%」的加法公式（默认 5% + 每波 5%），例如第 3 波为 15%/秒，仍按最大生命百分比结算'
+                    '修复毒圈伤害成长几乎不生效：每秒毒伤改为「基础% + (波次-1) × 每波成长%」的加法公式（默认 5% + 每波 5%），例如第 3 波为 15%/秒，仍按最大生命百分比结算',
+                    '毒伤成长改为严格跟随毒圈缩圈次数：每秒毒伤 = 基础% + 已缩圈次数 × 成长%（默认 5% + 每次缩圈 5%），每缩一次圈立刻变疼，不再等敌人波次切换；一波结束毒圈重置后回到基础值'
                 ]
             },
             {
@@ -13963,12 +13964,10 @@ body.low-perf #menu::before { filter: none; opacity: .18; }
             if (now - z.dmgAt >= 500) {
                 z.dmgAt = now;
                 // 毒伤按「最大生命百分比/秒」结算: 每 0.5 秒一次, 秒伤不变
-                var _waveNo = (gameState === 'tdtraining')
-                    ? Math.max(1, Math.round((TRAIN_TUNE && TRAIN_TUNE.mine && TRAIN_TUNE.mine.aiRound) || 1))
-                    : Math.max(1, wave || 1);
-                // 毒伤: 每秒百分比 = 基础% + (波次-1) × 每波成长% (加法成长, 之前写成乘法导致几乎不涨)
+                // 毒伤: 每秒百分比 = 基础% + 已缩圈次数 × 每波成长% (加法成长, 每缩一次圈立即生效)
+                var _shrunkN = Math.max(0, Math.round((TD.zone && TD.zone.shrinkCount) || 0));
                 var _pctPerSec = Math.max(0, Number(TD_ENV.poisonPctPerSec) || 0)
-                    + Math.max(0, Number(TD_ENV.poisonGrowthPerWave) || 0) * Math.max(0, _waveNo - 1);
+                    + Math.max(0, Number(TD_ENV.poisonGrowthPerWave) || 0) * _shrunkN;
                 var _pctTick = _pctPerSec * 0.5;   // 每 0.5 秒的百分比
                 [player, ai].forEach(function (ent) {
                     if (!ent || ent.health <= 0) return;
