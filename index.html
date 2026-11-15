@@ -13217,7 +13217,8 @@ body.low-perf #menu::before { filter: none; opacity: .18; }
                     '修复进入「毒圈已缩到最小」的存档时减疗显示 0：读档会按该存档已缩圈次数 × 每波减疗回填双方减疗（例如缩了 6 次 = 90% 封顶），旧存档也生效',
                     '俯视能量位移取消内置冷却（原先成功位移后锁 350ms）：现在只要能量够、且上一次位移没结束，就能连续冲刺；触控位移键与空格一致',
                     '修复俯视训练场子弹 / 粒子会往下掉（有重力）的问题：俯视训练场现在和正式俯视一样无重力',
-                    '所有枪械与刀剑的能量消耗减半（手枪 10→5、步枪 6→3、霰弹 30→15、冲锋 4→2、狙击 35→17.5、刀剑 40→20，蓄力附加 6→3），能量位移消耗 30 保持不变'
+                    '所有枪械与刀剑的能量消耗减半（手枪 10→5、步枪 6→3、霰弹 30→15、冲锋 4→2、狙击 35→17.5、刀剑 40→20，蓄力附加 6→3），能量位移消耗 30 保持不变',
+                    '账号数据彻底改为云端独立：登录 / 注册时会先清空本机该账号体系的数据（键位、训练场数值、环境、成就、所有存档槽）再套用云端数据；新账号不再继承本机旧数据；旧账号云端缺少的存档槽会自动从本机同 id 槽补齐并上传；同步体积上限提高到 3.5MB，存档槽也能完整上云'
                 ]
             },
             {
@@ -17295,15 +17296,43 @@ body.low-perf #menu::before { filter: none; opacity: .18; }
         } catch (e) { }
         return o;
     }
+    // 清空本机属于「账号数据」的所有键 (键位/数值/环境/成就/多槽存档); 不清账号列表与自动登录记录
+    function clearLocalProfile() {
+        try {
+            var del = [];
+            for (var i = 0; i < localStorage.length; i++) {
+                var k = localStorage.key(i);
+                if (!k) continue;
+                if (SYNC_KEYS.indexOf(k) >= 0 || k.indexOf(SYNC_PREFIX) === 0) del.push(k);
+            }
+            for (var j = 0; j < del.length; j++) { try { localStorage.removeItem(del[j]); } catch (e) { } }
+            return del.length;
+        } catch (e) { return 0; }
+    }
+    // 旧账号云端可能只存了索引没存槽内容: 登录时把本机仍存在的同 id 槽补进云端
+    function mergeMissingSaves(prof) {
+        try {
+            var arr = JSON.parse(prof['gunfight_save_index'] || '[]');
+            if (!Array.isArray(arr)) return;
+            arr.forEach(function (s) {
+                if (!s || !s.id) return;
+                var k = SYNC_PREFIX + s.id;
+                if (prof[k] == null) {
+                    var v = null;
+                    try { v = localStorage.getItem(k); } catch (e2) { }
+                    if (v != null) prof[k] = v;
+                }
+            });
+        } catch (e) { }
+    }
     function applyProfile(prof) {
-        if (!prof || typeof prof !== 'object') return false;
+        prof = (prof && typeof prof === 'object') ? prof : {};
         var n = 0;
         Object.keys(prof).forEach(function (k) {
             if (SYNC_KEYS.indexOf(k) < 0 && k.indexOf(SYNC_PREFIX) !== 0) return;
             try { localStorage.setItem(k, String(prof[k])); n++; } catch (e) { }
         });
-        if (!n) return false;
-        // 立即应用: 键位与训练场数值
+        // 无论云端有没有键, 都重新加载一次 (清空后回默认, 不残留上一个账号的配置)
         try {
             if (typeof loadTouchConfig === 'function' && typeof applyTouchConfig === 'function') {
                 touchCfg = loadTouchConfig();
@@ -17312,15 +17341,15 @@ body.low-perf #menu::before { filter: none; opacity: .18; }
         } catch (e) { }
         try { if (typeof loadTrainTune === 'function') loadTrainTune(); } catch (e) { }
         try { if (typeof updateUI === 'function') updateUI(); } catch (e) { }
-        return true;
+        return n > 0;
     }
     function pushProfile(force) {
         if (!current || !cloudOn()) return Promise.resolve(false);
         var prof = collectProfile();
         var snap = JSON.stringify(prof);
         if (!force && snap === lastSyncSnap) return Promise.resolve(false);
-        // 体积保护: 存档过大时只同步设置类数据
-        if (snap.length > 900000) {
+        // 体积保护: 极端情况下 (存档总大小超过 3.5MB) 才退化为只同步设置类数据
+        if (snap.length > 3500000) {
             var slim = {};
             SYNC_KEYS.forEach(function (k) { if (prof[k] != null) slim[k] = prof[k]; });
             prof = slim;
@@ -17334,16 +17363,21 @@ body.low-perf #menu::before { filter: none; opacity: .18; }
     function syncFromAccount(user) {
         if (!cloudOn() || !user) return Promise.resolve(false);
         var prof = (user.extra && user.extra.profile) ? user.extra.profile : null;
-        if (prof && typeof prof === 'object' && Object.keys(prof).length) {
-            applyProfile(prof);
-            lastSyncSnap = JSON.stringify(collectProfile());
+        var hasProf = !!(prof && typeof prof === 'object' && Object.keys(prof).length);
+        if (hasProf) mergeMissingSaves(prof);
+        // 关键: 先把本机账号数据全部清空, 再套用云端数据。
+        // 云端没有的键就是全新默认值, 绝不会把上一个账号 / 本机遗留数据带给这个账号
+        clearLocalProfile();
+        applyProfile(hasProf ? prof : {});
+        lastSyncSnap = JSON.stringify(collectProfile());
+        if (hasProf) {
             setTimeout(function () {
                 try { showToast('☁ 已同步账号数据（键位 / 数值 / 存档）'); } catch (e) { }
             }, 2800);
+            pushProfile(true);   // 把补齐后的存档槽写回云端
             return Promise.resolve(true);
         }
-        // 云端还没有该账号的数据: 用本机当前数据作为初始
-        lastSyncSnap = '';
+        // 云端还没有该账号的数据 (新注册): 推送一份干净的默认数据 (不继承本机旧数据)
         return pushProfile(true);
     }
     function startAutoSync() {
