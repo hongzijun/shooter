@@ -3434,6 +3434,27 @@ body.low-perf #menu::before { filter: none; opacity: .18; }
                 }
                 BAG.sel = Math.max(0, Math.min(8, parseInt(d.sel, 10) || 0));
             } catch (e) { BAG.slots = _bagDefaultSlots(); BAG.sel = 0; }
+            if (_bagEnsureLaser()) _bagSave();
+        }
+        /** 旧背包 / 旧存档没有激光枪时自动补装: 优先快捷栏第 7 格, 否则找第一个空位 */
+        function _bagEnsureLaser() {
+            try {
+                for (var i = 0; i < BAG.size; i++) {
+                    var it = BAG.slots[i];
+                    if (it && it.type === 'weapon' && it.key === 'laser') return false;
+                }
+                var idxs = [BAG.hotStart + 6];
+                for (var a = 0; a < 9; a++) idxs.push(BAG.hotStart + a);
+                for (var b = 0; b < BAG.size; b++) idxs.push(b);
+                for (var c = 0; c < idxs.length; c++) {
+                    var k = idxs[c];
+                    if (k >= 0 && k < BAG.size && !BAG.slots[k]) {
+                        BAG.slots[k] = { type: 'weapon', key: 'laser' };
+                        return true;
+                    }
+                }
+            } catch (e) { }
+            return false;
         }
         function _bagSave() {
             try { localStorage.setItem(BAG.key, JSON.stringify({ v: 1, slots: BAG.slots, sel: BAG.sel })); } catch (e) { }
@@ -3637,6 +3658,7 @@ body.low-perf #menu::before { filter: none; opacity: .18; }
                 }
                 BAG.sel = Math.max(0, Math.min(8, parseInt(snap.sel, 10) || 0));
                 BAG._equippedFor = null;
+                _bagEnsureLaser();
                 _bagSave();
                 _bagRenderBar();
                 _bagRenderPanel();
@@ -13731,7 +13753,9 @@ body.low-perf #menu::before { filter: none; opacity: .18; }
                     '新增第 7 把武器「激光枪」：伤害基值与攻击系数都是狙击枪的 2 倍（基值 160 / 系数 1.8，训练场默认 160 / 2.0）；默认放在背包快捷栏第 7 格，数字键 7 或背包点选即可使用',
                     '俯视右键蓄力从狙击枪移到激光枪：只有手持激光枪时，电脑右键 / Shift、手机长按开火 0.1 秒才会进入激光蓄力（瞄准锁敌红标、普攻同源结算、卡片增伤、装备特效、吸血转盾、击退全部继承）；狙击枪右键不再蓄力',
                     '训练场数值面板、全属性面板、俯视能量消耗 / 射程 / 理想距离、击杀音效等全部加入激光枪这一行',
-                    '激光枪瞄准锁敌提示强化：对准敌人的瞬间，红色准星会从约 3 倍大小快速收缩锁定到敌人身上（约 0.24 秒），锁定后半径更大、线条粗很多（6→11），四角刻度与十字持续旋转 + 呼吸闪烁，直到移开瞄准才消失；失去锁定后再对准会重新播放入场动画'
+                    '激光枪瞄准锁敌提示强化：对准敌人的瞬间，红色准星会从约 3 倍大小快速收缩锁定到敌人身上（约 0.24 秒），锁定后半径更大、线条粗很多（6→11），四角刻度与十字持续旋转 + 呼吸闪烁，直到移开瞄准才消失；失去锁定后再对准会重新播放入场动画',
+                    '战刃统一自动锁敌：手持战刃时无论自动瞄准开关是否开启，横版与俯视都会持续朝向最近的敌人，挥砍不再需要手动转向',
+                    '修复旧存档 / 旧背包没有激光枪：读取旧背包时会自动把激光枪补进快捷栏第 7 格（占用了就找第一个空位），2D 枪战、训练场、俯视都能直接使用'
                 ]
             },
             {
@@ -15031,6 +15055,10 @@ body.low-perf #menu::before { filter: none; opacity: .18; }
                     player._tdAim = TD.sniperAim.angle;
                     TD.sniperAim.progress = Math.min(1, (now - TD.sniperAim.from) / 1000);
                 }
+            }
+            // 战刃: 无论自动瞄准开关, 始终朝向敌人
+            if (tdWeaponKey(player) === 'sword' && ai && ai.health > 0) {
+                player._tdAim = Math.atan2(ai.y - player.y, ai.x - player.x);
             }
             const w = player.weapon;
             const _bagEmptyTd = !!player._bagEmptyHanded;
@@ -17625,6 +17653,10 @@ body.low-perf #menu::before { filter: none; opacity: .18; }
                             && touchState.fire && touchState.aimActive) {
                             // 自动瞄准关闭: 开火手指在按钮中心左侧 / 右侧决定朝向
                             player.facingRight = (touchState.aimX >= 0);
+                        }
+                        // 战刃: 无论自动瞄准开关, 始终面向敌人
+                        if (!player.isAI && player.currentWeapon === 'sword' && ai && ai.health > 0) {
+                            player.facingRight = (ai.x >= player.x);
                         }
                         if (ai && ai.health > 0) ai.update();
                         updateBullets(); updateParticles();
