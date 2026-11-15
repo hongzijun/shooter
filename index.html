@@ -13240,7 +13240,8 @@ body.low-perf #menu::before { filter: none; opacity: .18; }
                     '狙击蓄力数值：蓄满伤害为普通狙击 2 倍、能量 100；0 蓄力为普通狙击伤害、能量 30（线性插值）；能量不足 30 无法起手',
                     '修复右键蓄力时浏览器弹出右键菜单 / 触发拖拽选中与鼠标手势：俯视模式下彻底屏蔽右键拖拽、选中、中键快捷与右键菜单',
                     '修复同一台电脑不同浏览器界面完全不一样（触屏笔记本 / 一体机被误判成手机版）：现在只有移动 UA 或无鼠标悬停的小屏设备才走手机界面；仍可用网址后缀 ?pc=1 / ?touch=1 强制切换',
-                    '狙击右键蓄力恢复自动瞄准：蓄力时会自动锁向敌人（含移动预判），不再强制手动；没有敌人时仍跟随鼠标'
+                    '狙击右键蓄力恢复自动瞄准：蓄力时会自动锁向敌人（含移动预判），不再强制手动；没有敌人时仍跟随鼠标',
+                    '新增狙击备用蓄力键：俯视狙击除右键外，也可按住 Shift 蓄力、松开射击；Edge 等浏览器自带的「鼠标手势」在右键拖动时会弹出「无效手势」提示，属浏览器功能、网页无法屏蔽，可在 edge://settings/mouseGesture 关闭，或直接用 Shift 蓄力'
                 ]
             },
             {
@@ -15747,6 +15748,14 @@ body.low-perf #menu::before { filter: none; opacity: .18; }
             if (gameState === 'tdtraining' && kk.indexOf('arrow') === 0) {
                 if (e.preventDefault) e.preventDefault();
             }
+            // Shift: 狙击备用蓄力键 (规避浏览器右键手势)
+            if ((e.key === 'Shift' || e.code === 'ShiftLeft' || e.code === 'ShiftRight') && player) {
+                if (e.preventDefault) e.preventDefault();
+                if (tdWeaponKey(player) === 'sniper' && player.health > 0 && tdEnergy(player) >= 30 && !(TD.sniperAim && TD.sniperAim.active)) {
+                    TD.sniperAim = { active: true, from: Date.now(), progress: 0, angle: player._tdAim || 0 };
+                    TD._sniperKeyHold = true;
+                }
+            }
             if ((e.code === 'Space' || kk === ' ') && player) {
                 if (e.preventDefault) e.preventDefault();
                 let mx = 0, my = 0;
@@ -15774,6 +15783,15 @@ body.low-perf #menu::before { filter: none; opacity: .18; }
         });
         window.addEventListener('keyup', function (e) {
             TD.keys[String(e.key || '').toLowerCase()] = false;
+            if ((e.key === 'Shift' || e.code === 'ShiftLeft' || e.code === 'ShiftRight') && TD._sniperKeyHold) {
+                TD._sniperKeyHold = false;
+                const _st = TD.sniperAim;
+                if (_st && _st.active && (gameState === 'topdown' || gameState === 'tdtraining') && player && player.health > 0) {
+                    _st.active = false;
+                    try { tdSniperShot(player, _st.angle, _st.progress, Date.now()); } catch (err) { }
+                }
+                TD.sniperAim = null;
+            }
         });
 
         function startGame() {
