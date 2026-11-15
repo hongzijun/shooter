@@ -4299,7 +4299,7 @@ body.low-perf #menu::before { filter: none; opacity: .18; }
             smg: { name: '冲锋枪', sps: 12, dmgBase: 3, atkCoef: 0.04, fxMult: 1, damage: 7, fireRate: 83, ammo: 45, maxAmmo: 45, reserve: 9999, reloadTime: 1100, speed: 19, spread: 0.095, color: '#a29bfe', knockbackMultiplier: 0.7 },
             sniper: { name: '狙击枪', sps: 1.1, dmgBase: 80, atkCoef: 0.9, damage: 170, fireRate: 909, ammo: 6, maxAmmo: 6, reserve: 9999, reloadTime: 2800, speed: 34, spread: 0.006, color: '#2ed573', knockbackMultiplier: 2.0 },
             // 激光枪: 伤害基值与攻击系数均为狙击枪的 2 倍 (80×2 / 0.9×2)
-            laser: { name: '激光枪', sps: 1.1, dmgBase: 160, atkCoef: 1.8, damage: 340, fireRate: 1000, ammo: 6, maxAmmo: 6, reserve: 9999, reloadTime: 2800, speed: 40, spread: 0.002, color: '#ff2d95', knockbackMultiplier: 2.2 },
+            laser: { name: '激光枪', sps: 1.1, dmgBase: 160, atkCoef: 1.8, damage: 340, fireRate: 1000, ammo: 6, maxAmmo: 6, reserve: 9999, reloadTime: 2800, speed: 40, spread: 0.002, color: '#ff3b3b', knockbackMultiplier: 2.2 },
             sword: { name: '⚔️ 战刃', sps: 1.8, dmgBase: 80, atkCoef: 0.3, fxMult: 1.5, damage: 110, fireRate: 556, chargeFullMs: 3000, attackRange: 95, maxCombo: 5, color: '#e0e0e0', knockbackMultiplier: 1.5, isMelee: true, ammo: Infinity, maxAmmo: Infinity }
         };
 
@@ -7943,6 +7943,7 @@ body.low-perf #menu::before { filter: none; opacity: .18; }
                         active: true,
                         trailPositions: [],
                         specialType: specialType,
+                        isLaser: this.currentWeapon === 'laser',
                         knockbackMult: kbMult,
                         fxMult: w.fxMult || 1,   // Task 4: 特效伤害乘数 (冲锋枪×0.6/刀剑×1.5/其余×1)
                         volleyId: volleyId       // 齐射编号 (同一次开火的弹丸相同)
@@ -12204,17 +12205,33 @@ body.low-perf #menu::before { filter: none; opacity: .18; }
                     }
                 }
 
-                const _lowBulletFx = (document.body && document.body.getAttribute('data-device') === 'touch');
-                if (_lowBulletFx) {
-                    ctx.globalAlpha = 0.22;
-                    ctx.fillStyle = b.color || '#fff'; ctx.beginPath(); ctx.arc(sx, sy, Math.max(2, b.size * 2.1), 0, Math.PI * 2); ctx.fill();
-                    ctx.globalAlpha = 1;
+                if (b.isLaser) {
+                    // 激光弹: 细长发光线段 (不再画普通圆形子弹)
+                    const ang = Math.atan2(b.vy, b.vx);
+                    const len = 30;
+                    ctx.strokeStyle = b.color || '#ff3b3b';
+                    ctx.shadowColor = b.color || '#ff3b3b';
+                    ctx.shadowBlur = 20;
+                    ctx.lineWidth = 3;
+                    ctx.lineCap = 'round';
+                    ctx.beginPath();
+                    ctx.moveTo(sx - Math.cos(ang) * len, sy - Math.sin(ang) * len);
+                    ctx.lineTo(sx + Math.cos(ang) * 4, sy + Math.sin(ang) * 4);
+                    ctx.stroke();
+                    ctx.shadowBlur = 0;
                 } else {
-                    ctx.shadowColor = b.color || '#fff'; ctx.shadowBlur = 28;
+                    const _lowBulletFx = (document.body && document.body.getAttribute('data-device') === 'touch');
+                    if (_lowBulletFx) {
+                        ctx.globalAlpha = 0.22;
+                        ctx.fillStyle = b.color || '#fff'; ctx.beginPath(); ctx.arc(sx, sy, Math.max(2, b.size * 2.1), 0, Math.PI * 2); ctx.fill();
+                        ctx.globalAlpha = 1;
+                    } else {
+                        ctx.shadowColor = b.color || '#fff'; ctx.shadowBlur = 28;
+                    }
+                    ctx.fillStyle = b.color || '#fff'; ctx.beginPath(); ctx.arc(sx, sy, Math.max(1, b.size), 0, Math.PI * 2); ctx.fill();
+                    ctx.shadowBlur = 0;
+                    ctx.fillStyle = '#fff'; ctx.beginPath(); ctx.arc(sx, sy, Math.max(1, b.size * 0.48), 0, Math.PI * 2); ctx.fill();
                 }
-                ctx.fillStyle = b.color || '#fff'; ctx.beginPath(); ctx.arc(sx, sy, Math.max(1, b.size), 0, Math.PI * 2); ctx.fill();
-                ctx.shadowBlur = 0;
-                ctx.fillStyle = '#fff'; ctx.beginPath(); ctx.arc(sx, sy, Math.max(1, b.size * 0.48), 0, Math.PI * 2); ctx.fill();
                 ctx.restore();
             });
         }
@@ -13755,7 +13772,8 @@ body.low-perf #menu::before { filter: none; opacity: .18; }
                     '训练场数值面板、全属性面板、俯视能量消耗 / 射程 / 理想距离、击杀音效等全部加入激光枪这一行',
                     '激光枪瞄准锁敌提示强化：对准敌人的瞬间，红色准星会从约 3 倍大小快速收缩锁定到敌人身上（约 0.24 秒），锁定后半径更大、线条粗很多（6→11），四角刻度与十字持续旋转 + 呼吸闪烁，直到移开瞄准才消失；失去锁定后再对准会重新播放入场动画',
                     '战刃统一自动锁敌：手持战刃时无论自动瞄准开关是否开启，横版与俯视都会持续朝向最近的敌人，挥砍不再需要手动转向',
-                    '修复旧存档 / 旧背包没有激光枪：读取旧背包时会自动把激光枪补进快捷栏第 7 格（占用了就找第一个空位），2D 枪战、训练场、俯视都能直接使用'
+                    '修复旧存档 / 旧背包没有激光枪：读取旧背包时会自动把激光枪补进快捷栏第 7 格（占用了就找第一个空位），2D 枪战、训练场、俯视都能直接使用',
+                    '修复激光枪普通射击会打出粉色圆形子弹：激光枪子弹改为细长发光的红色激光脉冲（横版与俯视一致），伤害 / 命中判定保持不变，不再出现粉色子弹'
                 ]
             },
             {
@@ -14720,6 +14738,7 @@ body.low-perf #menu::before { filter: none; opacity: .18; }
                     color: w.color || '#ffd700', trailPositions: [],
                     knockbackMult: w.knockbackMultiplier || 1,
                     fxMult: w.fxMult || 1, volleyId: volleyId, td: true,
+                    isLaser: tdWeaponKey(ent) === 'laser',
                     specialType: specialType
                 });
             }
@@ -16042,10 +16061,26 @@ body.low-perf #menu::before { filter: none; opacity: .18; }
             ctx.globalAlpha = 1;
             bullets.forEach(function (b) {
                 if (!b.active) return;
-                ctx.fillStyle = b.color || '#ffd700';
-                ctx.beginPath();
-                ctx.arc(b.x, b.y, Math.max(4, (b.size || 12) * 0.75), 0, Math.PI * 2);
-                ctx.fill();
+                if (b.isLaser) {
+                    const ang = Math.atan2(b.vy, b.vx);
+                    const len = 34;
+                    ctx.save();
+                    ctx.strokeStyle = b.color || '#ff3b3b';
+                    ctx.shadowColor = b.color || '#ff3b3b';
+                    ctx.shadowBlur = 18;
+                    ctx.lineWidth = 3.2;
+                    ctx.lineCap = 'round';
+                    ctx.beginPath();
+                    ctx.moveTo(b.x - Math.cos(ang) * len, b.y - Math.sin(ang) * len);
+                    ctx.lineTo(b.x + Math.cos(ang) * 5, b.y + Math.sin(ang) * 5);
+                    ctx.stroke();
+                    ctx.restore();
+                } else {
+                    ctx.fillStyle = b.color || '#ffd700';
+                    ctx.beginPath();
+                    ctx.arc(b.x, b.y, Math.max(4, (b.size || 12) * 0.75), 0, Math.PI * 2);
+                    ctx.fill();
+                }
                 if (b.trailPositions && b.trailPositions.length) {
                     const t = b.trailPositions[Math.min(2, b.trailPositions.length - 1)];
                     if (t) {
