@@ -280,7 +280,7 @@
             left: 50%;
             bottom: calc(8px + var(--safe-bottom));
             transform: translateX(-50%);
-            z-index: 730;
+            z-index: 690;                 /* 低于触控层 700: 不会盖住摇杆 / 跳跃 / 暂停键 */
             display: none;
             align-items: flex-end;
             gap: 8px;
@@ -343,6 +343,15 @@
             cursor: pointer;
         }
         #tdHotbar .hb-more:active { background: rgba(255, 255, 255, .92); }
+        /* 触控端: 9 格整体缩小, 横屏避开左右摇杆 / 跳跃键, 竖屏不出屏 */
+        body[data-device="touch"] #tdHotbar .hb-slot,
+        body[data-device="touch"] #tdHotbar .hb-more {
+            width: clamp(26px, 4vw, 40px);
+            height: clamp(26px, 4vw, 40px);
+        }
+        body[data-device="touch"] #tdHotbar .hb-slot .hb-ic { font-size: clamp(8px, 2vw, 11px); }
+        body[data-device="touch"] #tdHotbar .hb-slot .hb-no { font-size: 8px; }
+        body[data-device="touch"] #tdHotbar .hb-more { font-size: 14px; }
 
         /* ---- 背包界面 (Minecraft 风格) ---- */
         #bagPanel {
@@ -3374,6 +3383,10 @@ body.low-perf #menu::before { filter: none; opacity: .18; }
         function _bagIsHorizontal() {
             return gameState === 'playing' || gameState === 'pvp' || gameState === 'training';
         }
+        /** 背包生效的全部游戏模式 (横版 + 俯视) */
+        function _bagInGame() {
+            return _bagIsHorizontal() || gameState === 'topdown' || gameState === 'tdtraining';
+        }
         /** 把当前选中格同步到角色: 有武器则装备, 空格则进入空手 (不能开火 / 挥刀) */
         function _bagEquipSelected() {
             var p = _bagActivePlayer();
@@ -3382,6 +3395,7 @@ body.low-perf #menu::before { filter: none; opacity: .18; }
             if (it && it.type === 'weapon' && p.weapons && p.weapons[it.key]) {
                 p._bagEmptyHanded = false;
                 if (p.currentWeapon !== it.key) p.switchWeapon(it.key);
+                if (gameState === 'topdown' || gameState === 'tdtraining') p._tdLastGun = it.key;
             } else {
                 p._bagEmptyHanded = true;
             }
@@ -3410,8 +3424,8 @@ body.low-perf #menu::before { filter: none; opacity: .18; }
                 }
                 BAG._built = true;
             }
-            var horizontal = _bagIsHorizontal();
-            if (horizontal) {
+            var inGame = _bagInGame();
+            if (inGame) {
                 // 每帧校准: 重生 / 读档 / 换角色后自动回到背包选中格对应的武器 (空格 = 空手)
                 var p = _bagActivePlayer();
                 if (p && p.weapons) {
@@ -3419,12 +3433,13 @@ body.low-perf #menu::before { filter: none; opacity: .18; }
                     if (selIt && selIt.type === 'weapon' && p.weapons[selIt.key]) {
                         if (p._bagEmptyHanded) p._bagEmptyHanded = false;
                         if (p.currentWeapon !== selIt.key) p.switchWeapon(selIt.key);
+                        if (gameState === 'topdown' || gameState === 'tdtraining') p._tdLastGun = selIt.key;
                     } else if (!p._bagEmptyHanded) {
                         p._bagEmptyHanded = true;
                     }
                 }
             }
-            var show = horizontal && !BAG.open && !isPaused && !isDrafting && !isAwardShowing && !statPanelOpen && !_touchSettingsOpen;
+            var show = inGame && !BAG.open && !isPaused && !isDrafting && !isAwardShowing && !statPanelOpen && !_touchSettingsOpen;
             var want = show ? 'flex' : 'none';
             if (hb.style.display !== want) hb.style.display = want;
             if (!show) return;
@@ -3504,7 +3519,7 @@ body.low-perf #menu::before { filter: none; opacity: .18; }
             try { GameAudio.play('pickup'); } catch (e) { }
         }
         function _bagOpen() {
-            if (BAG.open || !_bagIsHorizontal()) return;
+            if (BAG.open || !_bagInGame()) return;
             if (isDrafting || isAwardShowing) return;
             BAG.open = true;
             BAG._prevPaused = isPaused;
@@ -3553,7 +3568,7 @@ body.low-perf #menu::before { filter: none; opacity: .18; }
             BAG._equippedSel = -1;
             _bagRenderBar();
             _bagRenderPanel();
-            if (_bagIsHorizontal()) _bagEquipSelected();
+            if (_bagInGame()) _bagEquipSelected();
         }
 
         function _bindTdHotbar() {
@@ -6965,8 +6980,8 @@ body.low-perf #menu::before { filter: none; opacity: .18; }
                         '<div><span class="key">鼠标</span> 瞄准 / 射击</div>' +
                         '<div><span class="key">空格</span> 能量位移</div>' +
                         '<div><span class="key">R</span> 换弹</div>' +
-                        '<div><span class="key">1-5</span> 武器</div>' +
-                        '<div><span class="key">E / 6</span> 战刃</div>';
+                        '<div><span class="key">1-9</span> 物品栏选格</div>' +
+                        '<div><span class="key">···</span> 背包</div>';
                 }
                 isPaused = false; isDrafting = false; statPanelOpen = false; isAwardShowing = false;
                 gameState = 'topdown';
@@ -13557,6 +13572,8 @@ body.low-perf #menu::before { filter: none; opacity: .18; }
                     '新增背包界面（参考 Minecraft）：上方 3×9 主背包 + 下方 1×9 快捷栏，打开时游戏暂停；点击格子拾起物品，再点其他格子放下或交换，关闭时手中物品自动放回空位；最下面一行就是外部快捷栏',
                     '默认 6 把武器放在快捷栏第 1-6 格，可自由拖动调整；背包布局与当前选中格写入本地存档并随账号云同步，预留 27 格给后续商店购买 / 道具使用',
                     '电脑端底部按键提示上移，改为「1-9 物品栏选格 / ··· 背包」；手机端原来的左右滑动换枪改为点格选中',
+                    '修复手机端底部物品栏过大：9 格整体缩小并降低层级，横屏不再压住左右摇杆 / 跳跃键与暂停、属性键，竖屏也不再超出屏幕右边缘（三点背包按钮始终可见）',
+                    '物品栏与背包现在同样适用于俯视枪战 / 俯视训练场：底部显示同一套 9 格，按 1-9 或点格选枪，选中空格时俯视也无法开火 / 蓄力，但仍可移动与能量位移；俯视的旧数字键与 E 键切枪已统一交给背包',
 
                     '修复进入「毒圈已缩到最小」的存档时减疗显示 0：读档会按该存档已缩圈次数 × 每波减疗回填双方减疗（例如缩了 6 次 = 90% 封顶），旧存档也生效',
                     '俯视能量位移取消内置冷却（原先成功位移后锁 350ms）：现在只要能量够、且上一次位移没结束，就能连续冲刺；触控位移键与空格一致',
@@ -14863,7 +14880,8 @@ body.low-perf #menu::before { filter: none; opacity: .18; }
                 }
             }
             const w = player.weapon;
-            if (w && w.isMelee) {
+            const _bagEmptyTd = !!player._bagEmptyHanded;
+            if (!_bagEmptyTd && w && w.isMelee) {
                 // 刀剑为内置蓄力: 点一下左键立即按当前蓄力挥砍, 用完清零
                 if (TD.firePressed) {
                     // 只有真正挥出才清空蓄力: 冷却/能量不足被拒时保留蓄力
@@ -14871,7 +14889,7 @@ body.low-perf #menu::before { filter: none; opacity: .18; }
                         player._tdSwordCharge = 0;
                     }
                 }
-            } else if (TD.fireHeld || (_isTouchNow && typeof touchState !== 'undefined' && touchState.fire)) {
+            } else if (!_bagEmptyTd && (TD.fireHeld || (_isTouchNow && typeof touchState !== 'undefined' && touchState.fire))) {
                 tdFire(player, player._tdAim, now);
             }
             TD.firePressed = false;
@@ -16090,6 +16108,7 @@ body.low-perf #menu::before { filter: none; opacity: .18; }
                 // 阻止浏览器右键拖拽 / 选中 / 手势等默认行为
                 try { e.preventDefault(); } catch (err) { }
                 if (!player || player.health <= 0) return;
+                if (player._bagEmptyHanded) return;   // 空手不能蓄力
                 if (tdWeaponKey(player) !== 'sniper') return;
                 if (TD.sniperAim && TD.sniperAim.active) return;
                 if (tdEnergy(player) < 30) { TD._noEnergyAt = Date.now(); return; }
@@ -16131,6 +16150,7 @@ body.low-perf #menu::before { filter: none; opacity: .18; }
         }, true);
         window.addEventListener('keydown', function (e) {
             if (gameState !== 'topdown' && gameState !== 'tdtraining') return;
+            if (BAG.open) return;   // 背包打开时暂停, 不响应俯视快捷键
             const kk = String(e.key || '').toLowerCase();
             TD.keys[kk] = true;
             // 俯视模式取消换弹: R 键不再触发换弹
@@ -16140,7 +16160,7 @@ body.low-perf #menu::before { filter: none; opacity: .18; }
             // Shift: 狙击备用蓄力键 (规避浏览器右键手势)
             if ((e.key === 'Shift' || e.code === 'ShiftLeft' || e.code === 'ShiftRight') && player) {
                 if (e.preventDefault) e.preventDefault();
-                if (tdWeaponKey(player) === 'sniper' && player.health > 0 && tdEnergy(player) >= 30 && !(TD.sniperAim && TD.sniperAim.active)) {
+                if (!player._bagEmptyHanded && tdWeaponKey(player) === 'sniper' && player.health > 0 && tdEnergy(player) >= 30 && !(TD.sniperAim && TD.sniperAim.active)) {
                     TD.sniperAim = { active: true, from: Date.now(), progress: 0, angle: player._tdAim || 0 };
                     TD._sniperKeyHold = true;
                 }
@@ -16154,21 +16174,7 @@ body.low-perf #menu::before { filter: none; opacity: .18; }
                 if (TD.keys['d']) mx += 1;
                 tdDash(player, mx, my, Date.now());   // 无内置冷却
             }
-            const slot = ['1', '2', '3', '4', '5'].indexOf(e.key);
-            if (slot >= 0 && player) {
-                const names = ['pistol', 'rifle', 'shotgun', 'smg', 'sniper'];
-                if (player.weapons[names[slot]]) { player.currentWeapon = names[slot]; player._tdLastGun = names[slot]; }
-            }
-            if (e.key === '6' && player && player.weapons.sword) { player._tdLastGun = player.currentWeapon; player.currentWeapon = 'sword'; }
-            // E: 战刃与上一把远程武器互换 (与横版一致)
-            if (kk === 'e' && player && player.weapons.sword) {
-                if (player.currentWeapon === 'sword') {
-                    player.currentWeapon = player._tdLastGun || 'rifle';
-                } else {
-                    player._tdLastGun = player.currentWeapon;
-                    player.currentWeapon = 'sword';
-                }
-            }
+            // 1-9 / E 切枪统一由「背包快捷栏」处理 (见全局 keydown)
         });
         window.addEventListener('keyup', function (e) {
             TD.keys[String(e.key || '').toLowerCase()] = false;
@@ -17631,7 +17637,7 @@ body.low-perf #menu::before { filter: none; opacity: .18; }
             // === 背包打开时只响应 ESC, 其它按键不触发游戏操作 ===
             if (BAG.open) { if (e.key === 'Escape') { _bagClose(); e.preventDefault(); } return; }
             // === 1-9 选中快捷栏对应格 (横版三模式) ===
-            if (_bagIsHorizontal() && !statPanelOpen && /^[1-9]$/.test(e.key)) {
+            if (_bagInGame() && !statPanelOpen && /^[1-9]$/.test(e.key)) {
                 _bagSelect(parseInt(e.key, 10) - 1);
                 e.preventDefault();
                 return;
