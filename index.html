@@ -13780,7 +13780,8 @@ body.low-perf #menu::before { filter: none; opacity: .18; }
                     '暂停菜单与 Tab 属性查看面板改为 30% 透明（背景 alpha 0.70，带轻微背景模糊）：暂停 / 查看属性时能直接看到后面的游戏画面，文字与按钮保持清晰',
                     '激光枪蓄力伤害曲线调整：0 秒蓄力瞬间打出 = 狙击枪同等伤害，随蓄力时长实时线性提升，1 秒满蓄 = 狙击枪 300% 伤害（过程中也按当前进度计算）；能量消耗不变',
                     '激光枪不再发射普通子弹：俯视普通开火不再产生任何子弹，只通过右键 / Shift / 手机长按（或短按 0 秒蓄力）发射；横版激光枪普通子弹改回青色圆形弹，不再出现红色细线',
-                    '说明书全面更新：补充背包 / 快捷栏、7 把武器（含激光枪伤害曲线与战刃锁敌）、手机手势瞄准与长按蓄力、自动瞄准开关、新默认键位、暂停 / 属性面板透明度等最新内容'
+                    '说明书全面更新：补充背包 / 快捷栏、7 把武器（含激光枪伤害曲线与战刃锁敌）、手机手势瞄准与长按蓄力、自动瞄准开关、新默认键位、暂停 / 属性面板透明度等最新内容',
+                    '电脑端激光枪蓄力同样支持 10° 吸附：鼠标方向与「玩家 → 敌人」夹角小于 10° 时准星直接吸附敌人中心（与手机一致），超过 10° 仍完全跟随鼠标'
                 ]
             },
             {
@@ -15100,8 +15101,14 @@ body.low-perf #menu::before { filter: none; opacity: .18; }
                             TD.sniperAim.angle = _aimA;
                         }
                     } else {
-                        // 电脑端: 蓄力只跟随鼠标
-                        TD.sniperAim.angle = Math.atan2(wp.y - player.y, wp.x - player.x);
+                        // 电脑端: 蓄力跟随鼠标; 与「玩家 → 敌人」方向夹角 ≤10° 时同样吸附到敌人中心
+                        var _aimA2 = Math.atan2(wp.y - player.y, wp.x - player.x);
+                        if (ai && ai.health > 0) {
+                            var _toFoe2 = Math.atan2(ai.y - player.y, ai.x - player.x);
+                            var _dd2 = Math.abs(((_aimA2 - _toFoe2 + Math.PI * 3) % (Math.PI * 2)) - Math.PI);
+                            if (_dd2 <= 10 * Math.PI / 180) _aimA2 = _toFoe2;
+                        }
+                        TD.sniperAim.angle = _aimA2;
                     }
                     player._tdAim = TD.sniperAim.angle;
                     TD.sniperAim.progress = Math.min(1, (now - TD.sniperAim.from) / 1000);
