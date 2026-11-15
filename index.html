@@ -2371,11 +2371,19 @@ body[data-device="touch"] #cmRunTimer {
 .cm-tab.on { box-shadow: 0 0 18px rgba(34,230,255,.35); }
 
 /* ---- 暂停 / 属性 / 说明 / 训练面板 ---- */
-#pauseMenu > div, #statPanel, #settingsPanel > div, #noticePanel > div, #buffGuidePanel > div,
+#settingsPanel > div, #noticePanel > div, #buffGuidePanel > div,
 #trainPanel, #trainTune .tt-card, #trainShop {
     background: linear-gradient(165deg, rgba(16,24,44,.97), rgba(7,11,22,.985)) !important;
     border: 1px solid rgba(120,200,255,.24) !important;
     box-shadow: 0 24px 70px rgba(0,0,0,.65), inset 0 1px 0 rgba(255,255,255,.06) !important;
+}
+/* 暂停 / 属性查看面板: 30% 透明 (alpha .70), 能透出游戏画面 */
+#pauseMenu > div, #statPanel {
+    background: linear-gradient(165deg, rgba(16,24,44,.70), rgba(7,11,22,.72)) !important;
+    border: 1px solid rgba(120,200,255,.30) !important;
+    box-shadow: 0 24px 70px rgba(0,0,0,.45), inset 0 1px 0 rgba(255,255,255,.06) !important;
+    backdrop-filter: blur(4px);
+    -webkit-backdrop-filter: blur(4px);
 }
 #pauseMenu button, #statPanel button { border-radius: 10px !important; transition: transform .16s ease, filter .18s ease, box-shadow .2s ease; }
 #pauseMenu button:hover, #statPanel button:hover { transform: translateY(-2px); filter: brightness(1.08); box-shadow: 0 8px 22px rgba(0,0,0,.45), 0 0 18px rgba(34,230,255,.25); }
@@ -13780,7 +13788,8 @@ body.low-perf #menu::before { filter: none; opacity: .18; }
                     '修复激光枪普通射击会打出粉色圆形子弹：激光枪子弹改为细长发光的红色激光脉冲（横版与俯视一致），伤害 / 命中判定保持不变，不再出现粉色子弹',
                     '修复手机主菜单有时上下滑动不了：移除部分 WebView 会卡住的滚动属性、菜单及其子元素统一允许纵向滑动，并加入触摸滚动兜底（原生滚动失效时自动接管），内容超出时始终可以上下滑',
                     '激光枪手机瞄准吸附：蓄力时「开火键中心 → 手指」的方向与实际「玩家 → 敌人」方向夹角小于 10° 时，直接吸附到敌人中心，命中更稳（超过 10° 仍完全跟随手指）',
-                    '修复手游主菜单滑动一卡一卡：移除了与原生滚动冲突的手动滚动接管，改回纯原生滑动；手机端主菜单的超大模糊旋转光斑不再动画、模糊半径下调，低端机滚动更顺滑'
+                    '修复手游主菜单滑动一卡一卡：移除了与原生滚动冲突的手动滚动接管，改回纯原生滑动；手机端主菜单的超大模糊旋转光斑不再动画、模糊半径下调，低端机滚动更顺滑',
+                    '暂停菜单与 Tab 属性查看面板改为 30% 透明（背景 alpha 0.70，带轻微背景模糊）：暂停 / 查看属性时能直接看到后面的游戏画面，文字与按钮保持清晰'
                 ]
             },
             {
