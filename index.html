@@ -9277,14 +9277,20 @@ body.low-perf #menu::before { filter: none; opacity: .18; }
                     ctx.fillRect(-19, -22 + bodyBounce, 38, 38);
                 }
 
-                // === 仔仔熊的礼物: 无敌+回血期间金色描边 (玩家/AI 通用) ===
-                if (this.invincibleUntil && now < this.invincibleUntil) {
+                // === 无敌状态 (仔仔熊 / 不败传奇 / 无敌模式 / 俯视位移): 身体散发金光 (玩家/AI 通用) ===
+                if (_isInvincibleVisual(this, now)) {
                     ctx.save();
-                    ctx.strokeStyle = '#ffd700';
+                    const _ip = 0.6 + Math.sin(now / 110) * 0.25;
+                    const _ig = ctx.createRadialGradient(0, -8, 8, 0, -8, 64);
+                    _ig.addColorStop(0, 'rgba(255,215,0,' + (0.28 * _ip).toFixed(3) + ')');
+                    _ig.addColorStop(0.6, 'rgba(255,200,60,' + (0.13 * _ip).toFixed(3) + ')');
+                    _ig.addColorStop(1, 'rgba(255,180,40,0)');
+                    ctx.fillStyle = _ig;
+                    ctx.beginPath(); ctx.arc(0, -8, 64, 0, Math.PI * 2); ctx.fill();
+                    ctx.strokeStyle = 'rgba(255,225,120,' + Math.min(1, 0.55 + _ip * 0.45).toFixed(3) + ')';
                     ctx.lineWidth = 3;
                     ctx.shadowColor = '#ffd700';
                     ctx.shadowBlur = 18;
-                    ctx.globalAlpha = 0.7 + Math.sin(now / 90) * 0.3;
                     ctx.strokeRect(-25, -52 + bodyBounce, 50, 86);
                     ctx.restore();
                 }
@@ -13219,7 +13225,9 @@ body.low-perf #menu::before { filter: none; opacity: .18; }
                     '修复俯视训练场子弹 / 粒子会往下掉（有重力）的问题：俯视训练场现在和正式俯视一样无重力',
                     '所有枪械与刀剑的能量消耗减半（手枪 10→5、步枪 6→3、霰弹 30→15、冲锋 4→2、狙击 35→17.5、刀剑 40→20，蓄力附加 6→3），能量位移消耗 30 保持不变',
                     '账号数据彻底改为云端独立：登录 / 注册时会先清空本机该账号体系的数据（键位、训练场数值、环境、成就、所有存档槽）再套用云端数据；新账号不再继承本机旧数据；旧账号云端缺少的存档槽会自动从本机同 id 槽补齐并上传；同步体积上限提高到 3.5MB，存档槽也能完整上云',
-                    '修复毒圈波次清零时减疗没有跟着更新：一整波命数打完、毒圈重置为 0 次的同时，双方减疗也清零，已打开的属性面板会立即刷新显示'
+                    '修复毒圈波次清零时减疗没有跟着更新：一整波命数打完、毒圈重置为 0 次的同时，双方减疗也清零，已打开的属性面板会立即刷新显示',
+                    '无敌状态（仔仔熊的礼物 / 不败传奇 / 无敌模式 / 俯视能量位移）现在会让角色身体散发金色光晕与呼吸描边，横版与俯视一致，更容易看出无敌中',
+                    '修复毒圈伤害成长几乎不生效：每秒毒伤改为「基础% + (波次-1) × 每波成长%」的加法公式（默认 5% + 每波 5%），例如第 3 波为 15%/秒，仍按最大生命百分比结算'
                 ]
             },
             {
@@ -13958,8 +13966,10 @@ body.low-perf #menu::before { filter: none; opacity: .18; }
                 var _waveNo = (gameState === 'tdtraining')
                     ? Math.max(1, Math.round((TRAIN_TUNE && TRAIN_TUNE.mine && TRAIN_TUNE.mine.aiRound) || 1))
                     : Math.max(1, wave || 1);
-                var _grow = 1 + (Math.max(0, Number(TD_ENV.poisonGrowthPerWave) || 0) / 100) * (_waveNo - 1);
-                var _pctTick = Math.max(0, Number(TD_ENV.poisonPctPerSec) || 0) * 0.5 * _grow;   // 每 0.5 秒的百分比
+                // 毒伤: 每秒百分比 = 基础% + (波次-1) × 每波成长% (加法成长, 之前写成乘法导致几乎不涨)
+                var _pctPerSec = Math.max(0, Number(TD_ENV.poisonPctPerSec) || 0)
+                    + Math.max(0, Number(TD_ENV.poisonGrowthPerWave) || 0) * Math.max(0, _waveNo - 1);
+                var _pctTick = _pctPerSec * 0.5;   // 每 0.5 秒的百分比
                 [player, ai].forEach(function (ent) {
                     if (!ent || ent.health <= 0) return;
                     if (now < (ent._tdInvUntil || 0)) return;
@@ -14906,6 +14916,34 @@ body.low-perf #menu::before { filter: none; opacity: .18; }
             updateParticles();
         }
 
+        // 是否处于「无敌」视觉状态: 无敌模式 / 仔仔熊的礼物 / 不败传奇 / 俯视能量位移无敌
+        function _isInvincibleVisual(ent, now) {
+            if (!ent) return false;
+            if (ent.invincible) return true;
+            if (ent.invincibleUntil && now < ent.invincibleUntil) return true;
+            if (ent._tdInvUntil && Date.now() < ent._tdInvUntil) return true;
+            return false;
+        }
+        // 身体散发金光 (径向光晕 + 呼吸描边)
+        function drawInvincibleGlow(ctx, x, y, r, now) {
+            const pulse = 0.62 + Math.sin(now / 110) * 0.24;
+            const g = ctx.createRadialGradient(x, y, Math.max(2, r * 0.35), x, y, r * 1.95);
+            g.addColorStop(0, 'rgba(255,215,0,' + (0.30 * pulse).toFixed(3) + ')');
+            g.addColorStop(0.58, 'rgba(255,200,60,' + (0.15 * pulse).toFixed(3) + ')');
+            g.addColorStop(1, 'rgba(255,180,40,0)');
+            ctx.save();
+            ctx.fillStyle = g;
+            ctx.beginPath();
+            ctx.arc(x, y, r * 1.95, 0, Math.PI * 2);
+            ctx.fill();
+            ctx.strokeStyle = 'rgba(255,228,130,' + Math.min(1, 0.55 + pulse * 0.45).toFixed(3) + ')';
+            ctx.lineWidth = Math.max(2, r * 0.18);
+            ctx.beginPath();
+            ctx.arc(x, y, r * 1.12, 0, Math.PI * 2);
+            ctx.stroke();
+            ctx.restore();
+        }
+
         function tdDrawEntity(ent, color, now) {
             const aim = ent._tdAim || 0;
             const r = ent._tdRadius || TD.radius;
@@ -14919,6 +14957,10 @@ body.low-perf #menu::before { filter: none; opacity: .18; }
                 ctx.strokeStyle = ent.isAI ? '#ffb86b' : '#55efc4';
                 ctx.lineWidth = 6;
                 ctx.beginPath(); ctx.arc(ent.x, ent.y, r + 5, -Math.PI / 2, -Math.PI / 2 + Math.PI * 2 * _er); ctx.stroke();
+            }
+            // 无敌状态: 身体散发金光
+            if (_isInvincibleVisual(ent, now)) {
+                try { drawInvincibleGlow(ctx, ent.x, ent.y, r + 4, now); } catch (e) { }
             }
             // 炙热长袍: 90px 灼烧范围光圈 (与横版 drawRobeAura 一致)
             if (ent.equip && ent.equip.robeCount > 0) {
