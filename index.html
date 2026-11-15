@@ -3522,7 +3522,7 @@ body.low-perf #menu::before { filter: none; opacity: .18; }
                     // 俯视: 跳跃键改为能量位移 (方向 = 摇杆方向, 未推摇杆则朝瞄准方向)
                     let dx = touchState.mx || 0, dy = touchState.my || 0;
                     if (Math.abs(dx) + Math.abs(dy) < 0.01) { dx = Math.cos(player._tdAim || 0); dy = Math.sin(player._tdAim || 0); }
-                    if (tdDash(player, dx, dy, Date.now())) TD.pDashLock = Date.now() + 350;
+                    tdDash(player, dx, dy, Date.now());   // 无内置冷却
                 } else {
                     touchState.jumpQueued = true;
                 }
@@ -6608,6 +6608,14 @@ body.low-perf #menu::before { filter: none; opacity: .18; }
                 } else {
                     resetTdZone();
                 }
+                // 旧存档/旧版本可能没存住减疗: 按毒圈已缩次数回填 (每缩一次 = 面板里的每波减疗)
+                try {
+                    var _shrunk = Math.max(0, Math.round((TD.zone && TD.zone.shrinkCount) || 0));
+                    var _dp = Math.max(0, Number(TRAIN_TUNE && TRAIN_TUNE.mine && TRAIN_TUNE.mine.decayPerShrink != null ? TRAIN_TUNE.mine.decayPerShrink : 0) || 0);
+                    var _da = Math.max(0, Number(TRAIN_TUNE && TRAIN_TUNE.enemy && TRAIN_TUNE.enemy.decayPerShrink != null ? TRAIN_TUNE.enemy.decayPerShrink : 0) || 0);
+                    if (player) player._healDecayBonus = Math.max(player._healDecayBonus || 0, Math.min(0.9, _shrunk * _dp));
+                    if (ai) ai._healDecayBonus = Math.max(ai._healDecayBonus || 0, Math.min(0.9, _shrunk * _da));
+                } catch (e) { }
                 TD.aWeaponSince = Date.now(); TD.aThinkAt = 0; TD.aWeaponAt = 0;
                 TD.aMeleeAt = 0; TD.aMeleeUntil = 0; TD.fireHeld = false; TD.firePressed = false;
                 TD._hidden = [];
@@ -13204,6 +13212,13 @@ body.low-perf #menu::before { filter: none; opacity: .18; }
         // === 更新公告: 每次对话完成后在 UPDATE_LOG 顶部追加一条 (日期 + 分点内容) ===
         const UPDATE_LOG = [
             {
+                date: '2026-11-15',
+                items: [
+                    '修复进入「毒圈已缩到最小」的存档时减疗显示 0：读档会按该存档已缩圈次数 × 每波减疗回填双方减疗（例如缩了 6 次 = 90% 封顶），旧存档也生效',
+                    '俯视能量位移取消内置冷却（原先成功位移后锁 350ms）：现在只要能量够、且上一次位移没结束，就能连续冲刺；触控位移键与空格一致'
+                ]
+            },
+            {
                 date: '2026-11-14',
                 items: [
                     '俯视能量环移到画面左下 / 右下角，名称标签改到环上方；「正面 / 负面效果」面板在俯视下整排上移，给角落让出位置，两者不再互相遮挡；能量不足提示同步移到环下方',
@@ -14091,6 +14106,8 @@ body.low-perf #menu::before { filter: none; opacity: .18; }
         function tdDash(ent, dx, dy, now) {
             if (!ent || ent.health <= 0) return false;
             if (now < (ent._tdNoDashUntil || 0)) return false;
+            // 位移进行中不能重复触发 (除此之外没有内置冷却, 只要能量够就能连续冲)
+            if (now < (ent._tdDashUntil || 0)) return false;
             if (fxIsStunned(ent)) return false;
             if (tdEnergy(ent) < TD.dashCost) return false;
             let len = Math.hypot(dx, dy);
@@ -15505,14 +15522,14 @@ body.low-perf #menu::before { filter: none; opacity: .18; }
             if (gameState === 'tdtraining' && kk.indexOf('arrow') === 0) {
                 if (e.preventDefault) e.preventDefault();
             }
-            if ((e.code === 'Space' || kk === ' ') && player && Date.now() > TD.pDashLock) {
+            if ((e.code === 'Space' || kk === ' ') && player) {
                 if (e.preventDefault) e.preventDefault();
                 let mx = 0, my = 0;
                 if (TD.keys['w']) my -= 1;
                 if (TD.keys['s']) my += 1;
                 if (TD.keys['a']) mx -= 1;
                 if (TD.keys['d']) mx += 1;
-                if (tdDash(player, mx, my, Date.now())) TD.pDashLock = Date.now() + 350;
+                tdDash(player, mx, my, Date.now());   // 无内置冷却
             }
             const slot = ['1', '2', '3', '4', '5'].indexOf(e.key);
             if (slot >= 0 && player) {
