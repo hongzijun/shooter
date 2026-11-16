@@ -4785,7 +4785,7 @@ body.low-perf #menu::before { filter: none; opacity: .18; }
             },
             {
                 id: 'phasearm', name: '相位臂甲', icon: '💠', type: 'equip', rarity: 'purple',
-                desc: '法防+20，CDR+10%；每9秒免疫下一次受到的物理伤害（法术 / 真伤 / 特效伤害不免疫）',
+                desc: '法防+20，CDR+10%；每9秒免疫下一次受到的物理伤害（法术 / 真伤 / 特效伤害不免疫；自身冷却不受 CDR 缩减）',
                 apply(p) { const eq = ensureEquipObj(p); const fx = ensureFx(p); p.defenseM = (p.defenseM || 35) + 20; eq.defenseM += 20; eq.cdr += 0.10; fx.immuneEvery9s = (fx.immuneEvery9s || 0) + 1; fxInst(p, 'phasearm', fx.immuneEvery9s); }
             },
             {
@@ -9138,7 +9138,7 @@ body.low-perf #menu::before { filter: none; opacity: .18; }
                     if (_phHit) {
                         _phHit.ready = false;
                         _phHit.lastAt = Date.now();   // 被打破: 重新开始 9 秒计时
-                        _phHit.cdMs = cdrMs(9000, this);   // 冷却时长在此刻锁定, 之后不随 CDR 变化
+                        _phHit.cdMs = 9000 * (1 - fxCdrExtra(this));   // 相位臂甲固定 9 秒: 不受 CDR 缩减, 仅接受「时间刻印」等额外冷却缩减
                         showFloatingText('⚡ 免疫伤害!', '#74b9ff');
                         return { dmg: 0, shield: false };
                     }
@@ -13727,6 +13727,12 @@ body.low-perf #menu::before { filter: none; opacity: .18; }
 
         // === 更新公告: 每次对话完成后在 UPDATE_LOG 顶部追加一条 (日期 + 分点内容) ===
         const UPDATE_LOG = [
+            {
+                date: '2026-11-16',
+                items: [
+                    '相位臂甲的 9 秒冷却不再受 CDR 缩减：装备 / 卡牌提供的冷却缩减不会缩短它；「时间刻印」等额外冷却缩减仍然生效（卡牌描述已同步说明）'
+                ]
+            },
             {
                 date: '2026-11-15',
                 items: [
