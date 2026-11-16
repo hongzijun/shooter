@@ -1567,38 +1567,44 @@
         #touchFire { left: var(--fire-x); top: var(--fire-y); transform: translate(-50%, -50%) scale(var(--fire-scale)); font-size: calc(var(--touch-size) * 0.36); }
         #touchJump { left: var(--jump-x); top: var(--jump-y); transform: translate(-50%, -50%) scale(var(--jump-scale)); font-size: calc(var(--touch-size) * 0.30); overflow: visible; }
 
-        /* 底部居中触控暂停: 小号按钮, 打开既有暂停菜单 */
+        /* 暂停键: 固定在右上角 (不占操作区, 也不会被右侧状态 / 效果卡牌遮挡) */
         #touchPause {
             left: auto;
-            right: calc(14px + var(--safe-right));
-            top: 58%;
+            right: calc(10px + var(--safe-right));
+            top: calc(8px + var(--safe-top));
             bottom: auto;
-            width: calc(var(--touch-size) * 0.56);
-            height: calc(var(--touch-size) * 0.56);
-            transform: translateY(-50%) scale(var(--touch-scale));
-            transform-origin: 100% 50%;
-            font-size: calc(var(--touch-size) * 0.22);
-            z-index: 2;
+            width: calc(var(--touch-size) * 0.62);
+            height: calc(var(--touch-size) * 0.62);
+            transform: scale(var(--touch-scale));
+            transform-origin: 100% 0;
+            font-size: calc(var(--touch-size) * 0.26);
+            background: radial-gradient(circle at 32% 26%, rgba(140,190,255,0.62), rgba(14,24,48,0.72) 62%, rgba(8,12,26,0.82));
+            border: 2px solid rgba(150,205,255,0.85);
+            box-shadow: 0 0 22px rgba(79,142,255,0.60), 0 6px 18px rgba(0,0,0,0.50), inset 0 0 0 1px rgba(255,255,255,0.16);
+            z-index: 3;
         }
 
-        /* 属性面板键: 位于暂停键正上方 */
+        /* 属性面板键: 暂停键左侧, 同样常驻右上角 */
         #touchStats {
             left: auto;
-            right: calc(14px + var(--safe-right));
-            top: 40%;
+            right: calc(18px + var(--safe-right) + var(--touch-size) * 0.62);
+            top: calc(8px + var(--safe-top));
             bottom: auto;
-            width: calc(var(--touch-size) * 0.56);
-            height: calc(var(--touch-size) * 0.56);
-            transform: translateY(-50%) scale(var(--touch-scale));
-            transform-origin: 100% 50%;
-            font-size: calc(var(--touch-size) * 0.22);
-            z-index: 2;
+            width: calc(var(--touch-size) * 0.62);
+            height: calc(var(--touch-size) * 0.62);
+            transform: scale(var(--touch-scale));
+            transform-origin: 100% 0;
+            font-size: calc(var(--touch-size) * 0.26);
+            background: radial-gradient(circle at 32% 26%, rgba(140,190,255,0.62), rgba(14,24,48,0.72) 62%, rgba(8,12,26,0.82));
+            border: 2px solid rgba(150,205,255,0.85);
+            box-shadow: 0 0 22px rgba(79,142,255,0.60), 0 6px 18px rgba(0,0,0,0.50), inset 0 0 0 1px rgba(255,255,255,0.16);
+            z-index: 3;
         }
 
         /* 属性面板关闭键: 独立于触控层, 固定在右上角 */
         #touchStatsClose {
             position: fixed;
-            top: calc(10px + var(--safe-top));
+            top: calc(20px + var(--safe-top) + var(--touch-size) * 0.62);
             right: calc(10px + var(--safe-right));
             left: auto;
             bottom: auto;
@@ -13730,7 +13736,8 @@ body.low-perf #menu::before { filter: none; opacity: .18; }
             {
                 date: '2026-11-16',
                 items: [
-                    '相位臂甲的 9 秒冷却不再受 CDR 缩减：装备 / 卡牌提供的冷却缩减不会缩短它；「时间刻印」等额外冷却缩减仍然生效（卡牌描述已同步说明）'
+                    '相位臂甲的 9 秒冷却不再受 CDR 缩减：装备 / 卡牌提供的冷却缩减不会缩短它；「时间刻印」等额外冷却缩减仍然生效（卡牌描述已同步说明）',
+                    '手机端暂停键与属性面板键移到屏幕右上角并加粗发光：不再被右侧状态 / 效果卡牌挡住，也不占用移动、跳跃、开火的操作区域；属性面板的关闭键同步下移避免重叠'
                 ]
             },
             {
