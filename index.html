@@ -7120,11 +7120,12 @@ body.low-perf #menu::before { filter: none; opacity: .18; }
                 if (data.td && data.td.zone && typeof data.td.zone === 'object') {
                     TD.zone = {
                         cx: TD.W / 2, cy: TD.H / 2,
-                        r: Math.max(40, _num(data.td.zone.r, TD_ENV.initialRadius)),
-                        shrinkCount: Math.max(0, Math.round(_num(data.td.zone.shrinkCount, 0))),
-                        nextShrink: Date.now() + Math.max(1000, _num(data.td.zone.nextShrinkIn, TD_ENV.shrinkInterval * 1000)),
+                        r: _num(data.td.zone.r, TD_ENV.initialRadius),
+                        shrinkCount: Math.round(_num(data.td.zone.shrinkCount, 0)),
+                        nextShrink: Date.now() + _num(data.td.zone.nextShrinkIn, TD_ENV.shrinkInterval * 1000),
                         dmgAt: 0
                     };
+                    tdZoneClamp(TD.zone);   // 旧存档 / 异常值统一修正 (半径上限、次数上限、计时不连缩)
                 } else {
                     resetTdZone();
                 }
@@ -7133,8 +7134,9 @@ body.low-perf #menu::before { filter: none; opacity: .18; }
                     var _shrunk = Math.max(0, Math.round((TD.zone && TD.zone.shrinkCount) || 0));
                     var _dp = Math.max(0, Number(TRAIN_TUNE && TRAIN_TUNE.mine && TRAIN_TUNE.mine.decayPerShrink != null ? TRAIN_TUNE.mine.decayPerShrink : 0) || 0);
                     var _da = Math.max(0, Number(TRAIN_TUNE && TRAIN_TUNE.enemy && TRAIN_TUNE.enemy.decayPerShrink != null ? TRAIN_TUNE.enemy.decayPerShrink : 0) || 0);
-                    if (player) player._healDecayBonus = Math.max(player._healDecayBonus || 0, Math.min(0.9, _shrunk * _dp));
-                    if (ai) ai._healDecayBonus = Math.max(ai._healDecayBonus || 0, Math.min(0.9, _shrunk * _da));
+                    // 读档以毒圈已缩次数为准重建减疗, 避免上一局残留导致偏高
+                    if (player) player._healDecayBonus = Math.min(0.9, _shrunk * _dp);
+                    if (ai) ai._healDecayBonus = Math.min(0.9, _shrunk * _da);
                 } catch (e) { }
                 TD.aWeaponSince = Date.now(); TD.aThinkAt = 0; TD.aWeaponAt = 0;
                 TD.aMeleeAt = 0; TD.aMeleeUntil = 0; TD.fireHeld = false; TD.firePressed = false;
@@ -13736,7 +13738,8 @@ body.low-perf #menu::before { filter: none; opacity: .18; }
             {
                 date: '2026-11-17',
                 items: [
-                    '俯视 AI 闪避敏感度再次下调：感知半径缩减 8px、紧急响应窗口 0.23→0.15 秒、原地威胁门槛 0.022→0.032、位移门槛 0.03→0.045 且走位后需仍吃掉七成伤害才交位移；AI 会更少提前闪避，但被贴脸直射时仍会位移'
+                    '俯视 AI 闪避敏感度再次下调：感知半径缩减 8px、紧急响应窗口 0.23→0.15 秒、原地威胁门槛 0.022→0.032、位移门槛 0.03→0.045 且走位后需仍吃掉七成伤害才交位移；AI 会更少提前闪避，但被贴脸直射时仍会位移',
+                    '毒圈全面防护：新增每帧状态自检，半径 / 收缩次数 / 下次收缩计时 / 毒伤计时互相校验并自动修正（半径不会超过初始值、次数不会超过上限、读档不会瞬间连缩或久不缩圈）；读档时减疗严格按已缩次数重建（不再继承上一局残留），毒伤单跳上限 60% 最大生命，彻底避免异常存档导致的毒圈显示与伤害错乱'
                 ]
             },
             {
@@ -14513,6 +14516,37 @@ body.low-perf #menu::before { filter: none; opacity: .18; }
             } catch (e) { }
         }
         loadTdEnv();
+        // 毒圈状态规整: 存档 / 旧版本 / 调试写入的异常值统一在这里修正,
+        // 保证「半径 / 收缩次数 / 下次收缩计时 / 毒伤计时」彼此一致, 防止读档后圈过大、连缩或毒伤爆炸
+        function tdZoneClamp(z) {
+            if (!z || typeof z !== 'object') return false;
+            var now = Date.now();
+            var init = Math.max(200, Number(TD_ENV.initialRadius) || 1200);
+            var minR = Math.max(40, Number(TD_ENV.minRadius) || 260);
+            var step = Math.max(1, Number(TD_ENV.shrinkStep) || 90);
+            var interval = Math.max(3, Number(TD_ENV.shrinkInterval) || 20) * 1000;
+            if (!isFinite(Number(z.cx))) z.cx = TD.W / 2;
+            if (!isFinite(Number(z.cy))) z.cy = TD.H / 2;
+            z.cx = Math.max(0, Math.min(TD.W, Number(z.cx)));
+            z.cy = Math.max(0, Math.min(TD.H, Number(z.cy)));
+            var maxShrinks = Math.max(1, Math.ceil((init - minR) / step) + 1);
+            var sc = Math.round(Number(z.shrinkCount) || 0);
+            if (!isFinite(sc) || sc < 0) sc = 0;
+            z.shrinkCount = Math.min(maxShrinks, sc);
+            var r = Number(z.r);
+            if (!isFinite(r)) r = init - z.shrinkCount * step;
+            r = Math.max(minR, Math.min(init, r));
+            // 半径与收缩次数对齐: 偏差超过 1.5 个步长时, 以次数为准重算半径
+            var expectR = Math.max(minR, Math.min(init, init - z.shrinkCount * step));
+            if (Math.abs(r - expectR) > step * 1.5) r = expectR;
+            z.r = r;
+            var ns = Number(z.nextShrink);
+            // 计时非法 / 过期太久 / 超过一个周期: 重新按正常节奏计时, 避免读档后瞬间连缩或久不缩圈
+            if (!isFinite(ns) || ns < now - interval * 0.5 || ns > now + interval) z.nextShrink = now + interval;
+            var da = Number(z.dmgAt);
+            if (!isFinite(da) || da < 0 || da > now) z.dmgAt = 0;
+            return true;
+        }
         function resetTdZone() {
             TD.zone = {
                 cx: TD.W / 2, cy: TD.H / 2,
@@ -14521,10 +14555,12 @@ body.low-perf #menu::before { filter: none; opacity: .18; }
                 dmgAt: 0,
                 shrinkCount: 0
             };
+            tdZoneClamp(TD.zone);
         }
         function tdZoneTick(now) {
             if (!TD.zone) resetTdZone();
             var z = TD.zone;
+            tdZoneClamp(z);   // 每帧自检: 任何异常值立即修正
             var interval = Math.max(3, Number(TD_ENV.shrinkInterval) || 20) * 1000;
             var step = Math.max(1, Number(TD_ENV.shrinkStep) || 90);
             var minR = Math.max(40, Number(TD_ENV.minRadius) || 260);
@@ -14555,7 +14591,7 @@ body.low-perf #menu::before { filter: none; opacity: .18; }
                 var _shrunkN = Math.max(0, Math.round((TD.zone && TD.zone.shrinkCount) || 0));
                 var _pctPerSec = Math.max(0, Number(TD_ENV.poisonPctPerSec) || 0)
                     + Math.max(0, Number(TD_ENV.poisonGrowthPerWave) || 0) * _shrunkN;
-                var _pctTick = _pctPerSec * 0.5;   // 每 0.5 秒的百分比
+                var _pctTick = Math.max(0, Math.min(60, _pctPerSec * 0.5));   // 每 0.5 秒的百分比 (上限 60%, 防异常数值秒杀)
                 [player, ai].forEach(function (ent) {
                     if (!ent || ent.health <= 0) return;
                     if (now < (ent._tdInvUntil || 0)) return;
