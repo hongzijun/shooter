@@ -13734,6 +13734,12 @@ body.low-perf #menu::before { filter: none; opacity: .18; }
         // === 更新公告: 每次对话完成后在 UPDATE_LOG 顶部追加一条 (日期 + 分点内容) ===
         const UPDATE_LOG = [
             {
+                date: '2026-11-17',
+                items: [
+                    '俯视 AI 闪避敏感度再次下调：感知半径缩减 8px、紧急响应窗口 0.23→0.15 秒、原地威胁门槛 0.022→0.032、位移门槛 0.03→0.045 且走位后需仍吃掉七成伤害才交位移；AI 会更少提前闪避，但被贴脸直射时仍会位移'
+                ]
+            },
+            {
                 date: '2026-11-16',
                 items: [
                     '相位臂甲的 9 秒冷却不再受 CDR 缩减：装备 / 卡牌提供的冷却缩减不会缩短它；「时间刻印」等额外冷却缩减仍然生效（卡牌描述已同步说明）',
@@ -15187,7 +15193,7 @@ body.low-perf #menu::before { filter: none; opacity: .18; }
 
         // 危险预测量: 8 方向走位采样, 返回最优走位方向与剩余风险
         function tdThreatEval() {
-            const R = (ai._tdRadius || TD.radius) + 12;
+            const R = (ai._tdRadius || TD.radius) + 4;   // 闪避感知半径再收紧 8px, 反应更迟钝
             const steps = 8;
             const moveDist = TD.aiSpeed * 12;     // 走位约 0.2 秒的距离
             let bestDir = 0, bestRisk = 1e9;
@@ -15229,7 +15235,7 @@ body.low-perf #menu::before { filter: none; opacity: .18; }
                     if (t < urgentT) urgentT = t;
                 }
             }
-            return { level: standRisk, walkRisk: bestRisk, dirX: Math.cos(bestDir), dirY: Math.sin(bestDir), urgent: urgentT <= 14, urgentT: urgentT };
+            return { level: standRisk, walkRisk: bestRisk, dirX: Math.cos(bestDir), dirY: Math.sin(bestDir), urgent: urgentT <= 9, urgentT: urgentT };   // 紧急响应窗口 14→9 帧 (~0.15s)
         }
 
         function tdAIThink(now) {
@@ -15276,10 +15282,10 @@ body.low-perf #menu::before { filter: none; opacity: .18; }
             const ideal = (TD_IDEAL[tdWeaponKey(ai)] || 380) * 0.86;
             const nx = dx / dist, ny = dy / dist;
             // 进攻优先: 有威胁才转入躲避 (阈值下调, 小口径子弹也会反应)
-            if (threat.level >= 0.022 || threat.urgent) {
+            if (threat.level >= 0.032 || threat.urgent) {
                 mx = threat.dirX; my = threat.dirY;
-                // 保命位移: 约 0.23 秒内必中, 或走位后仍要吃掉六成以上伤害 (阈值较之前略高, 不会轻易交位移)
-                if (_canDash && (threat.urgent || (threat.level > 0.03 && threat.walkRisk > threat.level * 0.62))) {
+                // 保命位移: 约 0.15 秒内必中, 或走位后仍要吃掉七成以上伤害 (敏感度再降, 更少提前交位移)
+                if (_canDash && (threat.urgent || (threat.level > 0.045 && threat.walkRisk > threat.level * 0.72))) {
                     _wantDash = true; _dashX = threat.dirX; _dashY = threat.dirY;
                 }
             } else {
