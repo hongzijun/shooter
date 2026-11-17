@@ -675,6 +675,47 @@
         #freePickConfirmBtn:disabled { filter: grayscale(0.65); opacity: 0.55; cursor: not-allowed; }
         #freePickOverlay .fp-hint { color: #999; font-size: 12px; text-align: center; }
 
+        /* PVE 失败继续次数 (右上角, 位于分数面板下方) */
+        #pveRetryBadge {
+            position: fixed;
+            right: 10px;
+            top: 108px;
+            z-index: 502;
+            padding: 5px 10px;
+            border-radius: 8px;
+            background: rgba(8, 12, 26, 0.55);
+            border: 1px solid rgba(255, 215, 0, 0.35);
+            color: #ffd700;
+            font-size: 12px;
+            font-weight: bold;
+            pointer-events: none;
+            display: none;
+            text-shadow: 0 1px 2px rgba(0, 0, 0, .6);
+        }
+        body[data-device="touch"] #pveRetryBadge { top: 150px; font-size: 11px; }
+        #pveRetryStory {
+            position: fixed;
+            inset: 0;
+            z-index: 960;
+            display: none;
+            align-items: center;
+            justify-content: center;
+            background: rgba(0, 0, 0, 0.45);
+            pointer-events: none;
+        }
+        #pveRetryStory .prs-card {
+            max-width: min(86vw, 520px);
+            padding: 22px 26px;
+            border-radius: 16px;
+            background: linear-gradient(150deg, rgba(28, 22, 60, .96), rgba(10, 14, 30, .96));
+            border: 1px solid rgba(255, 215, 0, .55);
+            box-shadow: 0 0 40px rgba(255, 215, 0, .25), 0 20px 60px rgba(0, 0, 0, .6);
+            text-align: center;
+            color: #f5e9c8;
+        }
+        #pveRetryStory .prs-title { font-size: 22px; font-weight: bold; color: #ffd700; margin-bottom: 10px; }
+        #pveRetryStory .prs-body { font-size: 14px; line-height: 1.7; }
+
         /* === Task 6: Tab 全属性面板 (fixed 居中大面板, 默认 hidden, 游戏中按 Tab 打开) === */
         #statPanel {
             position: fixed;
@@ -2659,6 +2700,16 @@ body.low-perf #menu::before { filter: none; opacity: .18; }
                 <h2>🏆 <span id="scoreText">0</span> 分</h2>
                 <div>击杀: <span id="killsText">0</span> | 连杀: <span id="comboText">0</span>x</div>
                 <div>波次: <span id="waveText">1</span> <span id="waveTierBadge" style="font-size:10px;color:#a29bfe;">[V]</span></div>
+            </div>
+
+            <!-- PVE 累计「失败后继续」次数 (右上角常驻) -->
+            <div id="pveRetryBadge"></div>
+            <!-- 每 6 次失败: 命运的赏赐剧情 -->
+            <div id="pveRetryStory">
+                <div class="prs-card">
+                    <div class="prs-title">🌩 命运的赏赐</div>
+                    <div class="prs-body" id="pveRetryStoryBody"></div>
+                </div>
             </div>
 
             <!-- Task 20: 小地图 -->
@@ -6257,16 +6308,24 @@ body.low-perf #menu::before { filter: none; opacity: .18; }
             return { wave: cleared, count: count };
         }
 
-        function openFreePick(count, clearedWave) {
+        var _freePickRetry = false;   // true = 本次自选来自「失败 6 次赏赐」
+        function openFreePick(count, clearedWave, fromRetry) {
             const ov = document.getElementById('freePickOverlay');
             const grid = document.getElementById('freePickGrid');
-            if (!ov || !grid) { completeDraftRespawn(); return; }
+            if (!ov || !grid) {
+                if (fromRetry) { _freePickRetry = false; _retryRewardPending = false; _setRetryPending(0); _doContinueAfterGameOver(); }
+                else completeDraftRespawn();
+                return;
+            }
+            _freePickRetry = !!fromRetry;
             _freePickNeed = count;
             _freePickSel = [];
             _freePickOpen = true;
             isDrafting = true;          // 冻结游戏与所有时间戳
             const title = document.getElementById('freePickTitle');
-            if (title) title.textContent = '第 ' + clearedWave + ' 波里程碑奖励 · 自选 ' + count + ' 张卡牌';
+            if (title) title.textContent = fromRetry
+                ? ('💀 第 ' + _getPveRetryCount() + ' 次失败 · 命运的赏赐（自选 ' + count + ' 张卡牌）')
+                : ('第 ' + clearedWave + ' 波里程碑奖励 · 自选 ' + count + ' 张卡牌');
             renderFreePickGrid();
             updateFreePickCount();
             ov.style.display = 'flex';
@@ -6340,6 +6399,14 @@ body.low-perf #menu::before { filter: none; opacity: .18; }
             isDrafting = false;
             if (typeof updateUI === 'function') updateUI();
             showFloatingText('🎁 里程碑奖励: 已获得 ' + picked.length + ' 张卡牌', '#ffd700');
+            if (_freePickRetry) {
+                // 失败赏赐: 选完卡后继续原有的复活流程, 不走回合结算
+                _freePickRetry = false;
+                _retryRewardPending = false;
+                _setRetryPending(0);
+                _doContinueAfterGameOver();
+                return;
+            }
             completeDraftRespawn();
         }
 
@@ -13740,7 +13807,8 @@ body.low-perf #menu::before { filter: none; opacity: .18; }
                 items: [
                     '俯视 AI 闪避敏感度再次下调：感知半径缩减 8px、紧急响应窗口 0.23→0.15 秒、原地威胁门槛 0.022→0.032、位移门槛 0.03→0.045 且走位后需仍吃掉七成伤害才交位移；AI 会更少提前闪避，但被贴脸直射时仍会位移',
                     '毒圈全面防护：新增每帧状态自检，半径 / 收缩次数 / 下次收缩计时 / 毒伤计时互相校验并自动修正（半径不会超过初始值、次数不会超过上限、读档不会瞬间连缩或久不缩圈）；读档时减疗严格按已缩次数重建（不再继承上一局残留），毒伤单跳上限 60% 最大生命，彻底避免异常存档导致的毒圈显示与伤害错乱',
-                    '所有武器与位移的能量消耗降至原来的 1/4：手枪 1.25、步枪 0.75、霰弹 3.75、冲锋 0.5、狙击 / 激光 4.375、战刃 5；刀剑蓄力附加 0.75/秒；激光蓄力 7.5 + 17.5×进度；能量位移 30→7.5'
+                    '所有武器与位移的能量消耗降至原来的 1/4：手枪 1.25、步枪 0.75、霰弹 3.75、冲锋 0.5、狙击 / 激光 4.375、战刃 5；刀剑蓄力附加 0.75/秒；激光蓄力 7.5 + 17.5×进度；能量位移 30→7.5',
+                    'PVE 新增「失败继续」累计统计：只有点击失败结算的「继续游戏」才 +1（再来一局 / 返回主页 / PVP / 训练场不计），次数显示在游戏面板右上角。统计做了完整防错：本机持久化（主键 + 备份双写，刷新 / 登录 / 切换账号都不会归零）、内存值兜底、多标签页取较大值合并、连点 0.9 秒防重复、非数字 / 负数自动纠正、只在真正复活成功时计数。每累计到 6 的倍数时播放剧情「由于你失败太多次了，于是老天决定给你一个赏赐」，并弹出与波次里程碑完全相同的自选卡界面（数量公式同为 X × Y × (已通关波次 / X) ÷ 2）；赏赐中途刷新或关页面会在下次进入 PVE 时补发，选完卡后正常复活继续游戏'
                 ]
             },
             {
@@ -18093,15 +18161,162 @@ body.low-perf #menu::before { filter: none; opacity: .18; }
 
         // PvE 失败界面「继续游戏」: 保留当前波次/分数/装备, 只重置自己的命数并原地复活
         function restartAfterGameOver() {
+            _dismissRetryRewardUI();   // 赏赐界面未选卡就重开: 先关界面, 已完成的那次继续仍计数
             const go = document.getElementById('gameOver');
             if (go) go.classList.add('hidden');
             if (window._lastGameMode === 'topdown') startTopdown();
             else startGame();
         }
 
+        // === PVE 累计「失败后点击继续游戏」次数: 持久化 + 账号云同步 ===
+        var PVE_RETRY_KEY = 'shooter_pve_retry_v1';
+        var PVE_RETRY_BAK = 'shooter_pve_retry_v1_bak';               // 冗余备份: 单个键被清/写坏也不会归零
+        var PVE_RETRY_PENDING_KEY = 'shooter_pve_retry_pending_v1';   // 未领取的赏赐(次数), 刷新后可补发
+        var PVE_RETRY_REWARD_EVERY = 6;
+        var _retryContinueLock = false;
+        var _retryRewardPending = false;
+        var _pveRetryMem = null;   // 内存权威值: localStorage 异常 / 被其它标签页覆盖时仍保持正确
+        function _pveRetryParse(v) {
+            var n = parseInt(v, 10);
+            if (!isFinite(n) || n < 0) return 0;
+            return Math.min(99999999, Math.round(n));
+        }
+        function _readPveRetryRaw() {
+            // 主键与备份键取较大值: 任一键丢失/损坏都能恢复
+            var a = 0, b = 0;
+            try { a = _pveRetryParse(localStorage.getItem(PVE_RETRY_KEY)); } catch (e) { a = 0; }
+            try { b = _pveRetryParse(localStorage.getItem(PVE_RETRY_BAK)); } catch (e) { b = 0; }
+            return Math.max(a, b);
+        }
+        function _getPveRetryCount() {
+            if (_pveRetryMem === null) _pveRetryMem = _readPveRetryRaw();
+            return _pveRetryMem;
+        }
+        function _setPveRetryCount(n) {
+            n = Math.max(0, Math.min(99999999, Math.round(Number(n) || 0)));
+            _pveRetryMem = n;
+            try { localStorage.setItem(PVE_RETRY_KEY, String(n)); } catch (e) { }
+            try { localStorage.setItem(PVE_RETRY_BAK, String(n)); } catch (e) { }
+            _updatePveRetryBadge();
+            return n;
+        }
+        function _bumpPveRetryCount() {
+            // 多标签页: 先与磁盘值取较大再 +1, 避免另一个标签页刚写入的次数被覆盖丢失
+            var cur = _getPveRetryCount();
+            var disk = _readPveRetryRaw();
+            if (disk > cur) cur = disk;
+            return _setPveRetryCount(cur + 1);
+        }
+        function _setRetryPending(val) {
+            try {
+                if (val) localStorage.setItem(PVE_RETRY_PENDING_KEY, String(val));
+                else localStorage.removeItem(PVE_RETRY_PENDING_KEY);
+            } catch (e) { }
+        }
+        function _getRetryPending() {
+            try { return _pveRetryParse(localStorage.getItem(PVE_RETRY_PENDING_KEY)); } catch (e) { return 0; }
+        }
+        try {
+            window.addEventListener('storage', function (e) {
+                if (!e || (e.key !== PVE_RETRY_KEY && e.key !== PVE_RETRY_BAK)) return;
+                var v = _pveRetryParse(e.newValue);
+                if (v > _getPveRetryCount()) { _pveRetryMem = v; _updatePveRetryBadge(); }
+            });
+        } catch (e) { }
+        function _updatePveRetryBadge() {
+            var el = document.getElementById('pveRetryBadge');
+            if (!el) return;
+            var st = (typeof gameState === 'string') ? gameState : '';
+            var show = (st === 'playing' || st === 'topdown' || st === 'training' || st === 'tdtraining' || st === 'gameover');
+            el.style.display = show ? 'block' : 'none';
+            var txt = '💀 失败继续：' + _getPveRetryCount() + ' 次';
+            if (el.textContent !== txt) el.textContent = txt;
+        }
+        setInterval(function () { try { _updatePveRetryBadge(); _maybeResumeRetryReward(); } catch (e) { } }, 700);
+
+        // 每 6 次失败: 先播剧情, 再弹出与里程碑完全相同的自选卡界面
+        function _showPveRetryStory(n, cb, resume) {
+            var el = document.getElementById('pveRetryStory');
+            var body = document.getElementById('pveRetryStoryBody');
+            if (!el || !body) { cb(); return; }
+            body.innerHTML = '由于你失败太多次了（第 <b style="color:#ffd700;">' + n + '</b> 次继续），<br>于是老天决定给你一个赏赐：<br><span style="color:#8ff5b8;">自选卡牌，立即获得！</span>';
+            el.style.display = 'flex';
+            setTimeout(function () {
+                el.style.display = 'none';
+                try { cb(); } catch (e) { }
+            }, resume ? 900 : 1900);
+        }
+        function _openPveRetryReward(n, resume) {
+            _retryRewardPending = true;
+            _setRetryPending(n);   // 落盘: 即使中途刷新/关页面, 下次进入 PVE 也会补发这张赏赐
+            _showPveRetryStory(n, function () {
+                try {
+                    var go = document.getElementById('gameOver');
+                    if (go) go.classList.add('hidden');
+                    // 选卡数量与「每 X 波里程碑自选」完全同一公式: X × Y × (已通关波次 / X) ÷ 2
+                    var t = (typeof TRAIN_TUNE !== 'undefined' && TRAIN_TUNE && TRAIN_TUNE.enemy) ? TRAIN_TUNE.enemy : null;
+                    var g = (t && t.growth) ? t.growth : null;
+                    var Y = g ? Math.max(0, Math.round(g.drawAddPerStep || 0)) : 0;
+                    var cleared = Math.max(0, ((typeof wave === 'number' && isFinite(wave)) ? wave : 1) - 1);
+                    var cnt = (Y > 0) ? Math.round(Y * cleared / 2) : Math.max(1, Math.round(cleared / 2));
+                    cnt = Math.min((typeof CARDS !== 'undefined' ? CARDS.length : 99), Math.max(1, cnt));
+                    openFreePick(cnt, cleared, true);
+                } catch (e) {
+                    _retryRewardPending = false;
+                    _setRetryPending(0);
+                    _doContinueAfterGameOver();
+                }
+            }, resume);
+        }
+        // 赏赐选卡中途刷新/关页面: 重新进入 PVE 时补发, 保证奖励不丢、次数不重复计
+        function _maybeResumeRetryReward() {
+            if (_retryRewardPending || _freePickOpen || isDrafting) return;
+            var p = _getRetryPending();
+            if (!p) return;
+            var st = (typeof gameState === 'string') ? gameState : '';
+            if (st !== 'playing' && st !== 'topdown') return;
+            if (typeof player === 'undefined' || !player) return;
+            var go = document.getElementById('gameOver');
+            if (go && !go.classList.contains('hidden')) return;
+            _openPveRetryReward(p, true);
+        }
+        // 玩家在赏赐界面选择「再来一局 / 返回大厅」: 关掉界面, 本次继续的次数不回退
+        function _dismissRetryRewardUI() {
+            if (_freePickRetry || _retryRewardPending || _freePickOpen) {
+                _freePickOpen = false;
+                _freePickSel = [];
+                isDrafting = false;
+                var ov = document.getElementById('freePickOverlay');
+                if (ov) ov.style.display = 'none';
+            }
+            _freePickRetry = false;
+            _retryRewardPending = false;
+            _setRetryPending(0);
+        }
+
         function continueAfterGameOver() {
             if (gameState !== 'gameover') return;
+            // 只统计 PVE (普通 / 俯视); PVP / 训练场不计入
+            var _m = window._lastGameMode;
+            if (_m === 'pvp' || _m === 'training' || _m === 'tdtraining') return;
+            // 防重复: 连点 / 赏赐界面期间不再计数
+            if (_retryContinueLock || _retryRewardPending) return;
+            _retryContinueLock = true;
+            setTimeout(function () { _retryContinueLock = false; }, 900);
             runDeaths++;   // 排行榜: 死亡(复活)次数 +1
+            var _rc = _bumpPveRetryCount();   // PVE 累计失败继续次数 (立即写盘, 刷新也不丢)
+            if (_rc > 0 && _rc % PVE_RETRY_REWARD_EVERY === 0) {
+                _retryRewardPending = true;
+                try { showFloatingText('🌩 由于你失败太多次了，老天决定给你一个赏赐…', '#ffd700'); } catch (e) { }
+                _openPveRetryReward(_rc);
+                return;
+            }
+            _doContinueAfterGameOver();
+        }
+
+        // 真正的复活逻辑 (原 continueAfterGameOver 主体)
+        function _doContinueAfterGameOver() {
+            if (gameState !== 'gameover') return;
             // 俯视失败后继续: 命数重置为满, 双方按俯视规则重生
             if (window._lastGameMode === 'topdown') {
                 const _go = document.getElementById('gameOver');
@@ -18149,6 +18364,7 @@ body.low-perf #menu::before { filter: none; opacity: .18; }
         }
 
         function returnToHub() {
+            _dismissRetryRewardUI();
             goHomeMenu(true);
         }
 
