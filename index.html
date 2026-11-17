@@ -13739,7 +13739,8 @@ body.low-perf #menu::before { filter: none; opacity: .18; }
                 date: '2026-11-17',
                 items: [
                     '俯视 AI 闪避敏感度再次下调：感知半径缩减 8px、紧急响应窗口 0.23→0.15 秒、原地威胁门槛 0.022→0.032、位移门槛 0.03→0.045 且走位后需仍吃掉七成伤害才交位移；AI 会更少提前闪避，但被贴脸直射时仍会位移',
-                    '毒圈全面防护：新增每帧状态自检，半径 / 收缩次数 / 下次收缩计时 / 毒伤计时互相校验并自动修正（半径不会超过初始值、次数不会超过上限、读档不会瞬间连缩或久不缩圈）；读档时减疗严格按已缩次数重建（不再继承上一局残留），毒伤单跳上限 60% 最大生命，彻底避免异常存档导致的毒圈显示与伤害错乱'
+                    '毒圈全面防护：新增每帧状态自检，半径 / 收缩次数 / 下次收缩计时 / 毒伤计时互相校验并自动修正（半径不会超过初始值、次数不会超过上限、读档不会瞬间连缩或久不缩圈）；读档时减疗严格按已缩次数重建（不再继承上一局残留），毒伤单跳上限 60% 最大生命，彻底避免异常存档导致的毒圈显示与伤害错乱',
+                    '所有武器与位移的能量消耗降至原来的 1/4：手枪 1.25、步枪 0.75、霰弹 3.75、冲锋 0.5、狙击 / 激光 4.375、战刃 5；刀剑蓄力附加 0.75/秒；激光蓄力 7.5 + 17.5×进度；能量位移 30→7.5'
                 ]
             },
             {
@@ -14479,7 +14480,7 @@ body.low-perf #menu::before { filter: none; opacity: .18; }
             playerSpeed: 5.76, aiSpeed: 5.28,   // 基础上调 60%
             radius: 22,
             energyMax: 1000, regen: 30,
-            dashCost: 30, dashDist: 210, dashMs: 175,   // 距离 300→210 (-30%); 速度保持 1200px/s, 无敌/闪避时长 250→175ms
+            dashCost: 7.5, dashDist: 210, dashMs: 175,   // 位移能量 30→7.5 (1/4); 距离 210, 无敌/闪避 175ms
             mouseX: 0, mouseY: 0,
             fireHeld: false,
             keys: Object.create(null),
@@ -14699,7 +14700,7 @@ body.low-perf #menu::before { filter: none; opacity: .18; }
             try { showFloatingText('已恢复默认（点「保存数值」才写入全局）', '#8fa6c8'); } catch (e) { }
         }
         // 枪械 / 刀剑能量消耗整体减半 (位移 dashCost 不在此列)
-        const TD_COST = { pistol: 5, rifle: 3, shotgun: 15, smg: 2, sniper: 17.5, laser: 17.5, sword: 20 };
+        const TD_COST = { pistol: 1.25, rifle: 0.75, shotgun: 3.75, smg: 0.5, sniper: 4.375, laser: 4.375, sword: 5 };   // 全部武器能量消耗降至原来的 1/4
         const TD_RANGE = { pistol: 440, rifle: 600, shotgun: 220, smg: 380, sniper: 1000, laser: 1200, sword: 110 };
         const TD_IDEAL = { pistol: 300, rifle: 420, shotgun: 120, smg: 250, sniper: 760, laser: 820, sword: 70 };
 
@@ -14845,7 +14846,7 @@ body.low-perf #menu::before { filter: none; opacity: .18; }
             const _cd = ent.isAI ? Math.round(_cdBase * 1.2) : _cdBase;
             if (now - (ent._tdMeleeAt || 0) < _cd) return false;
             const sec = Math.max(0, Math.min(1, chargeSec || 0));
-            const cost = TD_COST.sword + 3 * sec;   // 蓄力附加消耗同步减半 (6→3)
+            const cost = TD_COST.sword + 0.75 * sec;   // 蓄力附加消耗同步降至 1/4 (3→0.75/秒)
             if (tdEnergy(ent) < cost) return false;
             ent._tdEnergy -= cost;
             ent._tdMeleeAt = now;
@@ -15867,11 +15868,11 @@ body.low-perf #menu::before { filter: none; opacity: .18; }
             const w = ent.weapon;
             if (!w || w.isMelee) return false;
             const energyHave = tdEnergy(ent);
-            if (energyHave < 30) { if (!ent.isAI) TD._noEnergyAt = now; return false; }
+            if (energyHave < 7.5) { if (!ent.isAI) TD._noEnergyAt = now; return false; }
             let p = Math.max(0, Math.min(1, prog));
-            const want = 30 + 70 * p;
-            if (energyHave < want) p = Math.max(0, (energyHave - 30) / 70);
-            ent._tdEnergy = Math.max(0, energyHave - (30 + 70 * p));
+            const want = 7.5 + 17.5 * p;   // 蓄力消耗降至原来 1/4 (30+70p → 7.5+17.5p)
+            if (energyHave < want) p = Math.max(0, (energyHave - 7.5) / 17.5);
+            ent._tdEnergy = Math.max(0, energyHave - (7.5 + 17.5 * p));
             ent.lastShot = now;
             let actual = (w.dmgBase != null ? w.dmgBase : (w.damage || 10)) + (ent.getAtk ? ent.getAtk() : 100) * (w.atkCoef != null ? w.atkCoef : 0);
             if (ent.damageBoost && ent.damageMultiplier) actual *= ent.damageMultiplier;
