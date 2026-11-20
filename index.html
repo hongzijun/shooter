@@ -7215,7 +7215,7 @@ body.low-perf #menu::before { filter: none; opacity: .18; }
                     if (!TD._ctrlHTML) TD._ctrlHTML = _ctrl2.innerHTML;
                     _ctrl2.innerHTML = '<div><span class="key">WASD</span> 移动</div>' +
                         '<div><span class="key">鼠标</span> 瞄准 / 射击</div>' +
-                        '<div><span class="key">空格</span> 能量位移</div>' +
+                        '<div><span class="key">空格</span> 位移（3 层充能）</div>' +
                         '<div><span class="key">R</span> 换弹</div>' +
                         '<div><span class="key">1-9</span> 物品栏选格</div>' +
                         '<div><span class="key">···</span> 背包</div>';
@@ -13811,7 +13811,10 @@ body.low-perf #menu::before { filter: none; opacity: .18; }
                     '弱网自动重试：查询类请求最多重试 3 次（网络错误与服务器 5xx 都会重试，指数退避），超时分级为查询 10 秒 / 写入 15 秒；页面启动时自动预连接、预热云端接口，首次登录 / 注册不再额外等待 2~3 秒握手',
                     '断网也能玩：网络不可用时自动进入「离线模式」（用本机账号与存档继续游戏，账号按钮显示「离线」），不会再把入口锁死；网络恢复后自动切回在线账号并同步存档',
                     '存档同步更可靠：变更合并上传（1.6 秒内的多次改动只传一次）、失败自动退避重试 3 次、只有上传成功才记录同步版本；自动同步改为 30 秒一次且后台标签页跳过；同一账号刷新会保留本机尚未上传的数据，切换账号严格隔离',
-                    '排行榜 / 留言板 / 管理面板只查询必要字段，打开更快；登录 / 注册按钮防连点，设备未联网时直接提示'
+                    '排行榜 / 留言板 / 管理面板只查询必要字段，打开更快；登录 / 注册按钮防连点，设备未联网时直接提示',
+                    '位移改为独立充能系统：最多 3 层、每层 4 秒、不再消耗能量，玩家与 AI 规则完全一致；层数与充能进度显示在能量环上方（实心 = 可用，进度环 = 正在充能），复活 / 新一波自动补满',
+                    '俯视 AI 位移决策重写：同时评估「原地 / 8 方向走位 / 16 方向位移落点」的受击风险，落点会避开子弹、地图边界与毒圈外；血量越低越愿意保命，能走位就不浪费层数，层数满时被持续瞄准会主动消耗一层以继续充能；新增横向绕开枪线、残血拉开、安全回圈与安全突进',
+                    '全面校准 AI 射速：7 把武器的实际射击间隔与「每秒发数 × (1 + 攻速 × 倍率)」公式逐项对齐（手枪 167ms / 步枪 125ms / 霰弹 714ms / 冲锋 83ms / 狙击与激光 909ms / 战刃 556ms）；AI 不再为位移预留能量，开火只看本次是否够用'
                 ]
             },
             {
@@ -14219,7 +14222,7 @@ body.low-perf #menu::before { filter: none; opacity: .18; }
                                 <div style="color:#2ed573;font-weight:bold;margin-bottom:6px;">🎯 电脑 · 俯视</div>
                                 <div><b style="color:#fff;">WASD</b> 移动，<b style="color:#fff;">鼠标</b> 瞄准，<b style="color:#fff;">左键</b> 射击</div>
                                 <div><b style="color:#fff;">左键 / Shift</b>：手持激光枪时按住蓄力，松开发射</div>
-                                <div><b style="color:#fff;">空格</b> 能量位移，<b style="color:#fff;">1-9</b> 物品栏选格</div>
+                                <div><b style="color:#fff;">空格</b> 位移（3 层充能，每层 4 秒，不耗能量），<b style="color:#fff;">1-9</b> 物品栏选格</div>
                             </div>
                             <div style="background:rgba(162,155,254,0.08);border:1px solid rgba(162,155,254,0.3);border-radius:10px;padding:10px;">
                                 <div style="color:#a29bfe;font-weight:bold;margin-bottom:6px;">📱 手机 / 非电脑</div>
@@ -14567,7 +14570,8 @@ body.low-perf #menu::before { filter: none; opacity: .18; }
             playerSpeed: 5.76, aiSpeed: 5.28,   // 基础上调 60%
             radius: 22,
             energyMax: 1000, regen: 30,
-            dashCost: 7.5, dashDist: 210, dashMs: 175,   // 位移能量 30→7.5 (1/4); 距离 210, 无敌/闪避 175ms
+            dashCost: 7.5, dashDist: 210, dashMs: 175,   // dashCost 保留兼容(不再扣能量); 距离 210, 无敌/闪避 175ms
+            dashMaxLayers: 3, dashChargeMs: 4000,        // 独立位移充能: 最多 3 层, 每层 4 秒, 不消耗能量 (双方一致)
             mouseX: 0, mouseY: 0,
             fireHeld: false,
             keys: Object.create(null),
@@ -14827,21 +14831,51 @@ body.low-perf #menu::before { filter: none; opacity: .18; }
         }
         function tdEnemyOf(ent) { return ent === player ? ai : player; }
 
-        // 能量位移: 消耗 30, 沿当前移动方向 300px 直线突进, 期间免疫全部伤害
+        // === 独立位移充能: 3 层, 每层 4 秒, 不消耗能量 (玩家 / AI 完全一致) ===
+        function tdDashLayersOf(ent) {
+            if (!ent) return 0;
+            if (typeof ent._tdDashLayers !== 'number' || !isFinite(ent._tdDashLayers)) ent._tdDashLayers = TD.dashMaxLayers;
+            if (typeof ent._tdDashCharge !== 'number' || !isFinite(ent._tdDashCharge)) ent._tdDashCharge = 0;
+            return Math.max(0, Math.min(TD.dashMaxLayers, Math.floor(ent._tdDashLayers)));
+        }
+        function tdDashChargeRatio(ent) {
+            const _n = tdDashLayersOf(ent);
+            if (_n >= TD.dashMaxLayers) return 1;
+            return Math.max(0, Math.min(1, (ent._tdDashCharge || 0) / TD.dashChargeMs));
+        }
+        function tdDashTick(ent, dt) {
+            if (!ent || ent.health <= 0) return;
+            tdDashLayersOf(ent);
+            if (ent._tdDashLayers >= TD.dashMaxLayers) { ent._tdDashCharge = 0; return; }
+            ent._tdDashCharge += Math.max(0, Number(dt) || 0) * 1000;
+            let guard = 0;
+            while (ent._tdDashCharge >= TD.dashChargeMs && ent._tdDashLayers < TD.dashMaxLayers && guard++ < 8) {
+                ent._tdDashCharge -= TD.dashChargeMs;
+                ent._tdDashLayers++;
+            }
+            if (ent._tdDashLayers >= TD.dashMaxLayers) ent._tdDashCharge = 0;
+        }
+        function tdDashRefill(ent) {
+            if (!ent) return;
+            ent._tdDashLayers = TD.dashMaxLayers;
+            ent._tdDashCharge = 0;
+        }
+        // 位移: 消耗 1 层充能 (不扣能量), 沿当前移动方向 210px 直线突进, 期间免疫全部伤害
         function tdDash(ent, dx, dy, now) {
             if (!ent || ent.health <= 0) return false;
             if (now < (ent._tdNoDashUntil || 0)) return false;
-            // 位移进行中不能重复触发 (除此之外没有内置冷却, 只要能量够就能连续冲)
+            // 位移进行中不能重复触发 (层数本身也是限制)
             if (now < (ent._tdDashUntil || 0)) return false;
             if (fxIsStunned(ent)) return false;
-            if (tdEnergy(ent) < TD.dashCost) return false;
+            if (tdDashLayersOf(ent) <= 0) return false;
             let len = Math.hypot(dx, dy);
             if (len < 0.01) {
                 const a = ent._tdAim || 0;
                 dx = Math.cos(a); dy = Math.sin(a); len = 1;
             }
             dx /= len; dy /= len;
-            ent._tdEnergy -= TD.dashCost;
+            ent._tdDashLayers--;
+            if (ent._tdDashLayers < TD.dashMaxLayers && (ent._tdDashCharge || 0) <= 0) ent._tdDashCharge = 0;
             ent._tdInvUntil = now + TD.dashMs;
             ent._tdDashUntil = now + TD.dashMs;
             const perFrame = (TD.dashDist / (TD.dashMs / 1000)) / 60;
@@ -15036,6 +15070,7 @@ body.low-perf #menu::before { filter: none; opacity: .18; }
             player.x = 150; player.y = TD.H / 2;
             player._tdKbVX = 0; player._tdKbVY = 0;
             player._tdEnergy = tdEnergyMaxOf(player);
+            tdDashRefill(player);
             player._tdInvUntil = Date.now() + 1500;
             TD.pDeadAt = 0; TD.pRespawnAt = 0;
             Object.keys(player.weapons).forEach(function (k) {
@@ -15055,6 +15090,7 @@ body.low-perf #menu::before { filter: none; opacity: .18; }
             player.x = 360; player.y = TD.H / 2;
             player._tdKbVX = 0; player._tdKbVY = 0;
             player._tdEnergy = tdEnergyMaxOf(player);
+            tdDashRefill(player);
             player.lastShot = 0;
             ai.health = ai.maxHealth; ai.shield = 0;
             ai.lives = 2; ai.maxLives = 2;
@@ -15063,6 +15099,7 @@ body.low-perf #menu::before { filter: none; opacity: .18; }
             ai.dotDamage = null; ai.frozen = false;
             ai._trainDmgTotal = 0; ai._trainDmgStart = 0; ai._trainDmgLast = 0;
             ai._tdEnergy = tdEnergyMaxOf(ai);
+            tdDashRefill(ai);
             ai._tdMeleeAt = 0; ai.lastShot = 0;
             ai._tdKbVX = 0; ai._tdKbVY = 0;
             const _hx = (typeof TD._tdTargetHomeX === 'number') ? TD._tdTargetHomeX : ai.x;
@@ -15087,6 +15124,7 @@ body.low-perf #menu::before { filter: none; opacity: .18; }
             ai.vx = 0; ai.vy = 0; ai.isOnGround = false;
             ai._tdKbVX = 0; ai._tdKbVY = 0;
             ai._tdEnergy = tdEnergyMaxOf(ai);
+            tdDashRefill(ai);
             ai._tdInvUntil = Date.now() + 1500;
             ai._tdSwordCharge = 0;
             ai.lastShot = 0;
@@ -15315,51 +15353,75 @@ body.low-perf #menu::before { filter: none; opacity: .18; }
             return dps * hit * sustain;
         }
 
-        // 危险预测量: 8 方向走位采样, 返回最优走位方向与剩余风险
-        function tdThreatEval() {
-            const R = (ai._tdRadius || TD.radius) + 4;   // 闪避感知半径再收紧 8px, 反应更迟钝
-            const steps = 8;
-            const moveDist = TD.aiSpeed * 12;     // 走位约 0.2 秒的距离
-            let bestDir = 0, bestRisk = 1e9;
-            for (let s = 0; s < steps; s++) {
-                const ang = (Math.PI * 2 / steps) * s;
-                const ax = ai.x + Math.cos(ang) * moveDist;
-                const ay = ai.y + Math.sin(ang) * moveDist;
-                let risk = 0;
-                for (let i = 0; i < bullets.length; i++) {
-                    const b = bullets[i];
-                    if (!b.active || b.owner === ai) continue;
-                    const vv = b.vx * b.vx + b.vy * b.vy;
-                    if (vv < 0.5) continue;
-                    const rx = b.x - ax, ry = b.y - ay;
-                    let t = -(rx * b.vx + ry * b.vy) / vv;
-                    if (t < 0 || t > 30) continue;
-                    const cx = b.x + b.vx * t - ax;
-                    const cy = b.y + b.vy * t - ay;
-                    const dmin = Math.hypot(cx, cy);
-                    if (dmin < R) risk += (b.damage || 20) * (0.45 + 0.55 * ((R - dmin) / R)) / Math.max(1, ai.maxHealth);
-                }
-                if (risk < bestRisk) { bestRisk = risk; bestDir = ang; }
-            }
-            // 原地不动的风险 + 最近命中时间 (帧)
-            let standRisk = 0, urgentT = 1e9;
+        // 单点风险: 未来 horizon 帧内被敌方子弹命中的期望伤害占比 (0~1)
+        function _tdPointRisk(px, py, R, horizon) {
+            let risk = 0, nearest = 1e9;
             for (let i = 0; i < bullets.length; i++) {
                 const b = bullets[i];
                 if (!b.active || b.owner === ai) continue;
                 const vv = b.vx * b.vx + b.vy * b.vy;
                 if (vv < 0.5) continue;
-                const rx = b.x - ai.x, ry = b.y - ai.y;
-                let t = -(rx * b.vx + ry * b.vy) / vv;
-                if (t < 0 || t > 30) continue;
-                const cx = b.x + b.vx * t - ai.x;
-                const cy = b.y + b.vy * t - ai.y;
+                const rx = px - b.x, ry = py - b.y;
+                const t = (rx * b.vx + ry * b.vy) / vv;
+                if (t < 0 || t > horizon) continue;
+                const cx = b.x + b.vx * t - px;
+                const cy = b.y + b.vy * t - py;
                 const dmin = Math.hypot(cx, cy);
                 if (dmin < R) {
-                    standRisk += (b.damage || 20) * (0.45 + 0.55 * ((R - dmin) / R)) / Math.max(1, ai.maxHealth);
-                    if (t < urgentT) urgentT = t;
+                    risk += (b.damage || 20) * (0.45 + 0.55 * (R - dmin) / R) / Math.max(1, ai.maxHealth);
+                    if (t < nearest) nearest = t;
                 }
             }
-            return { level: standRisk, walkRisk: bestRisk, dirX: Math.cos(bestDir), dirY: Math.sin(bestDir), urgent: urgentT <= 9, urgentT: urgentT };   // 紧急响应窗口 14→9 帧 (~0.15s)
+            return { risk: risk, t: nearest };
+        }
+        // 危险预测量: 原地 / 8 方向走位 / 16 方向位移落点, 三种选择一起比较
+        function tdThreatEval() {
+            const R = (ai._tdRadius || TD.radius) + 4;
+            const horizon = 30;   // 约 0.5 秒
+            const stand = _tdPointRisk(ai.x, ai.y, R, horizon);
+            // 是否正被玩家枪口对准: 持续瞄准时走位收益有限, 位移价值更高
+            let aimed = false;
+            if (player && player.health > 0 && typeof player._tdAim === 'number') {
+                const _pa = Math.atan2(ai.y - player.y, ai.x - player.x);
+                const _df = Math.abs(((player._tdAim - _pa + Math.PI * 3) % (Math.PI * 2)) - Math.PI);
+                const _range = TD_RANGE[tdWeaponKey(player)] || 600;
+                if (_df < 0.13 && Math.hypot(ai.x - player.x, ai.y - player.y) < _range * 1.05) aimed = true;
+            }
+            // 走位: 0.2 秒后所处位置的风险
+            const steps = 8, moveDist = TD.aiSpeed * 12;
+            let walkDir = 0, walkRisk = 1e9;
+            for (let s = 0; s < steps; s++) {
+                const ang = (Math.PI * 2 / steps) * s;
+                const r = _tdPointRisk(ai.x + Math.cos(ang) * moveDist, ai.y + Math.sin(ang) * moveDist, R, horizon);
+                if (r.risk < walkRisk) { walkRisk = r.risk; walkDir = ang; }
+            }
+            // 被持续瞄准时, 单纯走位不能真正脱离枪线, 风险按原地的一定比例计入
+            if (aimed) walkRisk = Math.max(walkRisk, stand.risk * 0.75);
+            // 位移: 16 个方向的全距离落点, 排除越界 / 圈外, 圈外加惩罚
+            let dashDir = 0, dashRisk = 1e9, dashOk = false;
+            for (let s = 0; s < 16; s++) {
+                const ang = (Math.PI * 2 / 16) * s;
+                let ex = ai.x + Math.cos(ang) * TD.dashDist;
+                let ey = ai.y + Math.sin(ang) * TD.dashDist;
+                if (ex < TD.MARGIN || ex > TD.W - TD.MARGIN || ey < TD.MARGIN || ey > TD.H - TD.MARGIN) continue;
+                let penalty = 0;
+                if (TD.zone) {
+                    const dz = Math.hypot(ex - TD.zone.cx, ey - TD.zone.cy);
+                    if (dz > TD.zone.r) penalty += 0.35;
+                }
+                let rr = _tdPointRisk(ex, ey, R, horizon).risk + penalty;
+                if (aimed) {
+                    // 偏好横向绕开玩家枪线 (垂直方向的落点更难被持续命中)
+                    const _la = Math.abs(Math.sin(ang - Math.atan2(ai.y - player.y, ai.x - player.x)));
+                    rr -= 0.012 * _la;
+                }
+                if (rr < dashRisk) { dashRisk = rr; dashDir = ang; dashOk = true; }
+            }
+            return {
+                level: stand.risk, urgentT: stand.t, urgent: stand.t <= 9,   // 0.15 秒内必中
+                walkRisk: walkRisk, walkDir: walkDir, aimed: aimed,
+                dashRisk: dashOk ? dashRisk : 1e9, dashDir: dashDir
+            };
         }
 
         function tdAIThink(now) {
@@ -15398,19 +15460,28 @@ body.low-perf #menu::before { filter: none; opacity: .18; }
             if (ai.y > TD.H - _em) envY -= 1;
 
             let mx = 0, my = 0;
-            const _en = tdEnergy(ai);
-            // 位移可用性: 冷却 / 能量 / 被控 三者都满足
-            const _canDash = (now > (TD.aDashLock || 0)) && (_en >= TD.dashCost)
-                && !fxIsStunned(ai) && now >= (ai._tdNoDashUntil || 0);
-            let _wantDash = false, _dashX = 0, _dashY = 0;
-            const ideal = (TD_IDEAL[tdWeaponKey(ai)] || 380) * 0.86;
             const nx = dx / dist, ny = dy / dist;
-            // 进攻优先: 有威胁才转入躲避 (阈值下调, 小口径子弹也会反应)
+            // 位移: 独立 3 层充能, 不消耗能量
+            const _layers = tdDashLayersOf(ai);
+            const _canDash = (_layers > 0) && !fxIsStunned(ai)
+                && now >= (ai._tdNoDashUntil || 0) && now >= (TD.aDashLock || 0) && now >= (ai._tdDashUntil || 0);
+            const _hpPct = ai.health / Math.max(1, ai.maxHealth);
+            const ideal = (TD_IDEAL[tdWeaponKey(ai)] || 380) * 0.86;
+            let _wantDash = false, _dashX = 0, _dashY = 0;
+
             if (threat.level >= 0.032 || threat.urgent) {
-                mx = threat.dirX; my = threat.dirY;
-                // 保命位移: 约 0.15 秒内必中, 或走位后仍要吃掉七成以上伤害 (敏感度再降, 更少提前交位移)
-                if (_canDash && (threat.urgent || (threat.level > 0.045 && threat.walkRisk > threat.level * 0.72))) {
-                    _wantDash = true; _dashX = threat.dirX; _dashY = threat.dirY;
+                // 走位: 走向未来受击风险最小的方向
+                mx = Math.cos(threat.walkDir); my = Math.sin(threat.walkDir);
+                // 位移: 血量越低越愿意交; 落点风险需明显低于走位才值得花一层
+                const _need = _hpPct < 0.35 ? 0.030 : (_hpPct < 0.6 ? 0.050 : 0.075);
+                const _mustDodge = threat.urgent && (threat.level > 0.10 || (threat.aimed && _layers >= 2));
+                const _dashBetter = threat.dashRisk <= threat.walkRisk * 0.60 + 0.004;
+                // 层数已满时充能停滞: 被持续瞄准且有实际威胁就消耗一层, 顺便开始下一层充能
+                const _overflow = (_layers >= TD.dashMaxLayers) && threat.aimed && threat.walkRisk >= 0.02;
+                if (_canDash && (_mustDodge || _overflow || (threat.walkRisk >= _need && _dashBetter))) {
+                    _wantDash = true;
+                    _dashX = Math.cos(threat.dashDir);
+                    _dashY = Math.sin(threat.dashDir);
                 }
             } else {
                 const err = dist - ideal;
@@ -15423,22 +15494,32 @@ body.low-perf #menu::before { filter: none; opacity: .18; }
                     TD.aStrafeAt = now + 900 + Math.random() * 500;
                     if (Math.random() < 0.5) TD.aStrafeDir = -TD.aStrafeDir;
                 }
-                // 追击位移: 距理想射程还差很远且能量充裕, 位移贴近 (省时间抢节奏)
-                if (_canDash && err > Math.max(320, ideal * 1.1) && _en >= TD.dashCost * 2) {
-                    _wantDash = true; _dashX = nx; _dashY = ny;
+                // 进攻位移: 层数 >= 2 且距离偏远, 落点安全才突进
+                if (_canDash && _layers >= 2 && err > Math.max(320, ideal * 1.1)) {
+                    const _tx = ai.x + nx * TD.dashDist, _ty = ai.y + ny * TD.dashDist;
+                    const _inside = _tx > TD.MARGIN && _tx < TD.W - TD.MARGIN && _ty > TD.MARGIN && _ty < TD.H - TD.MARGIN;
+                    if (_inside && _tdPointRisk(_tx, _ty, 36, 30).risk < 0.035) {
+                        _wantDash = true; _dashX = nx; _dashY = ny;
+                    }
                 }
             }
-            // 残血脱战: 血量 < 35% 且被贴脸, 向反方向位移拉开距离
-            if (!_wantDash && _canDash && (ai.health / Math.max(1, ai.maxHealth)) < 0.30 && dist < 190) {
-                _wantDash = true; _dashX = -dx / dist; _dashY = -dy / dist;
+            // 残血脱战: 血量 < 30% 且被贴脸, 位移拉开 (落点安全才用)
+            if (!_wantDash && _canDash && _hpPct < 0.30 && dist < 190) {
+                const _tx = ai.x - nx * TD.dashDist, _ty = ai.y - ny * TD.dashDist;
+                if (_tx > TD.MARGIN && _tx < TD.W - TD.MARGIN && _ty > TD.MARGIN && _ty < TD.H - TD.MARGIN
+                    && _tdPointRisk(_tx, _ty, 36, 30).risk < 0.05) {
+                    _wantDash = true; _dashX = -nx; _dashY = -ny;
+                }
             }
-            // 圈外回圈: 已经明显在圈外才花位移 (圈内贴边只靠走位)
+            // 圈外回圈: 位移后必须落在圈内
             if (!_wantDash && _canDash && envUrgent && TD.zone) {
                 const _zd = Math.hypot(ai.x - TD.zone.cx, ai.y - TD.zone.cy) || 1;
                 if (_zd > TD.zone.r + 60) {
-                    _wantDash = true;
-                    _dashX = (TD.zone.cx - ai.x) / _zd;
-                    _dashY = (TD.zone.cy - ai.y) / _zd;
+                    const _inX = (TD.zone.cx - ai.x) / _zd, _inY = (TD.zone.cy - ai.y) / _zd;
+                    const _tx = ai.x + _inX * TD.dashDist, _ty = ai.y + _inY * TD.dashDist;
+                    if (Math.hypot(_tx - TD.zone.cx, _ty - TD.zone.cy) < TD.zone.r) {
+                        _wantDash = true; _dashX = _inX; _dashY = _inY;
+                    }
                 }
             }
             // 环境向量混合: 圈外优先回圈, 贴边时向内修正
@@ -15622,15 +15703,14 @@ body.low-perf #menu::before { filter: none; opacity: .18; }
                 ai._tdAim = Math.atan2(ty - ai.y, tx - ai.x) + (Math.random() - 0.5) * jitter;
                 const _key = tdWeaponKey(ai);
                 const _cost = TD_COST[_key] || 10;
-                // 动态保命储备: 只有近身且确有威胁时才留 30, 远程低威胁不预留
-                const _reserve = (TD.aThreat >= 0.015 || d < 320) ? TD.dashCost : Math.round(TD.dashCost * 0.55);
-                if (ai.weapon && !ai.weapon.isMelee && tdHitChance(_key, d) >= 0.14 && (tdEnergy(ai) - _cost) >= _reserve) {
+                // 位移改为独立充能后不再预留能量, 只要本次开火够用就射
+                if (ai.weapon && !ai.weapon.isMelee && tdHitChance(_key, d) >= 0.14 && tdEnergy(ai) >= _cost) {
                     tdFire(ai, ai._tdAim, now);
                 }
             }
             if (TD.aWantsDash) {
                 TD.aWantsDash = false;
-                if (tdDash(ai, TD.aDashX, TD.aDashY, now)) TD.aDashLock = now + 850;
+                if (tdDash(ai, TD.aDashX, TD.aDashY, now)) TD.aDashLock = now + 260;
             }
         }
 
@@ -15641,6 +15721,7 @@ body.low-perf #menu::before { filter: none; opacity: .18; }
             // 每秒物攻/减疗成长 + 状态计时 + 灼烧 + 效果卡 tick (与横版同源)
             [player, ai].forEach(function (ent) {
                 if (!ent || ent.health <= 0) return;
+                tdDashTick(ent, dt);   // 独立位移充能: 每层 4 秒, 最多 3 层
                 ent.tickAtkPerSecGrowth();
                 ent.updateEffects();
                 ent.updateDoTAndSlow();
@@ -15659,6 +15740,7 @@ body.low-perf #menu::before { filter: none; opacity: .18; }
                     const _st = (typeof trainDmgStats === 'function' && ai) ? trainDmgStats(ai) : { total: 0, dps: 0 };
                     _dbg.innerHTML = '位置 ' + Math.round(player.x) + ',' + Math.round(player.y) +
                         ' · 能量 ' + Math.round(tdEnergy(player)) + '/' + Math.round(tdEnergyMaxOf(player)) +
+                        ' · 位移 ' + tdDashLayersOf(player) + '/3' +
                         ' · AI 生命 ' + Math.round(ai.health) + '/' + Math.round(ai.maxHealth) +
                         ' · 总伤害 ' + _st.total + ' · 秒伤 ' + _st.dps;
                 }
@@ -15946,6 +16028,25 @@ body.low-perf #menu::before { filter: none; opacity: .18; }
             ctx.fillStyle = 'rgba(255,255,255,0.55)';
             ctx.fillText('/' + Math.round(_max), cx, cy + r * 0.33);
             ctx.textBaseline = 'alphabetic';
+        }
+
+        // 位移层数指示: n 个圆点, 已充能实心; 正在充能的那一格画进度环
+        function tdDrawDashPips(cx, cy, layers, chargeRatio, color) {
+            const total = TD.dashMaxLayers;
+            const gap = 12, r = 4.2;
+            const startX = cx - (total - 1) * gap / 2;
+            for (let i = 0; i < total; i++) {
+                const x = startX + i * gap;
+                ctx.beginPath(); ctx.arc(x, cy, r, 0, Math.PI * 2);
+                ctx.fillStyle = (i < layers) ? color : 'rgba(255,255,255,0.16)';
+                ctx.fill();
+                ctx.lineWidth = 1; ctx.strokeStyle = 'rgba(0,0,0,0.5)'; ctx.stroke();
+                if (i === layers && layers < total) {
+                    ctx.beginPath();
+                    ctx.arc(x, cy, r + 2.3, -Math.PI / 2, -Math.PI / 2 + Math.PI * 2 * Math.max(0, Math.min(1, chargeRatio || 0)));
+                    ctx.strokeStyle = color; ctx.lineWidth = 1.6; ctx.lineCap = 'round'; ctx.stroke();
+                }
+            }
         }
 
         // ===== 俯视狙击: 右键蓄力直线射击 (参考几何决斗) =====
@@ -16300,12 +16401,16 @@ body.low-perf #menu::before { filter: none; opacity: .18; }
             const _ringR = _touchUi ? 22 : 34;
             tdDrawEnergyRing(ringLX, ringY, tdEnergy(player), tdEnergyMaxOf(player), '#55efc4', _ringR);
             tdDrawEnergyRing(ringRX, ringY, tdEnergy(ai), tdEnergyMaxOf(ai), '#ffb86b', _ringR);
+            // 位移层数: 能量环旁边一排 3 格 (满层实心, 充能中用进度环) 
+            const _pipY = ringY - _ringR - (_touchUi ? 11 : 15);
+            tdDrawDashPips(ringLX, _pipY, tdDashLayersOf(player), tdDashChargeRatio(player), '#55efc4');
+            tdDrawDashPips(ringRX, _pipY, tdDashLayersOf(ai), tdDashChargeRatio(ai), '#ffb86b');
             if (!_touchUi) {
                 ctx.textAlign = 'center';
                 ctx.font = '11px Arial';
                 ctx.fillStyle = 'rgba(255,255,255,0.6)';
-                ctx.fillText('我方能量', ringLX, ringY - 52);
-                ctx.fillText('敌方能量', ringRX, ringY - 52);
+                ctx.fillText('我方能量', ringLX, ringY - _ringR - 40);
+                ctx.fillText('敌方能量', ringRX, ringY - _ringR - 40);
             }
 
             if (TD.mouseX > 0 && TD.mouseY > 0) {
@@ -16387,7 +16492,7 @@ body.low-perf #menu::before { filter: none; opacity: .18; }
                 if (!TD._ctrlHTML) TD._ctrlHTML = _ctrl.innerHTML;
                 _ctrl.innerHTML = '<div><span class="key">WASD</span> 移动</div>' +
                     '<div><span class="key">鼠标</span> 瞄准 / 射击</div>' +
-                    '<div><span class="key">空格</span> 能量位移</div>' +
+                    '<div><span class="key">空格</span> 位移（3 层充能）</div>' +
                     '<div><span class="key">1-9</span> 物品栏选格</div>' +
                     '<div><span class="key">···</span> 背包</div>';
             }
@@ -16446,7 +16551,7 @@ body.low-perf #menu::before { filter: none; opacity: .18; }
                 if (!TD._ctrlHTML) TD._ctrlHTML = _ctrl.innerHTML;
                 _ctrl.innerHTML = '<div><span class="key">WASD</span> 移动</div>' +
                     '<div><span class="key">鼠标</span> 瞄准 / 射击</div>' +
-                    '<div><span class="key">空格</span> 能量位移</div>' +
+                    '<div><span class="key">空格</span> 位移（3 层充能）</div>' +
                     '<div><span class="key">1-9</span> 物品栏选格</div>' +
                     '<div><span class="key">···</span> 背包</div>';
             }
