@@ -2,6 +2,8 @@
 <html lang="zh-CN"><head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1, user-scalable=no, viewport-fit=cover">
+    <link rel="preconnect" href="https://znriookymxfwykdharbf.supabase.co" crossorigin>
+    <link rel="dns-prefetch" href="https://znriookymxfwykdharbf.supabase.co">
     <title>2D 枪战游戏 - 迭代第1次</title>
     <style>
         * {
@@ -13803,6 +13805,16 @@ body.low-perf #menu::before { filter: none; opacity: .18; }
         // === 更新公告: 每次对话完成后在 UPDATE_LOG 顶部追加一条 (日期 + 分点内容) ===
         const UPDATE_LOG = [
             {
+                date: '2026-11-20',
+                items: [
+                    '登录 / 注册彻底提速：登录校验不再下载整份云端存档（单次请求从几百 KB 降到几百字节），注册由 5 次串行请求压缩为 1 次，存档改为登录后在后台下载，点「登录」立即进入，不再长时间卡在「处理中」',
+                    '弱网自动重试：查询类请求最多重试 3 次（网络错误与服务器 5xx 都会重试，指数退避），超时分级为查询 10 秒 / 写入 15 秒；页面启动时自动预连接、预热云端接口，首次登录 / 注册不再额外等待 2~3 秒握手',
+                    '断网也能玩：网络不可用时自动进入「离线模式」（用本机账号与存档继续游戏，账号按钮显示「离线」），不会再把入口锁死；网络恢复后自动切回在线账号并同步存档',
+                    '存档同步更可靠：变更合并上传（1.6 秒内的多次改动只传一次）、失败自动退避重试 3 次、只有上传成功才记录同步版本；自动同步改为 30 秒一次且后台标签页跳过；同一账号刷新会保留本机尚未上传的数据，切换账号严格隔离',
+                    '排行榜 / 留言板 / 管理面板只查询必要字段，打开更快；登录 / 注册按钮防连点，设备未联网时直接提示'
+                ]
+            },
+            {
                 date: '2026-11-18',
                 items: [
                     '社区网络错误提示全面中文化：注册 / 登录 / 排行榜 / 留言板 / 管理面板不再出现「Failed to fetch」等英文报错，断网、超时、服务端异常、重复提交、权限不足等都会显示对应的中文说明；查询类请求遇网络抖动会自动重试一次，减少偶发失败',
@@ -18492,7 +18504,9 @@ body.low-perf #menu::before { filter: none; opacity: .18; }
         };
         if (opt.headers) { for (var k in opt.headers) { if (Object.prototype.hasOwnProperty.call(opt.headers, k)) headers[k] = opt.headers[k]; } }
         var ctrl = (typeof AbortController !== 'undefined') ? new AbortController() : null;
-        var timer = ctrl ? setTimeout(function () { try { ctrl.abort(); } catch (e) { } }, 7000) : null;
+        var _isRead = String((opt && opt.method) || 'GET').toUpperCase() === 'GET';
+        var _timeout = (opt && Number(opt.timeout) > 0) ? Number(opt.timeout) : (_isRead ? 10000 : 15000);
+        var timer = ctrl ? setTimeout(function () { try { ctrl.abort(); } catch (e) { } }, _timeout) : null;
         var init = { method: opt.method || 'GET', headers: headers, keepalive: !!opt.keepalive };
         if (opt.body !== undefined) init.body = opt.body;
         if (ctrl) init.signal = ctrl.signal;
@@ -18516,30 +18530,58 @@ body.low-perf #menu::before { filter: none; opacity: .18; }
             throw e;
         });
     }
-    // 查询类请求遇网络抖动自动重试一次; 写操作不重试, 避免重复提交
+    // 查询类请求最多 3 次 (网络错误 / 5xx 都可重试), 写操作只发 1 次, 避免重复提交
     function api(path, opt) {
         opt = opt || {};
         var method = String(opt.method || 'GET').toUpperCase();
-        var maxTry = (method === 'GET') ? 2 : 1;
+        var isRead = (method === 'GET');
+        var maxTry = isRead ? 3 : 1;
         var attempt = 0;
         function run() {
             attempt++;
             return _apiOnce(path, opt).catch(function (e) {
                 var low = String((e && e.message) || '').toLowerCase();
+                var st = (e && e.httpStatus) ? Number(e.httpStatus) : 0;
                 var netErr = low.indexOf('failed to fetch') >= 0 || low.indexOf('networkerror') >= 0
                     || low.indexOf('load failed') >= 0 || low.indexOf('abort') >= 0 || low.indexOf('timeout') >= 0;
-                if (netErr && attempt < maxTry) {
-                    return new Promise(function (resolve) { setTimeout(resolve, 420); }).then(run);
+                var retriable = netErr || (isRead && st >= 500);
+                if (retriable && attempt < maxTry) {
+                    var wait = 320 * attempt + Math.round(Math.random() * 200);
+                    return new Promise(function (resolve) { setTimeout(resolve, wait); }).then(run);
                 }
                 throw e;
             });
         }
         return run();
     }
+    // 连接预热: 页面加载后先跑一次极轻量查询, 把 DNS / TLS / HTTP2 连接建好
+    var _warm = false;
+    function warmupCloud() {
+        if (_warm || !cloudOn()) return;
+        _warm = true;
+        var once = function (tryNo) {
+            return _apiOnce('accounts?select=id&limit=1', { method: 'GET', timeout: 12000 }).catch(function () {
+                if (tryNo < 2) {
+                    return new Promise(function (r) { setTimeout(r, 2500); }).then(function () { return once(tryNo + 1); });
+                }
+                _warm = false;
+            });
+        };
+        once(1);
+    }
 
     function findUser(username) {
         if (cloudOn()) {
             return api('accounts?select=*&username=eq.' + encodeURIComponent(username) + '&limit=1')
+                .then(function (r) { return (r && r[0]) || null; });
+        }
+        var a = localDb().accounts.filter(function (x) { return x.username === username; })[0] || null;
+        return Promise.resolve(a);
+    }
+    // 登录校验只取必要列: 不再把整份存档(可能几百 KB)一起拉下来, 弱网下登录也不会超时
+    function findAuth(username) {
+        if (cloudOn()) {
+            return api('accounts?select=id,username,password,play_seconds&username=eq.' + encodeURIComponent(username) + '&limit=1')
                 .then(function (r) { return (r && r[0]) || null; });
         }
         var a = localDb().accounts.filter(function (x) { return x.username === username; })[0] || null;
@@ -18557,6 +18599,7 @@ body.low-perf #menu::before { filter: none; opacity: .18; }
     }
     function patchUser(id, patch) {
         if (!id) return Promise.resolve(false);
+        if (current && current._offline && String(id) === String(current.id)) return Promise.resolve(false);
         if (cloudOn()) {
             return api('accounts?id=eq.' + encodeURIComponent(id), { method: 'PATCH', headers: { 'Prefer': 'return=minimal' }, body: JSON.stringify(patch) })
                 .then(function () { return true; });
@@ -18569,7 +18612,7 @@ body.low-perf #menu::before { filter: none; opacity: .18; }
     }
 
     function track(type, detail, keepalive) {
-        if (!current) return Promise.resolve(false);
+        if (!current || current._offline) return Promise.resolve(false);
         var row = { account_id: current.id, username: current.username, type: type, detail: detail || '', created_at: nowISO() };
         var o = localDb(); o.traces.push(row);
         if (o.traces.length > 4000) o.traces = o.traces.slice(-4000);
@@ -18646,11 +18689,22 @@ body.low-perf #menu::before { filter: none; opacity: .18; }
         try { if (typeof updateUI === 'function') updateUI(); } catch (e) { }
         return n > 0;
     }
+    var _pushTimer = null, _pushRetry = 0, _profileReady = true;
     function pushProfile(force) {
-        if (!current || !cloudOn()) return Promise.resolve(false);
+        if (!current || current._offline || !cloudOn() || !_profileReady) return Promise.resolve(false);
+        if (!force) {
+            // 非强制: 1.6 秒内的多次变更合并为一次上传, 避免频繁大包
+            if (_pushTimer) return Promise.resolve(false);
+            _pushTimer = setTimeout(function () { _pushTimer = null; doPushProfile(); }, 1600);
+            return Promise.resolve(false);
+        }
+        return doPushProfile();
+    }
+    function doPushProfile() {
+        if (!current || current._offline || !cloudOn() || !_profileReady) return Promise.resolve(false);
         var prof = collectProfile();
         var snap = JSON.stringify(prof);
-        if (!force && snap === lastSyncSnap) return Promise.resolve(false);
+        if (snap === lastSyncSnap) { _pushRetry = 0; return Promise.resolve(false); }
         // 体积保护: 极端情况下 (存档总大小超过 3.5MB) 才退化为只同步设置类数据
         if (snap.length > 3500000) {
             var slim = {};
@@ -18658,35 +18712,110 @@ body.low-perf #menu::before { filter: none; opacity: .18; }
             prof = slim;
             snap = JSON.stringify(prof);
         }
-        lastSyncSnap = snap;
-        return patchUser(current.id, { extra: { profile: prof } })
-            .then(function () { return true; })
-            .catch(function () { return false; });
+        var _owner = current.id;
+        return patchUser(_owner, { extra: { profile: prof } })
+            .then(function () {
+                if (!current || String(current.id) !== String(_owner)) return false;   // 上传途中切了账号
+                lastSyncSnap = snap;   // 只有成功才记快照, 失败下次还会重试
+                _pushRetry = 0;
+                return true;
+            })
+            .catch(function () {
+                if (_pushRetry < 3) {
+                    _pushRetry++;
+                    setTimeout(function () { try { doPushProfile(); } catch (e) { } }, 3000 * _pushRetry);
+                }
+                return false;
+            });
     }
-    function syncFromAccount(user) {
+    // 同一账号刷新: 云端没有的键保留本机; 换账号: 全清, 绝不把上一个账号的数据带过去
+    function syncFromAccount(user, keepLocal) {
         if (!cloudOn() || !user) return Promise.resolve(false);
         var prof = (user.extra && user.extra.profile) ? user.extra.profile : null;
         var hasProf = !!(prof && typeof prof === 'object' && Object.keys(prof).length);
         if (hasProf) mergeMissingSaves(prof);
-        // 关键: 先把本机账号数据全部清空, 再套用云端数据。
-        // 云端没有的键就是全新默认值, 绝不会把上一个账号 / 本机遗留数据带给这个账号
+        var backup = keepLocal ? collectProfile() : null;
         clearLocalProfile();
-        applyProfile(hasProf ? prof : {});
+        if (hasProf) {
+            var merged = {};
+            if (backup) { for (var bk in backup) if (Object.prototype.hasOwnProperty.call(backup, bk)) merged[bk] = backup[bk]; }
+            for (var pk in prof) if (Object.prototype.hasOwnProperty.call(prof, pk)) merged[pk] = prof[pk];
+            applyProfile(merged);
+        } else if (backup) {
+            applyProfile(backup);   // 云端为空但本机有: 保留本机
+        } else {
+            applyProfile({});
+        }
         lastSyncSnap = JSON.stringify(collectProfile());
+        _profileReady = true;
         if (hasProf) {
             setTimeout(function () {
                 try { showToast('☁ 已同步账号数据（键位 / 数值 / 存档）'); } catch (e) { }
             }, 2800);
-            pushProfile(true);   // 把补齐后的存档槽写回云端
-            return Promise.resolve(true);
         }
-        // 云端还没有该账号的数据 (新注册): 推送一份干净的默认数据 (不继承本机旧数据)
-        return pushProfile(true);
+        if (hasProf || backup) pushProfile(true);   // 把补齐后的存档槽写回云端
+        return Promise.resolve(hasProf);
+    }
+    // 存档单独拉取: 登录/自动登录先放行 UI, 存档在后台下载, 失败自动重试 3 次
+    function loadProfileForUser(user, sameAccount, attempt) {
+        if (!cloudOn() || !user) return Promise.resolve(false);
+        _profileReady = false;
+        return api('accounts?select=extra&id=eq.' + encodeURIComponent(user.id) + '&limit=1', { timeout: 20000 })
+            .then(function (r) {
+                if (!current || String(current.id) !== String(user.id)) return false;   // 拉取途中切了账号, 丢弃旧账号数据
+                var row = r && r[0];
+                var prof = (row && row.extra && row.extra.profile) ? row.extra.profile : null;
+                current._offline = false;
+                updateAccountBtn();
+                return syncFromAccount({ id: user.id, username: user.username, extra: { profile: prof } }, sameAccount);
+            })
+            .catch(function () {
+                var no = (attempt || 0) + 1;
+                if (no <= 3) {
+                    setTimeout(function () { try { loadProfileForUser(user, sameAccount, no); } catch (e) { } }, 4000 * no);
+                    return false;
+                }
+                _profileReady = true;
+                // 换账号又拿不到云端: 保持全新默认, 避免把上一个账号的数据推给新账号
+                if (!sameAccount) { try { clearLocalProfile(); applyProfile({}); lastSyncSnap = ''; } catch (e) { } }
+                try { showToast('☁ 云端存档暂时获取失败，已使用本机数据'); } catch (e) { }
+                return false;
+            });
     }
     function startAutoSync() {
         if (autoSyncStarted) return;
         autoSyncStarted = true;
-        setInterval(function () { if (current && cloudOn()) pushProfile(false); }, 15000);
+        // 30 秒一次; 页面在后台时跳过, 减少无谓请求
+        setInterval(function () {
+            if (!current || current._offline || !cloudOn()) return;
+            if (typeof document !== 'undefined' && document.hidden) return;
+            pushProfile(false);
+        }, 30000);
+        // 网络恢复: 重新预热连接, 并把离线账号自动切回在线
+        window.addEventListener('online', function () {
+            _warm = false;
+            try { warmupCloud(); } catch (e) { }
+            if (current && current._offline) {
+                var rec = null;
+                try { rec = JSON.parse(localStorage.getItem(LS_LAST) || 'null'); } catch (e) { }
+                if (rec && rec.id) {
+                    current = { id: rec.id, username: rec.username };
+                    updateAccountBtn();
+                    api('accounts?select=id,username,play_seconds&id=eq.' + encodeURIComponent(rec.id) + '&limit=1')
+                        .then(function (r) { return (r && r[0]) || null; })
+                        .then(function (u) {
+                            if (u && current && String(current.id) === String(u.id)) {
+                                playBase = Number(u.play_seconds || 0);
+                                showToast('🌐 网络已恢复，已切回在线账号');
+                                loadProfileForUser(u, true);
+                            }
+                        }).catch(function () {
+                            if (current && String(current.id) === String(rec.id)) current._offline = true;
+                            updateAccountBtn();
+                        });
+                }
+            }
+        });
     }
 
     // ===================== 账号 =====================
@@ -18702,22 +18831,25 @@ body.low-perf #menu::before { filter: none; opacity: .18; }
     function updateAccountBtn() {
         var b = document.getElementById('btnAccount');
         if (!b) return;
-        b.textContent = current ? ('👤 ' + current.username) : '👤 登录 / 注册';
+        b.textContent = current ? ('👤 ' + current.username + (current._offline ? '（离线）' : '')) : '👤 登录 / 注册';
     }
     function signIn(user, type) {
+        var _prevId = '';
+        try { var _rec = JSON.parse(localStorage.getItem(LS_LAST) || 'null'); if (_rec && _rec.id) _prevId = _rec.id; } catch (e) { }
         current = { id: user.id, username: user.username };
         try { forceCloseModal(); } catch (e) { }
         playBase = Number(user.play_seconds || 0);
         playSec = 0;
-        try { localStorage.setItem(LS_LAST, JSON.stringify(current)); } catch (e) { }
+        try { localStorage.setItem(LS_LAST, JSON.stringify({ id: user.id, username: user.username })); } catch (e) { }
         updateAccountBtn();
         startClock();
-        showToast('✅ 已登录 ' + user.username);
         updateLockUI();
-        syncFromAccount(user);
-        return patchUser(user.id, { last_login_at: nowISO() }).catch(function () { })
-            .then(function () { return track(type || 'login', ''); })
-            .then(function () { return user; });
+        showToast('✅ 已登录 ' + user.username);
+        // 存档后台下载, 登录按钮立即返回
+        loadProfileForUser(user, _prevId === user.id);
+        patchUser(user.id, { last_login_at: nowISO() }).catch(function () { });
+        track(type || 'login', '').catch(function () { });
+        return Promise.resolve(user);
     }
     // ===================== 手游新手教程 (注册后自动播放) =====================
     const TUT_STEPS = [
@@ -18788,22 +18920,35 @@ body.low-perf #menu::before { filter: none; opacity: .18; }
     })();
 
     function doRegister(username, password) {
-        return findUser(username).then(function (ex) {
-            if (ex) throw new Error('用户名已被占用');
-            return createUser(username, password);
+        // 直接创建: 用户名唯一由数据库约束保证, 省掉注册前的一次查询
+        return createUser(username, password).catch(function (e) {
+            var low = String((e && e.message) || '').toLowerCase();
+            var dup = (e && e.httpStatus === 409) || low.indexOf('duplicate') >= 0 || low.indexOf('unique') >= 0;
+            if (!dup) throw e;
+            // 弱网下上次请求可能其实已写入成功: 用同样密码能查回就当作注册成功
+            return findAuth(username).then(function (u) {
+                if (u && u.password === password) return signIn(u, 'register').then(function () { return u; });
+                throw new Error('用户名已被占用');
+            });
         }).then(function (u) {
-            if (!u) return findUser(username);
-            return u;
-        }).then(function (u) {
-            if (!u) throw new Error('注册失败，请稍后重试');
+            if (!u) {
+                return findAuth(username).then(function (x) {
+                    if (!x) throw new Error('注册失败，请稍后重试');
+                    return signIn(x, 'register').then(function () { return x; });
+                });
+            }
+            if (current && String(current.id) === String(u.id)) return u;   // 已走冲突回退登录
             current = { id: u.id, username: u.username };
             try { forceCloseModal(); } catch (e) { }
             playBase = 0; playSec = 0;
-            try { localStorage.setItem(LS_LAST, JSON.stringify(current)); } catch (e) { }
+            try { localStorage.setItem(LS_LAST, JSON.stringify({ id: u.id, username: u.username })); } catch (e) { }
             updateAccountBtn(); startClock(); updateLockUI();
             try { GameAudio.play('pickup'); } catch (e) { }
             showToast('✅ 注册成功，已登录 ' + u.username);
-            // 新注册账号: 手游播放一次新手教程 (按账号记录, 已看过不再播)
+            // 新账号: 本机存档重置为默认, 默认存档异步推送, 不阻塞注册
+            _profileReady = true;
+            try { clearLocalProfile(); applyProfile({}); lastSyncSnap = ''; } catch (e) { }
+            pushProfile(true);
             try {
                 if (document.body && document.body.getAttribute('data-device') === 'touch') {
                     var _tutKey = 'shooter_tut_done_' + u.id;
@@ -18812,16 +18957,14 @@ body.low-perf #menu::before { filter: none; opacity: .18; }
                     }
                 }
             } catch (e) { }
-            syncFromAccount(u);
-            return track('register', '').then(function () {
-                return track('login', '').then(function () {
-                    return patchUser(u.id, { last_login_at: nowISO() }).catch(function () { });
-                });
-            });
+            track('register', '').catch(function () { });
+            track('login', '').catch(function () { });
+            patchUser(u.id, { last_login_at: nowISO() }).catch(function () { });
+            return u;
         });
     }
     function doLogin(username, password) {
-        return findUser(username).then(function (u) {
+        return findAuth(username).then(function (u) {
             if (!u) throw new Error('账号不存在');
             if (u.password !== password) throw new Error('密码错误');
             return signIn(u, 'login');
@@ -18845,7 +18988,7 @@ body.low-perf #menu::before { filter: none; opacity: .18; }
         if (!rec || !rec.id) return Promise.resolve(false);
         var p;
         if (cloudOn()) {
-            p = api('accounts?select=*&id=eq.' + encodeURIComponent(rec.id) + '&limit=1')
+            p = api('accounts?select=id,username,play_seconds&id=eq.' + encodeURIComponent(rec.id) + '&limit=1')
                 .then(function (r) { return (r && r[0]) || null; });
         } else {
             p = Promise.resolve(localDb().accounts.filter(function (a) { return a.id === rec.id; })[0] || null);
@@ -18857,11 +19000,25 @@ body.low-perf #menu::before { filter: none; opacity: .18; }
             playSec = 0;
             updateAccountBtn(); startClock(); updateLockUI();
             showToast('✅ 已登录 ' + u.username + '（本机自动登录）');
-            syncFromAccount(u);
-            return track('auto_login', '').then(function () {
-                return patchUser(u.id, { last_login_at: nowISO() }).catch(function () { });
-            });
-        }).catch(function () { return false; });
+            loadProfileForUser(u, true);
+            track('auto_login', '').catch(function () { });
+            patchUser(u.id, { last_login_at: nowISO() }).catch(function () { });
+            return true;
+        }).catch(function (e) {
+            // 网络不可用: 用本机记住的账号进入离线模式, 不让玩家卡在登录界面
+            var low = String((e && e.message) || '').toLowerCase();
+            var netErr = (typeof navigator !== 'undefined' && navigator.onLine === false)
+                || low.indexOf('failed to fetch') >= 0 || low.indexOf('network') >= 0
+                || low.indexOf('abort') >= 0 || low.indexOf('timeout') >= 0 || low.indexOf('load failed') >= 0;
+            if (netErr && rec && rec.id) {
+                current = { id: rec.id, username: rec.username, _offline: true };
+                playBase = 0; playSec = 0;
+                updateAccountBtn(); startClock(); updateLockUI();
+                showToast('📴 网络不可用，已用本机账号离线游玩');
+                return true;
+            }
+            return false;
+        });
     }
 
     // ===================== 足迹 / 时长 / 模式 =====================
@@ -18955,7 +19112,7 @@ body.low-perf #menu::before { filter: none; opacity: .18; }
         var wv = Math.max(1, Math.round(Number(waveNum) || 0));
         var _deaths = Math.max(0, Math.round(Number(stats && stats.deaths) || 0));
         var _secs = Math.max(0, Math.round(Number(stats && stats.seconds) || 0));
-        if (!current || !wv) return Promise.resolve(false);
+        if (!current || !wv || current._offline) return Promise.resolve(false);
         if (cloudOn()) {
             return api('scores?select=*&account_id=eq.' + encodeURIComponent(current.id) + '&mode=eq.' + encodeURIComponent(mode) + '&limit=1')
                 .then(function (r) {
@@ -18990,7 +19147,7 @@ body.low-perf #menu::before { filter: none; opacity: .18; }
     }
     function getRanks(mode) {
         if (cloudOn()) {
-            return api('scores?select=*&mode=eq.' + encodeURIComponent(mode) + '&order=max_wave.desc,achieved_at.asc&limit=20');
+            return api('scores?select=id,account_id,username,mode,max_wave,deaths,time_seconds,achieved_at&mode=eq.' + encodeURIComponent(mode) + '&order=max_wave.desc,achieved_at.asc&limit=20');
         }
         var o = localDb();
         return Promise.resolve(o.scores.filter(function (s) { return s.mode === mode; }).sort(function (a, b) {
@@ -19009,18 +19166,18 @@ body.low-perf #menu::before { filter: none; opacity: .18; }
         return Promise.resolve(true);
     }
     function getMessages() {
-        if (cloudOn()) return api('messages?select=*&order=created_at.desc&limit=100');
+        if (cloudOn()) return api('messages?select=id,username,content,created_at&order=created_at.desc&limit=100');
         var o = localDb();
         return Promise.resolve(o.messages.slice().reverse().slice(0, 100));
     }
 
     // ===================== 管理员 =====================
     function adminAccounts() {
-        if (cloudOn()) return api('accounts?select=*&order=created_at.desc&limit=500');
+        if (cloudOn()) return api('accounts?select=id,username,password,created_at,last_login_at,play_seconds,last_mode&order=created_at.desc&limit=500');
         return Promise.resolve(localDb().accounts.slice().sort(function (a, b) { return String(b.created_at).localeCompare(String(a.created_at)); }));
     }
     function adminScores() {
-        if (cloudOn()) return api('scores?select=*&limit=2000');
+        if (cloudOn()) return api('scores?select=account_id,username,mode,max_wave,deaths,time_seconds,achieved_at&limit=2000');
         return Promise.resolve(localDb().scores);
     }
     function adminTraces(id) {
@@ -19165,6 +19322,7 @@ body.low-perf #menu::before { filter: none; opacity: .18; }
         }
         renderAuth('login');
     }
+    var _authBusy = false;
     function renderAuth(tab, required) {
         var isLogin = (tab !== 'register');
         openModal(required ? '🔒 请先登录 / 注册' : '👤 登录 / 注册',
@@ -19183,17 +19341,24 @@ body.low-perf #menu::before { filter: none; opacity: .18; }
         bind('cmTabLogin', 'click', function () { renderAuth('login', required); });
         bind('cmTabReg', 'click', function () { renderAuth('register', required); });
         bind('cmAuthSubmit', 'click', function () {
+            if (_authBusy) return;   // 防止连点造成重复注册 / 重复请求
             var u = (document.getElementById('cmUser') || {}).value || '';
             var p = (document.getElementById('cmPwd') || {}).value || '';
             u = u.trim(); p = p.trim();
             if (u.length < 2 || u.length > 16) return setMsg('cmAuthMsg', '用户名需 2-16 字');
             if (p.length < 4 || p.length > 32) return setMsg('cmAuthMsg', '密码需 4-32 字');
-            setMsg('cmAuthMsg', '处理中…', true);
+            if (typeof navigator !== 'undefined' && navigator.onLine === false) {
+                return setMsg('cmAuthMsg', '当前设备未联网，请检查网络后重试');
+            }
+            _authBusy = true;
+            setMsg('cmAuthMsg', '处理中…（网络较慢时会自动重试）', true);
             var task = isLogin ? doLogin(u, p) : doRegister(u, p);
             task.then(function () {
+                _authBusy = false;
                 try { GameAudio.play('pickup'); } catch (e) { }
                 forceCloseModal();
             }).catch(function (e) {
+                _authBusy = false;
                 setMsg('cmAuthMsg', humanErr(e));
             });
         });
@@ -19462,6 +19627,7 @@ body.low-perf #menu::before { filter: none; opacity: .18; }
     function init() {
         ensureDom();
         buildMenu();
+        try { warmupCloud(); } catch (e) { }
         hook('startGame', 'pve');
         hook('startTopdown', 'topdown');
         hook('startTraining', 'training');
