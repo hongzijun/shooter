@@ -4400,8 +4400,8 @@ body.low-perf #menu::before { filter: none; opacity: .18; }
             shotgun: { name: '霰弹枪', sps: 1.4, dmgBase: 20, atkCoef: 0.3, damage: 50, fireRate: 714, ammo: 10, maxAmmo: 10, reserve: 9999, reloadTime: 1800, speed: 18, spread: 0.24, pellets: 6, color: '#ff6b35', knockbackMultiplier: 1.8, closeRangeBonus: true },
             smg: { name: '冲锋枪', sps: 12, dmgBase: 3, atkCoef: 0.04, fxMult: 1, damage: 7, fireRate: 83, ammo: 45, maxAmmo: 45, reserve: 9999, reloadTime: 1100, speed: 19, spread: 0.095, color: '#a29bfe', knockbackMultiplier: 0.7 },
             sniper: { name: '狙击枪', sps: 1.1, dmgBase: 80, atkCoef: 0.9, damage: 170, fireRate: 909, ammo: 6, maxAmmo: 6, reserve: 9999, reloadTime: 2800, speed: 34, spread: 0.006, color: '#2ed573', knockbackMultiplier: 2.0 },
-            // 激光枪: 伤害基值与攻击系数均为狙击枪的 2 倍 (80×2 / 0.9×2)
-            laser: { name: '激光枪', sps: 1.1, dmgBase: 160, atkCoef: 1.8, damage: 340, fireRate: 1000, ammo: 6, maxAmmo: 6, reserve: 9999, reloadTime: 2800, speed: 40, spread: 0.002, color: '#7df9ff', knockbackMultiplier: 2.2 },
+            // 激光枪: 伤害基值为狙击枪的 2 倍 (80×2); 攻击系数统一为 5
+            laser: { name: '激光枪', sps: 1.1, dmgBase: 160, atkCoef: 5, damage: 340, fireRate: 1000, ammo: 6, maxAmmo: 6, reserve: 9999, reloadTime: 2800, speed: 40, spread: 0.002, color: '#7df9ff', knockbackMultiplier: 2.2 },
             sword: { name: '⚔️ 战刃', sps: 1.8, dmgBase: 80, atkCoef: 0.3, fxMult: 1.5, damage: 110, fireRate: 556, chargeFullMs: 3000, attackRange: 95, maxCombo: 5, color: '#e0e0e0', knockbackMultiplier: 1.5, isMelee: true, ammo: Infinity, maxAmmo: Infinity }
         };
 
@@ -4415,7 +4415,7 @@ body.low-perf #menu::before { filter: none; opacity: .18; }
             smg: { sps: 12, dmgBase: 10, atkCoef: 0.07 },
             sniper: { sps: 1.1, dmgBase: 80, atkCoef: 1 },
             // 激光枪 = 狙击枪默认值的 2 倍 (160 / 2.0)
-            laser: { sps: 1.1, dmgBase: 160, atkCoef: 2 },
+            laser: { sps: 1.1, dmgBase: 160, atkCoef: 5 },
             sword: { sps: 1.8, dmgBase: 80, atkCoef: 0.5 }
         };
         function _trainDefaultTune(side) {
@@ -4444,7 +4444,7 @@ body.low-perf #menu::before { filter: none; opacity: .18; }
                 aiRound: 2,
                 aiDrawCount: 1,
                 growthVer: 1,
-                tuneVer: 7,
+                tuneVer: 8,
                 growth: isEnemy
                     ? { hpPerRound: 200, atkPerRound: 10, dmgMultPerRound: 0, defPerRound: 10, penPerRound: 5, redDefPerRound: 20, atkPerSecPerRound: 0.2, drawEveryRounds: 10, drawAddPerStep: 1, healDecayPerRound: 0, energyMaxPerRound: 0, energyRegenPerRound: 0 }
                     : { hpPerRound: 150, atkPerRound: 5, dmgMultPerRound: 0, defPerRound: 5, penPerRound: 3, redDefPerRound: 18, atkPerSecPerRound: 0.15, drawEveryRounds: 0, drawAddPerStep: 1, healDecayPerRound: 0, energyMaxPerRound: 0, energyRegenPerRound: 0 }
@@ -13525,7 +13525,8 @@ body.low-perf #menu::before { filter: none; opacity: .18; }
                 const so = (data && typeof data === 'object' && data[side] && typeof data[side] === 'object') ? data[side] : {};
                 const d = def[side];
                 const _v7 = (Number(so.tuneVer) < 7);
-                if (_v7) _needV7Save = true;
+                const _v8 = (Number(so.tuneVer) < 8);
+                if (_v7 || _v8) _needV7Save = true;
                 // v3 迁移: 旧存档的 AI 成长伤害倍率 (默认 0.05/回合) 归 0, 其余自定义值保持不变
                 const _enemyDmgFix = (side === 'enemy' && Number(so.tuneVer) < 3);
                 // 旧存档无 growthVer: 玩家成长此前从未生效, 迁移为全 0
@@ -13552,7 +13553,7 @@ body.low-perf #menu::before { filter: none; opacity: .18; }
                     aiRound: Math.max(1, Math.round(num(so.aiRound, d.aiRound))),
                     aiDrawCount: Math.max(1, Math.min(10, Math.round(num(so.aiDrawCount, d.aiDrawCount)))),
                     growthVer: 1,
-                    tuneVer: 7,
+                    tuneVer: 8,
                     growth: {
                         hpPerRound: num(so.growth && so.growth.hpPerRound, _gd.hpPerRound),
                         // 兼容旧存档: 老版本增量存在顶层 atkPerSec (1 为「无成长」基准, 其它值视为每波增量)
@@ -13587,7 +13588,8 @@ body.low-perf #menu::before { filter: none; opacity: .18; }
                     t.weapons[k] = {
                         sps: num(sw.sps, d.weapons[k].sps),
                         dmgBase: num(sw.dmgBase, d.weapons[k].dmgBase),
-                        atkCoef: num(sw.atkCoef, d.weapons[k].atkCoef),
+                        // v8 迁移: 激光枪攻击系数统一改为 5 (旧存档的 1.8 / 2 一并升级)
+                        atkCoef: (k === 'laser' && _v8) ? 5 : num(sw.atkCoef, d.weapons[k].atkCoef),
                         // 旧存档的 0 表示「无本武器攻速加成」, 迁移到 y=1 (基准)
                         atkSpeed: ((typeof sw.atkSpeed === 'number' && isFinite(sw.atkSpeed) && sw.atkSpeed > 0) ? sw.atkSpeed : 1)
                     };
@@ -14067,7 +14069,8 @@ body.low-perf #menu::before { filter: none; opacity: .18; }
                     '俯视新增「至臻一星」品质：卡牌左上角显示彩色星星与彩虹边框；效果卡回合概率改为紫色 20% / 至臻 70% / 至臻一星 10%（装备卡仍固定紫色，横版仍为至臻 70% / 紫 30%）',
                     '新增 6 张至臻一星卡：弹弹弹！（子弹反弹 +1）、穿穿穿！（穿透 +1）、分分分！（分裂概率 +10%，上限 80%）、多多多！（分裂数量 +1）、继继继！（分裂能力 +10%）、加加加！（子弹上限 +25，上限 500）',
                     '俯视子弹新增 6 项每颗独立属性：撞地图边界反弹、命中敌人后穿透可继续飞行（同一敌人可重复受伤）、命中时按概率分裂（子子弹按父弹当前属性 × 分裂能力向下取整继承，分裂能力不继承以自然终止递归）、子弹上限（初始 100，超出时自动移除最早的子弹）、按属性强度加深颜色并加光晕；属性面板会列出全部数值',
-                    '至臻一星卡与全部子弹属性仅在俯视 PVE / 俯视训练场生效：横版与 PVP 的抽卡概率、子弹表现、自选界面与训练场装配池均保持原样'
+                    '至臻一星卡与全部子弹属性仅在俯视 PVE / 俯视训练场生效：横版与 PVP 的抽卡概率、子弹表现、自选界面与训练场装配池均保持原样',
+                    '激光枪攻击系数统一改为 5：横版武器表、训练场默认值以及旧存档（v7 及更早）都会一次性升级为 5，横版 / 俯视 / 训练场 / PVP 全部一致；激光蓄力伤害随系数同步提高'
                 ]
             },
             {
