@@ -630,6 +630,33 @@
         .draft-card.rarity-purple:hover { box-shadow: 0 0 22px rgba(162, 155, 254, 0.55); }
         .draft-card.rarity-epic:hover { box-shadow: 0 0 34px rgba(255, 215, 0, 0.75); }
 
+        /* 至臻一星: 彩虹偏金边框 + 左上角彩虹星标 */
+        .draft-card.rarity-epic1 {
+            border-color: #ffd700;
+            background: linear-gradient(160deg, rgba(44, 20, 34, 0.97), rgba(14, 12, 26, 0.97));
+            box-shadow: 0 0 26px rgba(255, 77, 109, 0.55), 0 0 44px rgba(77, 195, 255, 0.28), inset 0 0 18px rgba(255, 215, 0, 0.14);
+        }
+        .draft-card.rarity-epic1:hover { box-shadow: 0 0 38px rgba(255, 77, 109, 0.75), 0 0 56px rgba(77, 195, 255, 0.40); }
+        .rarity-star1 {
+            position: absolute; top: 6px; left: 8px;
+            font-size: 20px; line-height: 1; font-weight: bold;
+            background: linear-gradient(90deg, #ff4d4d, #ffd93d, #4dff88, #4dc3ff, #b06bff);
+            -webkit-background-clip: text; background-clip: text;
+            color: transparent; -webkit-text-fill-color: transparent;
+            filter: drop-shadow(0 0 6px rgba(255, 215, 0, 0.9)) drop-shadow(0 0 12px rgba(255, 77, 109, 0.6));
+            pointer-events: none; z-index: 3;
+        }
+        /* 选卡卡片左上角已有编号角标: 星标排在其右侧, 避免遮挡 */
+        .rarity-star1-slot { left: 46px; }
+        .free-card .rarity-star1 { top: 3px; left: 5px; font-size: 16px; }
+        .rarity-star1-inline {
+            font-size: 12px; line-height: 1; font-weight: bold;
+            background: linear-gradient(90deg, #ff4d4d, #ffd93d, #4dff88, #4dc3ff, #b06bff);
+            -webkit-background-clip: text; background-clip: text;
+            color: transparent; -webkit-text-fill-color: transparent;
+            filter: drop-shadow(0 0 4px rgba(255, 215, 0, 0.85));
+        }
+
         .draft-card { position: relative; }
         .draft-card.selected {
             transform: scale(1.10) translateY(-12px);
@@ -4669,15 +4696,47 @@ body.low-perf #menu::before { filter: none; opacity: .18; }
         //   - 品质随选卡次数提升: 第1-2次蓝色 / 第3-5次紫色 / 第6次及以后至臻
         // ====================================================================
 
-        // 品质显示配置 (蓝#4f8eff / 紫#a29bfe / 至臻金色#ffd700)
+        // 品质显示配置 (蓝#4f8eff / 紫#a29bfe / 至臻金色#ffd700 / 至臻一星#ff4d6d)
         const DRAFT_RARITY_INFO = {
             blue:   { name: '蓝色', color: '#4f8eff' },
             purple: { name: '紫色', color: '#a29bfe' },
-            epic:   { name: '至臻', color: '#ffd700' }
+            epic:   { name: '至臻', color: '#ffd700' },
+            epic1:  { name: '至臻一星', color: '#ff4d6d' }
         };
 
+        // === 至臻一星: 俯视子弹属性模型 (反弹 / 穿透 / 分裂 / 数量上限) ===
+        // 仅俯视模式 (topdown / tdtraining) 的子弹读取本模型; 横版子弹不读
+        function _bulletModsDefault() {
+            return { bounce: 0, pierce: 0, splitChance: 0, splitCount: 0, splitPower: 0, cap: 100 };
+        }
+        // 无则创建; 逐字段 Number 校验并夹取 (旧存档/异常路径兜底)
+        function ensureBulletMods(ent) {
+            if (!ent) return _bulletModsDefault();
+            if (!ent.bulletMods || typeof ent.bulletMods !== 'object') ent.bulletMods = _bulletModsDefault();
+            const m = ent.bulletMods;
+            // 整数夹取
+            const _int = function (v, def, min, max) {
+                const x = Math.floor(Number(v));
+                if (!isFinite(x)) return def;
+                return Math.max(min, Math.min(max, x));
+            };
+            // 小数夹取
+            const _num = function (v, def, min, max) {
+                const x = Number(v);
+                if (!isFinite(x)) return def;
+                return Math.max(min, Math.min(max, x));
+            };
+            m.bounce = _int(m.bounce, 0, 0, 999);
+            m.pierce = _int(m.pierce, 0, 0, 999);
+            m.splitCount = _int(m.splitCount, 0, 0, 400);
+            m.splitChance = _num(m.splitChance, 0, 0, 0.8);
+            m.splitPower = _num(m.splitPower, 0, 0, 5);
+            m.cap = _int(m.cap, 100, 1, 500);
+            return m;
+        }
+
         // === 卡牌数据表 ===
-        // 结构: { id, name, icon, type: 'stat'(属性卡)|'perk'(功能卡), rarity: 'blue'|'purple'|'epic', desc, apply(player) }
+        // 结构: { id, name, icon, type: 'stat'(属性卡)|'perk'(功能卡), rarity: 'blue'|'purple'|'epic'|'epic1', desc, apply(player) }
         // 属性卡直接改玩家数值; 功能卡写入 player.cardPerks 计数器
         // 注: 弹匣类卡只改玩家实例克隆的武器对象 (构造函数已为每个实例浅拷贝 WEAPONS),
         //     绝不改共享 WEAPONS 表 —— 否则会污染其他实例的武器基准 (AI 同样消耗弹药/换弹)
@@ -4906,8 +4965,45 @@ body.low-perf #menu::before { filter: none; opacity: .18; }
                 id: 'stunlock', name: '眩晕枷锁', icon: '💫', type: 'equip', rarity: 'purple',
                 desc: '生命 +100，物攻 +20；每 15 秒（固定冷却，不受 CDR 影响）下一次攻击命中使敌人眩晕 2 秒：固定原地、无法跳跃/移动/开火且不受击退；每多一张眩晕 +0.3 秒、冷却 -0.5 秒，最多按 5 张结算（最高 3.2 秒 / 最低 13 秒）；「时间刻印」的额外冷却缩减仍生效',
                 apply(p) { const eq = ensureEquipObj(p); p.maxHealth += 100; eq.maxHp += 100; p.health = Math.min(p.maxHealth, p.health + 100); eq.atk += 20; eq.stunlock = (eq.stunlock || 0) + 1; }
+            },
+            // ---------- 效果卡: 至臻一星 (6张, 仅俯视模式生效) ----------
+            {
+                id: 'bullet_bounce_1', name: '弹弹弹！', icon: '🏓', type: 'effect', rarity: 'epic1',
+                desc: '俯视：你的子弹撞到地图边界后可反弹的次数 +1',
+                apply(p) { ensureBulletMods(p).bounce += 1; }
+            },
+            {
+                id: 'bullet_pierce_1', name: '穿穿穿！', icon: '🏹', type: 'effect', rarity: 'epic1',
+                desc: '俯视：你的子弹命中敌人后可继续穿透的次数 +1',
+                apply(p) { ensureBulletMods(p).pierce += 1; }
+            },
+            {
+                id: 'bullet_split_p', name: '分分分！', icon: '✳️', type: 'effect', rarity: 'epic1',
+                desc: '俯视：你的子弹命中敌人时分裂的概率 +10%（上限 80%）',
+                apply(p) { const m = ensureBulletMods(p); m.splitChance = Math.min(0.8, m.splitChance + 0.10); }
+            },
+            {
+                id: 'bullet_split_n', name: '多多多！', icon: '🎲', type: 'effect', rarity: 'epic1',
+                desc: '俯视：触发分裂时分裂出的子弹数量 +1',
+                apply(p) { ensureBulletMods(p).splitCount += 1; }
+            },
+            {
+                id: 'bullet_split_pow', name: '继继继！', icon: '🧬', type: 'effect', rarity: 'epic1',
+                desc: '俯视：分裂出的子弹继承当前属性的比例 +10%',
+                apply(p) { ensureBulletMods(p).splitPower += 0.10; }
+            },
+            {
+                id: 'bullet_cap', name: '加加加！', icon: '📦', type: 'effect', rarity: 'epic1',
+                desc: '俯视：你的子弹数量上限 +25（上限 500）',
+                apply(p) { const m = ensureBulletMods(p); m.cap = Math.min(500, m.cap + 25); }
             }
         ];
+
+        // === 至臻一星: 卡面左上角彩虹星标 (选卡 / 里程碑自选 / 现有卡牌通用) ===
+        function rarityStarHTML(card, extraCls) {
+            if (!card || card.rarity !== 'epic1') return '';
+            return '<div class="rarity-star1' + (extraCls ? ' ' + extraCls : '') + '">★</div>';
+        }
 
         // === 卡牌图标渲染: 优先真实图 assets/cards/<id>.jpg (已压缩), 无图自动回退 emoji ===
         function cardIconHTML(card, imgCls) {
@@ -4972,7 +5068,10 @@ body.low-perf #menu::before { filter: none; opacity: .18; }
             if (!order.length) return '<span class="stat-cards-empty">无</span>';
             return order.map(function (id) {
                 const c = meta[id];
+                const _def = CARDS.find(function (x) { return x.id === id; });
+                const _star = (_def && _def.rarity === 'epic1') ? '<span class="rarity-star1-inline" title="至臻一星">★</span>' : '';
                 return '<div class="stat-card-chip" data-card-id="' + id + '" title="点击查看「' + (c.name || id) + '」">' +
+                    _star +
                     '<img src="assets/cards/' + id + '.jpg" alt="" decoding="async" ' +
                     'onerror="this.style.display=\'none\';this.nextElementSibling.style.display=\'inline\'">' +
                     '<span class="chip-emoji" style="display:none">' + (c.icon || '🎴') + '</span>' +
@@ -4992,7 +5091,7 @@ body.low-perf #menu::before { filter: none; opacity: .18; }
                 : (card.type === 'effect' ? '效果卡' : (card.type === 'stat' ? '属性卡' : '功能卡'));
             const ri = DRAFT_RARITY_INFO[card.rarity] || { name: '普通', color: '#cccccc' };
             el.className = 'draft-card rarity-' + card.rarity;
-            el.innerHTML = cardIconHTML(card) +
+            el.innerHTML = rarityStarHTML(card) + cardIconHTML(card) +
                 '<div class="draft-card-name">' + card.name + '</div>' +
                 '<div class="draft-card-rarity" style="color:' + ri.color + ';">' + typeName + ' · ' + ri.name + '</div>' +
                 '<div class="draft-card-desc">' + (card.desc || '') + '</div>' +
@@ -5948,7 +6047,8 @@ body.low-perf #menu::before { filter: none; opacity: .18; }
         // === 卡池收敛: 选卡只抽装备卡 (属性/功能卡不再新抽; selectedCards/applyCardEffect 的
         // stat/perk 分支保留, 历史效果与 Tab 分组不变) ===
         // === 抽样: 从装备卡池随机抽 3 张 (装备卡固定紫色); 池不足 3 张时允许同名卡重复出现 (卡牌本身可叠加) ===
-        // === 抽卡回合规则: 装备卡 / 效果卡 交替, 效果卡每回合锁定一个品质 (至臻 70% / 紫 30%) ===
+        // === 抽卡回合规则: 装备卡 / 效果卡 交替, 效果卡每回合锁定一个品质
+        //     (横版: 至臻 70% / 紫 30%; 俯视: 至臻一星 10% / 至臻 70% / 紫 20%) ===
         let draftRoundSeq = 0;          // 第几次"回合抽卡" (每次击杀/波胜/PvP回合 +1)
         let roundDraftType = 'equip';   // 本回合抽卡类型: equip | effect
         let roundDraftRarity = 'purple';// 本回合锁定的品质 (仅效果卡生效, 刷新沿用)
@@ -5958,8 +6058,14 @@ body.low-perf #menu::before { filter: none; opacity: .18; }
             // 第 1 次抽装备卡, 之后严格交替
             roundDraftType = (draftRoundSeq % 2 === 1) ? 'equip' : 'effect';
             if (roundDraftType === 'effect') {
-                // 效果卡品质概率: 彩卡(至臻) 70% / 紫卡 30% (卡池无蓝卡)
-                roundDraftRarity = (Math.random() < 0.70) ? 'epic' : 'purple';
+                // 效果卡品质概率: 横版 至臻 70% / 紫 30% (卡池无蓝卡)
+                // 俯视模式 (topdown / tdtraining): 至臻一星 10% / 至臻 70% / 紫 20%
+                if (gameState === 'topdown' || gameState === 'tdtraining') {
+                    const _r = Math.random();
+                    roundDraftRarity = (_r < 0.10) ? 'epic1' : ((_r < 0.80) ? 'epic' : 'purple');
+                } else {
+                    roundDraftRarity = (Math.random() < 0.70) ? 'epic' : 'purple';
+                }
             } else {
                 roundDraftRarity = 'purple';
             }
@@ -6172,6 +6278,7 @@ body.low-perf #menu::before { filter: none; opacity: .18; }
                 const rName = DRAFT_RARITY_INFO[card.rarity].name;
                 el.innerHTML =
                     `<div class="draft-card-slot">${idx + 1}</div>` +
+                    rarityStarHTML(card, 'rarity-star1-slot') +
                     cardIconHTML(card) +
                     `<div class="draft-card-name">${card.name}</div>` +
                     `<div class="draft-card-rarity" style="color:${DRAFT_RARITY_INFO[card.rarity].color};">${rName}</div>` +
@@ -6344,12 +6451,15 @@ body.low-perf #menu::before { filter: none; opacity: .18; }
             const selCount = {};
             _freePickSel.forEach(function (id) { selCount[id] = (selCount[id] || 0) + 1; });
             const _scrollTop = grid.scrollTop;
-            grid.innerHTML = CARDS.map(function (c) {
+            // 至臻一星仅俯视可用: 横版 / 横版训练场的自选界面不展示一星卡
+            const _allowEpic1 = (gameState === 'topdown' || gameState === 'tdtraining');
+            grid.innerHTML = CARDS.filter(function (c) { return _allowEpic1 || c.rarity !== 'epic1'; }).map(function (c) {
                 const ri = DRAFT_RARITY_INFO[c.rarity] || DRAFT_RARITY_INFO.purple;
                 const _n = selCount[c.id] || 0;
                 const ct = (c.type === 'equip') ? '装备' : '效果';
                 return '<div class="free-card' + (_n > 0 ? ' sel' : '') + '" data-fp-id="' + c.id + '" style="border-color:' + ri.color + ';">' +
                     (_n > 0 ? '<div class="free-card-sel-badge">×' + _n + '</div>' : '') +
+                    rarityStarHTML(c) +
                     cardIconHTML(c, 'free-card-img') +
                     '<div class="free-card-name">' + c.name + '</div>' +
                     '<div class="free-card-meta" style="color:' + ri.color + ';">' + ct + ' · ' + ri.name + '</div>' +
@@ -6953,6 +7063,7 @@ body.low-perf #menu::before { filter: none; opacity: .18; }
                 atk: p.atk, atkM: p.atkM, defense: p.defense, defenseM: p.defenseM, pen: p.pen, penM: p.penM,
                 cdr: p.cdr, atkSpeed: p.atkSpeed, critRate: p.critRate, critDamageMult: p.critDamageMult,
                 equip: _clone(p.equip), cardPerks: _clone(p.cardPerks), fx: _clone(p.fx),
+                bulletMods: _clone(p.bulletMods),
                 _trainDefRed: p._trainDefRed || 0, _atkPerSecBonus: p._atkPerSecBonus || 0,
                 _healDecayBonus: p._healDecayBonus || 0,
                 cardDamageMult: p.cardDamageMult, cardSpeedMult: p.cardSpeedMult,
@@ -7062,6 +7173,9 @@ body.low-perf #menu::before { filter: none; opacity: .18; }
             if (typeof d.aiDamageMult === 'number') p.aiDamageMult = d.aiDamageMult;
             if (d.aiEmotion) p.aiEmotion = d.aiEmotion;
             p.jumpCount = _num(d.jumpCount, 0);
+            // 至臻一星: 俯视子弹属性读档 (旧存档无此字段 -> 走 ensureBulletMods 兜底创建)
+            if (d.bulletMods && typeof d.bulletMods === 'object') p.bulletMods = _clone(d.bulletMods);
+            ensureBulletMods(p);
             if (Array.isArray(d.cardLog)) p.cardLog = d.cardLog.slice();
             if (Array.isArray(d.aiEquipLog)) p.aiEquipLog = d.aiEquipLog.slice();
             if (d.weapons) {
@@ -7593,6 +7707,7 @@ body.low-perf #menu::before { filter: none; opacity: .18; }
                     execute: 0,     // 处决
                     timeWarp: 0      // 时间掌控
                 };
+                this.bulletMods = _bulletModsDefault();   // 至臻一星: 俯视子弹属性 (反弹/穿透/分裂/上限)
 
                 this.lastShot = 0;
                 this.isReloading = false;
@@ -11061,6 +11176,16 @@ body.low-perf #menu::before { filter: none; opacity: .18; }
                     if (e.cardPerks.execute > 0) perkLines.push('处决 ×' + e.cardPerks.execute);
                     if (e.cardPerks.timeWarp > 0) perkLines.push('时间掌控 ×' + e.cardPerks.timeWarp);
                 }
+                // 至臻一星: 俯视子弹属性 (全为默认值时整段不显示, 横版玩家天然不显示)
+                const _bmPanel = ensureBulletMods(e);
+                if (_bmPanel.bounce || _bmPanel.pierce || _bmPanel.splitChance || _bmPanel.splitCount || _bmPanel.splitPower || _bmPanel.cap !== 100) {
+                    perkLines.push('子弹反弹 ×' + _bmPanel.bounce);
+                    perkLines.push('子弹穿透 ×' + _bmPanel.pierce);
+                    perkLines.push('分裂概率 ' + Math.round(_bmPanel.splitChance * 100) + '%');
+                    perkLines.push('分裂数量 ×' + _bmPanel.splitCount);
+                    perkLines.push('分裂能力 ' + Math.round(_bmPanel.splitPower * 100) + '%');
+                    perkLines.push('子弹上限 ' + _bmPanel.cap);
+                }
 
                 // 装备卡加成 (equip 聚合)
                 const eqLines = [];
@@ -12078,6 +12203,92 @@ body.low-perf #menu::before { filter: none; opacity: .18; }
             }
         }
 
+        // === 至臻一星: 子弹强度 (0~1, 用于着色/发光) ===
+        function _bulletPowerT(b) {
+            if (!b) return 0;
+            const pow = (b.bounceLeft || 0) + (b.pierceLeft || 0) + (b.splitCount || 0) + (b.splitChance || 0) * 10 + (b.splitPower || 0) * 2;
+            return Math.max(0, Math.min(1, pow / 12));
+        }
+
+        // === 至臻一星: 子弹数量上限裁剪 (bullets 数组顺序即生成顺序, 先关停最早生成的) ===
+        function _enforceBulletCap(owner) {
+            if (!owner) return;
+            const cap = Math.max(1, Math.min(500, Math.floor(ensureBulletMods(owner).cap || 100)));
+            let cnt = 0;
+            for (let i = 0; i < bullets.length; i++) if (bullets[i] && bullets[i].active && bullets[i].owner === owner) cnt++;
+            let over = cnt - cap;
+            if (over <= 0) return;
+            for (let i = 0; i < bullets.length && over > 0; i++) {
+                const b = bullets[i];
+                if (b && b.active && b.owner === owner) { b.active = false; over--; }
+            }
+        }
+
+        // === 至臻一星: 分裂子弹暂存队列 ===
+        // updateBullets 用 filter 重建 bullets 数组, 遍历期间直接 push 的子弹会被新数组丢弃,
+        // 故分裂子子弹先入队, filter 完成后统一并入 bullets 并做上限裁剪。
+        let _tdSplitQueue = [];
+        function _drainTdSplitQueue() {
+            if (!_tdSplitQueue.length) return;
+            const owners = [];
+            for (let i = 0; i < _tdSplitQueue.length; i++) {
+                const c = _tdSplitQueue[i];
+                bullets.push(c);
+                if (c.owner && owners.indexOf(c.owner) < 0) owners.push(c.owner);
+            }
+            _tdSplitQueue = [];
+            for (let i = 0; i < owners.length; i++) _enforceBulletCap(owners[i]);
+        }
+
+        // === 至臻一星: 命中分裂 —— 以命中点为圆心向四周生成子子弹 ===
+        // 子子弹 splitPower=0 且属性按比例继承, 其下一代属性归零 -> 递归自然终止
+        function _tdSpawnSplit(parent, hx, hy) {
+            if (!parent) return;
+            const cnt = Math.max(0, Math.min(400, Math.floor(parent.splitCount || 0)));
+            const pow = Math.max(0, Math.min(5, parent.splitPower || 0));
+            const spd = Math.hypot(parent.vx || 0, parent.vy || 0) || 20;
+            for (let i = 0; i < cnt; i++) {
+                const ang = Math.random() * Math.PI * 2;
+                const child = {
+                    x: hx, y: hy,
+                    vx: Math.cos(ang) * spd, vy: Math.sin(ang) * spd,
+                    damage: parent.damage, isCrit: parent.isCrit, finalDamage: parent.finalDamage,
+                    owner: parent.owner, life: 120, size: Math.max(6, (parent.size || 12) * 0.85), active: true,
+                    color: parent.color, trailPositions: [],
+                    knockbackMult: (parent.knockbackMult || 1) * 0.6,
+                    fxMult: parent.fxMult || 1, volleyId: parent.volleyId, td: true,
+                    isLaser: false, specialType: parent.specialType,
+                    bounceLeft: Math.floor((parent.bounceLeft || 0) * pow),
+                    pierceLeft: Math.floor((parent.pierceLeft || 0) * pow),
+                    splitChance: Math.min(0.8, Math.floor((parent.splitChance || 0) * 100 * pow) / 100),
+                    splitCount: Math.floor((parent.splitCount || 0) * pow),
+                    splitPower: 0
+                };
+                child._powerT = _bulletPowerT(child);
+                _tdSplitQueue.push(child);   // 先入队, 由 updateBullets 末尾统一并入
+            }
+            if (parent.owner) _enforceBulletCap(parent.owner);
+            createParticles(hx, hy, parent.color || '#fff', 6);
+        }
+
+        // === 颜色工具: 基色与目标色按 k(0~1) 混合, 支持 #rgb / #rrggbb, 返回 rgb() 字符串 ===
+        function _mixColorHex(base, mix, k) {
+            const _parse = function (hex) {
+                if (typeof hex !== 'string') return null;
+                let s = hex.trim().replace('#', '');
+                if (s.length === 3) s = s[0] + s[0] + s[1] + s[1] + s[2] + s[2];
+                if (s.length !== 6 || !/^[0-9a-fA-F]{6}$/.test(s)) return null;
+                return [parseInt(s.slice(0, 2), 16), parseInt(s.slice(2, 4), 16), parseInt(s.slice(4, 6), 16)];
+            };
+            const a = _parse(base) || [255, 255, 255];
+            const c = _parse(mix) || [0, 0, 0];
+            const t = Math.max(0, Math.min(1, Number(k) || 0));
+            return 'rgb(' +
+                Math.round(a[0] + (c[0] - a[0]) * t) + ',' +
+                Math.round(a[1] + (c[1] - a[1]) * t) + ',' +
+                Math.round(a[2] + (c[2] - a[2]) * t) + ')';
+        }
+
         function updateBullets() {
             bullets = bullets.filter(b => {
                 if (!b.active) return false;
@@ -12108,6 +12319,22 @@ body.low-perf #menu::before { filter: none; opacity: .18; }
                 if (b.ricochetCooldown > 0) b.ricochetCooldown--;
 
                 // === Task 3: 边界检测 ===
+                const _isTdMap = (gameState === 'topdown' || gameState === 'tdtraining');
+                // === 至臻一星: 俯视地图边界反弹 (剩余反弹次数 -1, 反弹后保留子弹) ===
+                if (_isTdMap && (b.bounceLeft || 0) > 0) {
+                    let bounded = false;
+                    if (b.x < 0) { b.x = 0; b.vx = Math.abs(b.vx); bounded = true; }
+                    else if (b.x > TD.W) { b.x = TD.W; b.vx = -Math.abs(b.vx); bounded = true; }
+                    if (b.y < 0) { b.y = 0; b.vy = Math.abs(b.vy); bounded = true; }
+                    else if (b.y > TD.H) { b.y = TD.H; b.vy = -Math.abs(b.vy); bounded = true; }
+                    if (bounded) {
+                        b.bounceLeft -= 1;
+                        b.life = Math.max(b.life, 60);
+                        b.trailPositions = [];
+                        createParticles(b.x, b.y, b.color || '#fff', 5);
+                        return true;   // filter 回调保留子弹
+                    }
+                }
                 const _bw = (gameState === 'topdown') ? TD.W : CONFIG.MAP_WIDTH;
                 const _bh = (gameState === 'topdown') ? TD.H : CONFIG.MAP_HEIGHT;
                 if (b.x < -65 || b.x > _bw + 65 || b.y < -65 || b.y > _bh + 65 || b.life <= 0) return false;
@@ -12259,11 +12486,23 @@ body.low-perf #menu::before { filter: none; opacity: .18; }
                                 return; // 跳过 b.active = false, 子弹继续存活
                             }
                         }
+                        // === 至臻一星: 俯视命中结算 —— 分裂 / 穿透 (伤害已在上方结算完) ===
+                        if (_isTdMap && ((b.splitChance || 0) > 0 || (b.pierceLeft || 0) > 0)) {
+                            if ((b.splitChance || 0) > 0 && (b.splitCount || 0) > 0 && Math.random() < b.splitChance) {
+                                _tdSpawnSplit(b, b.x, b.y);
+                            }
+                            if ((b.pierceLeft || 0) > 0) {
+                                b.pierceLeft -= 1;
+                                b.ricochetCooldown = 3;   // 3帧命中免疫, 防止同帧反复结算
+                                return;                    // 跳过 b.active = false, 子弹继续飞行 (可重复伤害同一敌人)
+                            }
+                        }
                         b.active = false;
                     }
                 });
                 return true;
             });
+            _drainTdSplitQueue();   // 至臻一星: 并入本帧生成的裂变子弹 (filter 遍历期间不能直接 push)
         }
 
         // === Task 6: 子弹拖尾绘制 (完整防御性检查版) ===
@@ -12273,6 +12512,11 @@ body.low-perf #menu::before { filter: none; opacity: .18; }
                 const sx = b.x - camera.x, sy = b.y - camera.y;
                 if (!isFinite(sx) || !isFinite(sy)) return;
                 ctx.save();
+
+                // === 至臻一星: 强度着色 (仅俯视; 横版颜色不变) ===
+                const _isTdDraw = (gameState === 'topdown' || gameState === 'tdtraining');
+                const _powT = _isTdDraw ? Math.max(0, Math.min(1, b._powerT || 0)) : 0;
+                const _drawColor = (_powT > 0) ? _mixColorHex(b.color || '#ffffff', '#000000', _powT * 0.55) : (b.color || '#fff');
 
                 // 高速子弹拖尾
                 if (b.trailPositions && Array.isArray(b.trailPositions) && b.trailPositions.length > 1) {
@@ -12289,7 +12533,7 @@ body.low-perf #menu::before { filter: none; opacity: .18; }
                             const alphaVal = [0.5, 0.15, 0.05][i] || 0.05;
                             const radiusVal = Math.max(1, b.size * (1 - i * 0.18));
                             ctx.globalAlpha = alphaVal;
-                            ctx.fillStyle = b.color || '#fff';
+                            ctx.fillStyle = _drawColor;
                             ctx.beginPath();
                             ctx.arc(tsx, tsy, radiusVal, 0, Math.PI * 2);
                             ctx.fill();
@@ -12301,12 +12545,14 @@ body.low-perf #menu::before { filter: none; opacity: .18; }
                 const _lowBulletFx = (document.body && document.body.getAttribute('data-device') === 'touch');
                 if (_lowBulletFx) {
                     ctx.globalAlpha = 0.22;
-                    ctx.fillStyle = b.color || '#fff'; ctx.beginPath(); ctx.arc(sx, sy, Math.max(2, b.size * 2.1), 0, Math.PI * 2); ctx.fill();
+                    ctx.fillStyle = _drawColor; ctx.beginPath(); ctx.arc(sx, sy, Math.max(2, b.size * 2.1), 0, Math.PI * 2); ctx.fill();
                     ctx.globalAlpha = 1;
                 } else {
-                    ctx.shadowColor = b.color || '#fff'; ctx.shadowBlur = 28;
+                    ctx.shadowColor = _drawColor; ctx.shadowBlur = 28;
                 }
-                ctx.fillStyle = b.color || '#fff'; ctx.beginPath(); ctx.arc(sx, sy, Math.max(1, b.size), 0, Math.PI * 2); ctx.fill();
+                // 高强度子弹 (t >= 0.6): 外发光
+                if (_powT >= 0.6) { ctx.shadowColor = _drawColor; ctx.shadowBlur = 34; }
+                ctx.fillStyle = _drawColor; ctx.beginPath(); ctx.arc(sx, sy, Math.max(1, b.size), 0, Math.PI * 2); ctx.fill();
                 ctx.shadowBlur = 0;
                 ctx.fillStyle = '#fff'; ctx.beginPath(); ctx.arc(sx, sy, Math.max(1, b.size * 0.48), 0, Math.PI * 2); ctx.fill();
                 ctx.restore();
@@ -12718,10 +12964,13 @@ body.low-perf #menu::before { filter: none; opacity: .18; }
         }
 
         function trainPool() {
+            // 至臻一星卡仅俯视可用: 横版训练场的装配 / 商店池不展示
+            const _isTd = (gameState === 'topdown' || gameState === 'tdtraining');
+            const _all = _isTd ? CARDS : CARDS.filter(function (c) { return c.rarity !== 'epic1'; });
             if (trainShopMode === 'shop') {
-                return CARDS.filter(function (c) { return c.type === 'equip' || c.type === 'stat'; });
+                return _all.filter(function (c) { return c.type === 'equip' || c.type === 'stat'; });
             }
-            return CARDS.slice();
+            return _all.slice();
         }
 
         // === 训练场商店搜索: 包含即显示; 排序 = 命中字数(关键词长度×出现次数)降序 ===
@@ -13814,7 +14063,11 @@ body.low-perf #menu::before { filter: none; opacity: .18; }
                     '排行榜 / 留言板 / 管理面板只查询必要字段，打开更快；登录 / 注册按钮防连点，设备未联网时直接提示',
                     '位移改为独立充能系统：最多 3 层、每层 4 秒、不再消耗能量，玩家与 AI 规则完全一致；层数与充能进度显示在能量环上方（实心 = 可用，进度环 = 正在充能），复活 / 新一波自动补满',
                     '俯视 AI 位移决策重写：同时评估「原地 / 8 方向走位 / 16 方向位移落点」的受击风险，落点会避开子弹、地图边界与毒圈外；血量越低越愿意保命，能走位就不浪费层数，层数满时被持续瞄准会主动消耗一层以继续充能；新增横向绕开枪线、残血拉开、安全回圈与安全突进',
-                    '全面校准 AI 射速：7 把武器的实际射击间隔与「每秒发数 × (1 + 攻速 × 倍率)」公式逐项对齐（手枪 167ms / 步枪 125ms / 霰弹 714ms / 冲锋 83ms / 狙击与激光 909ms / 战刃 556ms）；AI 不再为位移预留能量，开火只看本次是否够用'
+                    '全面校准 AI 射速：7 把武器的实际射击间隔与「每秒发数 × (1 + 攻速 × 倍率)」公式逐项对齐（手枪 167ms / 步枪 125ms / 霰弹 714ms / 冲锋 83ms / 狙击与激光 909ms / 战刃 556ms）；AI 不再为位移预留能量，开火只看本次是否够用',
+                    '俯视新增「至臻一星」品质：卡牌左上角显示彩色星星与彩虹边框；效果卡回合概率改为紫色 20% / 至臻 70% / 至臻一星 10%（装备卡仍固定紫色，横版仍为至臻 70% / 紫 30%）',
+                    '新增 6 张至臻一星卡：弹弹弹！（子弹反弹 +1）、穿穿穿！（穿透 +1）、分分分！（分裂概率 +10%，上限 80%）、多多多！（分裂数量 +1）、继继继！（分裂能力 +10%）、加加加！（子弹上限 +25，上限 500）',
+                    '俯视子弹新增 6 项每颗独立属性：撞地图边界反弹、命中敌人后穿透可继续飞行（同一敌人可重复受伤）、命中时按概率分裂（子子弹按父弹当前属性 × 分裂能力向下取整继承，分裂能力不继承以自然终止递归）、子弹上限（初始 100，超出时自动移除最早的子弹）、按属性强度加深颜色并加光晕；属性面板会列出全部数值',
+                    '至臻一星卡与全部子弹属性仅在俯视 PVE / 俯视训练场生效：横版与 PVP 的抽卡概率、子弹表现、自选界面与训练场装配池均保持原样'
                 ]
             },
             {
@@ -14926,10 +15179,11 @@ body.low-perf #menu::before { filter: none; opacity: .18; }
             const spread = (typeof w.spread === 'number') ? w.spread : 0;
             const volleyId = (ent._tdVolley = (ent._tdVolley || 0) + 1);
             const _bulletSpeedMult = (ent.cardBulletSpeedMult || 1) * 0.8 * 0.7;   // 子弹速度累计降至 56%
+            const _bm = ensureBulletMods(ent);   // 至臻一星: 本发子弹属性快照 (无则创建/校验夹取)
             for (let i = 0; i < pellets; i++) {
                 const a = angle + (Math.random() - 0.5) * spread * 2 + (ent.isAI ? (Math.random() - 0.5) * 0.045 : 0);
                 const _crit = (typeof checkCrit === 'function') ? checkCrit(ent) : { isCrit: false };
-                bullets.push({
+                const _nb = {
                     x: ent.x + Math.cos(a) * 30,
                     y: ent.y + Math.sin(a) * 30,
                     vx: Math.cos(a) * (w.speed || 22) * _bulletSpeedMult,
@@ -14940,9 +15194,15 @@ body.low-perf #menu::before { filter: none; opacity: .18; }
                     knockbackMult: w.knockbackMultiplier || 1,
                     fxMult: w.fxMult || 1, volleyId: volleyId, td: true,
                     isLaser: tdWeaponKey(ent) === 'laser',
-                    specialType: specialType
-                });
+                    specialType: specialType,
+                    // 至臻一星: 反弹 / 穿透 / 分裂属性快照
+                    bounceLeft: _bm.bounce, pierceLeft: _bm.pierce,
+                    splitChance: _bm.splitChance, splitCount: _bm.splitCount, splitPower: _bm.splitPower
+                };
+                _nb._powerT = _bulletPowerT(_nb);   // 强度 0~1 (强度着色/发光用)
+                bullets.push(_nb);
             }
+            _enforceBulletCap(ent);   // 至臻一星: 超出子弹上限时关停最早生成的子弹
             createParticles(ent.x + Math.cos(angle) * 30, ent.y + Math.sin(angle) * 30, w.color || '#ffd700', 3);
             try {
                 const _wk = tdWeaponKey(ent);
