@@ -9525,14 +9525,11 @@ body.low-perf #menu::before { filter: none; opacity: .18; }
                 // isFxPass 特效通道不在此飘字 —— 由调用方按 DMG_COLORS.fx (绿) 逐装备弹出
                 if (!isFxPass) {
                     const shownDmg = actualDamage + shieldAbsorbed;   // 显示的"受到伤害"含被盾挡掉的部分
-                    if (shownDmg <= 0) {
-                        // 无实际伤害且无护盾吸收: 不弹 "-0"
-                    } else if (isCrit) {
-                        triggerCritVisuals(this.x, this.y, shownDmg, shieldHit, dtype);
-                    } else {
+                    if (shownDmg > 0) {
+                        // 高频命中时延迟合并显示 (1 秒内 >= 30 次只弹一次总伤害), 低频保持逐发飘字
                         const hitColor = dtype === 'true' ? DMG_COLORS.true
                             : (dtype === 'magic' ? DMG_COLORS.magic : DMG_COLORS.phys);
-                        showFloatingNumber(this.x, this.y - 50, '-' + shownDmg, hitColor, { prefix: shieldHit ? '🛡' : '', dmgKind: dtype });
+                        _showDamageOrBatch(this, shownDmg, hitColor, { prefix: shieldHit ? '🛡' : '', dmgKind: dtype }, isCrit);
                     }
                 }
 
@@ -11843,6 +11840,58 @@ body.low-perf #menu::before { filter: none; opacity: .18; }
             // 未超过 10 条: 不做任何合并
         }
 
+        // === 高频伤害延迟显示 === 
+        // 1 秒内同一目标被命中 >= 30 次时, 逐发弹字会拖慢帧率: 改为先累计, 满 1 秒只弹一次总伤害
+        const _DMG_BATCH_WINDOW = 1000;
+        const _DMG_BATCH_HITS = 30;
+        function _showDamageOrBatch(target, amount, color, opt, isCrit) {
+            if (!target || !(amount > 0)) return;
+            opt = opt || {};
+            const now = Date.now();
+            const b = target._dmgBatch;
+            if (b) {
+                b.total += amount;
+                if (isCrit) b.crit = true;
+                if (opt.prefix && String(opt.prefix).indexOf('🛡') >= 0) b.shield = true;
+                return;
+            }
+            if (!target._dmgWin) target._dmgWin = [];
+            const w = target._dmgWin;
+            w.push(now);
+            while (w.length && now - w[0] > _DMG_BATCH_WINDOW) w.shift();
+            if (w.length >= _DMG_BATCH_HITS) {
+                w.length = 0;   // 批次结束后重新统计, 避免下一批只包含残余命中
+                const batch = {
+                    total: amount, kind: opt.dmgKind || 'phys', color: color,
+                    crit: !!isCrit,
+                    shield: !!(opt.prefix && String(opt.prefix).indexOf('🛡') >= 0),
+                    startAt: now, timer: null
+                };
+                target._dmgBatch = batch;
+                batch.timer = setTimeout(function () {
+                    if (target._dmgBatch === batch) target._dmgBatch = null;
+                    const total = Math.round(batch.total);
+                    if (!(total > 0)) return;
+                    try {
+                        showFloatingNumber(target.x, target.y - 50, '-' + total, batch.crit ? DMG_COLORS.crit : batch.color, {
+                            big: true,
+                            prefix: (batch.shield ? '🛡' : '') + (batch.crit ? '✦' : ''),
+                            dmgKind: batch.kind
+                        });
+                    } catch (e) { }
+                }, _DMG_BATCH_WINDOW);
+                return;
+            }
+            if (isCrit) {
+                showFloatingNumber(target.x, target.y - 50, '-' + amount, DMG_COLORS.crit, {
+                    prefix: (opt.prefix ? String(opt.prefix) : '') + '✦',
+                    dmgKind: opt.dmgKind || 'phys'
+                });
+            } else {
+                showFloatingNumber(target.x, target.y - 50, '-' + amount, color, opt);
+            }
+        }
+
         function applyBurning(entity, stacks) {
             if (!entity) return;
             if (fxIsPurifying(entity)) return;   // 净化期间不接负面
@@ -14111,7 +14160,8 @@ body.low-perf #menu::before { filter: none; opacity: .18; }
                     '俯视训练场统一为手动瞄准：即使设置里开启了自动瞄准，训练场也只用鼠标 / 手指方向瞄准，方便练枪',
                     '俯视子弹新增第 7 项属性「子弹持续时间」：从子弹出生开始计时，超过该时长自动消失，初始 10 秒、上限 120 秒；分裂出的子弹从分裂那一刻重新计时（横版子弹仍按原寿命，不受影响）',
                     '新增至臻一星卡「久久久！」：你的子弹持续时间 +3 秒',
-                    '俯视属性面板现在对玩家与 AI 双方完整显示全部 7 项子弹属性：反弹次数、穿透次数、分裂概率、分裂数量、分裂能力、子弹上限、子弹持续时间'
+                    '俯视属性面板现在对玩家与 AI 双方完整显示全部 7 项子弹属性：反弹次数、穿透次数、分裂概率、分裂数量、分裂能力、子弹上限、子弹持续时间',
+                    '高频命中时伤害飘字延迟合并：同一目标 1 秒内被命中达到 30 次时，不再逐发弹出伤害数字，而是先累计、满 1 秒后只显示一次总伤害（暴击 ✦ / 护盾 🛡 标记保留），大幅减少大量子弹同时命中时的掉帧；命中频率较低时仍逐发显示'
                 ]
             },
             {
