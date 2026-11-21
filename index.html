@@ -11397,6 +11397,7 @@ body.low-perf #menu::before { filter: none; opacity: .18; }
         function createParticles(x, y, color, count) {
             if (!isFinite(x) || !isFinite(y)) return;
             if (document.body && document.body.getAttribute('data-device') === 'touch') count = Math.max(1, Math.round(count * 0.55));
+            if (perfLow()) count = Math.max(1, Math.round(count * 0.4));   // 低帧率: 进一步减少粒子
             for (let i = 0; i < count; i++) {
                 if (particles.length >= MAX_PARTICLES) break;
                 const a = Math.random() * Math.PI * 2, sp = 2.8 + Math.random() * 5;
@@ -11560,6 +11561,34 @@ body.low-perf #menu::before { filter: none; opacity: .18; }
             best.born = now;
             return true;
         }
+        // === 帧率保护 (目标: 任何时刻尽量不低于 10fps) ===
+        // 每 15 帧评估一次平均帧时间: >70ms (<14fps) 立即降载; <35ms (>28fps) 持续 2 秒后恢复
+        var PERF = { low: false, acc: 0, n: 0, avg: 16.7, okAt: 0 };
+        function perfTick(dtMs) {
+            if (!isFinite(dtMs) || dtMs <= 0 || dtMs > 2000) return;
+            PERF.acc += dtMs; PERF.n++;
+            if (PERF.n < 15) return;
+            PERF.avg = PERF.acc / PERF.n;
+            PERF.acc = 0; PERF.n = 0;
+            var now = Date.now();
+            if (PERF.avg > 70) {
+                if (!PERF.low) PERF.low = true;
+                PERF.okAt = 0;
+                try { document.body.classList.add('low-perf'); } catch (e) { }
+            } else if (PERF.avg < 35) {
+                if (PERF.low) {
+                    if (!PERF.okAt) PERF.okAt = now;
+                    if (now - PERF.okAt > 2000) {
+                        PERF.low = false; PERF.okAt = 0;
+                        try { document.body.classList.remove('low-perf'); } catch (e) { }
+                    }
+                }
+            } else {
+                PERF.okAt = 0;
+            }
+        }
+        function perfLow() { return PERF.low; }
+
         // 原始渲染: 不做限流 (由 showFloatingNumber 统计后调用)
         function _floatSpawn(x, y, text, color, opt) {
             opt = opt || {};
@@ -11836,7 +11865,7 @@ body.low-perf #menu::before { filter: none; opacity: .18; }
             _floatSpawn(x, y, text, color, opt);
             // 本窗口新增 > 10 → 合并本窗口条目; 否则仅按容量淘汰更早的普通条目
             // 实时保持屏幕上 ≤10 条: 只有超过 10 条才合并 (同类型 → 「总」, 多个总继续合并)
-            _floatCompact((document.body && document.body.getAttribute('data-device') === 'touch') ? 6 : 10);   // 手机端更快合并, 减少 DOM 数量
+            _floatCompact(perfLow() ? 4 : ((document.body && document.body.getAttribute('data-device') === 'touch') ? 6 : 10));   // 低帧率/手机端更快合并, 减少 DOM 数量
             // 未超过 10 条: 不做任何合并
         }
 
@@ -11859,7 +11888,7 @@ body.low-perf #menu::before { filter: none; opacity: .18; }
             const w = target._dmgWin;
             w.push(now);
             while (w.length && now - w[0] > _DMG_BATCH_WINDOW) w.shift();
-            if (w.length >= _DMG_BATCH_HITS) {
+            if (w.length >= (perfLow() ? 8 : _DMG_BATCH_HITS)) {
                 w.length = 0;   // 批次结束后重新统计, 避免下一批只包含残余命中
                 const batch = {
                     total: amount, kind: opt.dmgKind || 'phys', color: color,
@@ -12269,7 +12298,8 @@ body.low-perf #menu::before { filter: none; opacity: .18; }
         // === 至臻一星: 子弹数量上限裁剪 (bullets 数组顺序即生成顺序, 先关停最早生成的) ===
         function _enforceBulletCap(owner) {
             if (!owner) return;
-            const cap = Math.max(1, Math.min(500, Math.floor(ensureBulletMods(owner).cap || 100)));
+            let cap = Math.max(1, Math.min(500, Math.floor(ensureBulletMods(owner).cap || 100)));
+            if (perfLow()) cap = Math.max(10, Math.round(cap * 0.6));   // 低帧率: 场上子弹进一步限流
             let cnt = 0;
             for (let i = 0; i < bullets.length; i++) if (bullets[i] && bullets[i].active && bullets[i].owner === owner) cnt++;
             let over = cnt - cap;
@@ -12613,11 +12643,11 @@ body.low-perf #menu::before { filter: none; opacity: .18; }
 
                 // === 至臻一星: 强度着色 (仅俯视; 横版颜色不变) ===
                 const _isTdDraw = (gameState === 'topdown' || gameState === 'tdtraining');
-                const _powT = _isTdDraw ? Math.max(0, Math.min(1, b._powerT || 0)) : 0;
+                const _powT = (_isTdDraw && !perfLow()) ? Math.max(0, Math.min(1, b._powerT || 0)) : 0;
                 const _drawColor = (_powT > 0) ? _mixColorHex(b.color || '#ffffff', '#000000', _powT * 0.55) : (b.color || '#fff');
 
                 // 高速子弹拖尾
-                if (b.trailPositions && Array.isArray(b.trailPositions) && b.trailPositions.length > 1) {
+                if (!perfLow() && b.trailPositions && Array.isArray(b.trailPositions) && b.trailPositions.length > 1) {
                     const w = b.owner ? b.owner.weapon : null;
                     const spd = w && typeof w.speed === 'number' ? w.speed : 20;
                     if (spd > 22) {
@@ -12646,7 +12676,7 @@ body.low-perf #menu::before { filter: none; opacity: .18; }
                     ctx.fillStyle = _drawColor; ctx.beginPath(); ctx.arc(sx, sy, Math.max(2, b.size * 2.1), 0, Math.PI * 2); ctx.fill();
                     ctx.globalAlpha = 1;
                 } else {
-                    ctx.shadowColor = _drawColor; ctx.shadowBlur = 28;
+                    if (!perfLow()) { ctx.shadowColor = _drawColor; ctx.shadowBlur = 28; }
                 }
                 // 高强度子弹 (t >= 0.6): 外发光
                 if (_powT >= 0.6) { ctx.shadowColor = _drawColor; ctx.shadowBlur = 34; }
@@ -14161,7 +14191,10 @@ body.low-perf #menu::before { filter: none; opacity: .18; }
                     '俯视子弹新增第 7 项属性「子弹持续时间」：从子弹出生开始计时，超过该时长自动消失，初始 10 秒、上限 120 秒；分裂出的子弹从分裂那一刻重新计时（横版子弹仍按原寿命，不受影响）',
                     '新增至臻一星卡「久久久！」：你的子弹持续时间 +3 秒',
                     '俯视属性面板现在对玩家与 AI 双方完整显示全部 7 项子弹属性：反弹次数、穿透次数、分裂概率、分裂数量、分裂能力、子弹上限、子弹持续时间',
-                    '高频命中时伤害飘字延迟合并：同一目标 1 秒内被命中达到 30 次时，不再逐发弹出伤害数字，而是先累计、满 1 秒后只显示一次总伤害（暴击 ✦ / 护盾 🛡 标记保留），大幅减少大量子弹同时命中时的掉帧；命中频率较低时仍逐发显示'
+                    '高频命中时伤害飘字延迟合并：同一目标 1 秒内被命中达到 30 次时，不再逐发弹出伤害数字，而是先累计、满 1 秒后只显示一次总伤害（暴击 ✦ / 护盾 🛡 标记保留），大幅减少大量子弹同时命中时的掉帧；命中频率较低时仍逐发显示',
+                    '毒圈减疗一致性修复：减疗改为按「已缩圈次数 × 每波毒圈减疗」实时重建，缩圈、读档、重开新一波、次数被自动修正时都会同步，不再出现圈次数与减疗对不上的情况',
+                    '新增自动帧率保护：实时监测平均帧时间，低于约 14fps 时自动降载（伤害飘字改为 8 次/秒即合并、飘字最多 4 条、粒子减少、关闭拖尾与光晕、场上子弹限流到 60%、AI 思考间隔放宽），恢复到 28fps 持续 2 秒后自动还原，尽量保证任何时刻不低于 10fps',
+                    '自选卡牌确认包含全部至臻一星卡：俯视的里程碑自选 / 失败赏赐自选卡池已包含 7 张至臻一星卡（含「久久久！」），带彩色星星标识，可直接选择'
                 ]
             },
             {
@@ -14973,6 +15006,19 @@ body.low-perf #menu::before { filter: none; opacity: .18; }
             } catch (e) { }
         }
         loadTdEnv();
+        // 毒圈减疗: 按当前已缩圈次数重建双方减疗, 保证缩圈 / 读档 / 重置 / 次数被修正后始终一致
+        function tdZoneDecayPer(side) {
+            var _fallback = Math.max(0, Number(TD_ENV.decayPerShrink) || 0) / 100;
+            var t = (typeof TRAIN_TUNE !== 'undefined' && TRAIN_TUNE && TRAIN_TUNE[side]) ? TRAIN_TUNE[side] : null;
+            var v = (t && t.decayPerShrink != null) ? Number(t.decayPerShrink) : _fallback;
+            if (!isFinite(v)) v = _fallback;
+            return Math.max(0, Math.min(0.9, v));
+        }
+        function tdZoneSyncDecay() {
+            var cnt = Math.max(0, Math.round((TD.zone && TD.zone.shrinkCount) || 0));
+            if (player) player._healDecayBonus = Math.min(0.9, cnt * tdZoneDecayPer('mine'));
+            if (ai) ai._healDecayBonus = Math.min(0.9, cnt * tdZoneDecayPer('enemy'));
+        }
         // 毒圈状态规整: 存档 / 旧版本 / 调试写入的异常值统一在这里修正,
         // 保证「半径 / 收缩次数 / 下次收缩计时 / 毒伤计时」彼此一致, 防止读档后圈过大、连缩或毒伤爆炸
         function tdZoneClamp(z) {
@@ -15002,6 +15048,8 @@ body.low-perf #menu::before { filter: none; opacity: .18; }
             if (!isFinite(ns) || ns < now - interval * 0.5 || ns > now + interval) z.nextShrink = now + interval;
             var da = Number(z.dmgAt);
             if (!isFinite(da) || da < 0 || da > now) z.dmgAt = 0;
+            // 次数被修正后立即同步减疗, 避免「圈次数变了但减疗没变」
+            try { tdZoneSyncDecay(); } catch (e) { }
             return true;
         }
         function resetTdZone() {
@@ -15027,12 +15075,10 @@ body.low-perf #menu::before { filter: none; opacity: .18; }
                     z.r = Math.max(minR, z.r - step);
                     z.shrinkCount = (z.shrinkCount || 0) + 1;
                     try { _floatSpawn(z.cx, z.cy - 20, '毒圈收缩 · 第 ' + z.shrinkCount + ' 次', '#c084ff', { big: true }); } catch (e) { }
-                    // 每波毒圈: 双方各自按训练场面板的「每波毒圈减疗(%)」累加 (俯视专用, 默认 15%, 上限 90%)
-                    var _fallbackDec = Math.max(0, Number(TD_ENV.decayPerShrink) || 0) / 100;
-                    var _decP = Math.max(0, Number(TRAIN_TUNE && TRAIN_TUNE.mine && TRAIN_TUNE.mine.decayPerShrink != null ? TRAIN_TUNE.mine.decayPerShrink : _fallbackDec) || 0);
-                    var _decA = Math.max(0, Number(TRAIN_TUNE && TRAIN_TUNE.enemy && TRAIN_TUNE.enemy.decayPerShrink != null ? TRAIN_TUNE.enemy.decayPerShrink : _fallbackDec) || 0);
-                    if (player) player._healDecayBonus = Math.min(0.9, (player._healDecayBonus || 0) + _decP);
-                    if (ai) ai._healDecayBonus = Math.min(0.9, (ai._healDecayBonus || 0) + _decA);
+                    // 每波毒圈: 减疗 = 已缩圈次数 × 每波减疗 (按次数幂等生成, 不会因重复调用而多加)
+                    var _decP = tdZoneDecayPer('mine');
+                    var _decA = tdZoneDecayPer('enemy');
+                    tdZoneSyncDecay();
                     try {
                         var _decTxt = (_decP === _decA)
                             ? ('减疗 +' + Math.round(_decP * 100) + '%')
@@ -16047,7 +16093,7 @@ body.low-perf #menu::before { filter: none; opacity: .18; }
                 return;
             }
             tdRegen(ai, TD.dt || 0);
-            if (now >= TD.aThinkAt) { TD.aThinkAt = now + 100; tdAIThink(now); }
+            if (now >= TD.aThinkAt) { TD.aThinkAt = now + (perfLow() ? 150 : 100); tdAIThink(now); }
             // 刀剑处决: 逼近并在 115px 内挥砍, 结束后立刻切回远程武器
             if (TD.aMeleeUntil && now < TD.aMeleeUntil) {
                 const ddx = player.x - ai.x, ddy = player.y - ai.y;
@@ -18218,6 +18264,7 @@ body.low-perf #menu::before { filter: none; opacity: .18; }
             const _logicSteps = (gameState === 'playing' || gameState === 'pvp' || gameState === 'training')
                 ? Math.max(1, Math.min(3, Math.round(_rawDtMs / 16.67))) : 1;
             window.__lastSteps = _logicSteps;
+            perfTick(_rawDtMs);   // 帧率保护: 掉帧时自动降载
             frameCount++; time++;
             _tickCameraDt(); // 相机平滑用的帧步长 (帧率无关)
             // === 实时存档: 每 300ms 写一次盘 (>=3次/秒); 暂停/选卡期间状态不变故跳过 ===
