@@ -14203,7 +14203,8 @@ body.low-perf #menu::before { filter: none; opacity: .18; }
                     '毒圈减疗一致性修复：减疗改为按「已缩圈次数 × 每波毒圈减疗」实时重建，缩圈、读档、重开新一波、次数被自动修正时都会同步，不再出现圈次数与减疗对不上的情况',
                     '新增自动帧率保护：实时监测平均帧时间，低于约 14fps 时自动降载（伤害飘字改为 8 次/秒即合并、飘字最多 4 条、粒子减少、关闭拖尾与光晕、场上子弹限流到 60%、AI 思考间隔放宽），恢复到 28fps 持续 2 秒后自动还原，尽量保证任何时刻不低于 10fps',
                     '自选卡牌确认包含全部至臻一星卡：俯视的里程碑自选 / 失败赏赐自选卡池已包含 7 张至臻一星卡（含「久久久！」），带彩色星星标识，可直接选择',
-                    '俯视敌我子弹配色区分：玩家子弹保持枪械本色并加青白色描边，AI 子弹色相向红色偏移并加红色描边；弹幕中一眼分清敌我，同时仍能通过基色辨别是哪把枪的子弹'
+                    '俯视敌我子弹配色区分：玩家子弹保持枪械本色并加青白色描边，AI 子弹色相向红色偏移并加红色描边；弹幕中一眼分清敌我，同时仍能通过基色辨别是哪把枪的子弹',
+                    '位移充能显示改为与能量环同风格的圆环：有几层充能就套几层同心圆环，中央显示当前层数，紧挨在能量环旁边（手机端放在能量环上方避免压住摇杆 / 位移键）；层数未满时外圈显示下一层的充能进度'
                 ]
             },
             {
@@ -16465,23 +16466,39 @@ body.low-perf #menu::before { filter: none; opacity: .18; }
             ctx.textBaseline = 'alphabetic';
         }
 
-        // 位移层数指示: n 个圆点, 已充能实心; 正在充能的那一格画进度环
-        function tdDrawDashPips(cx, cy, layers, chargeRatio, color) {
+        // 位移充能环: 与能量环同风格; 有几层充能就画几层同心圆环, 中央显示当前层数
+        // 层数未满时, 最外侧再画一段进度弧表示下一层充能进度
+        function tdDrawDashRing(cx, cy, layers, chargeRatio, color, radius) {
             const total = TD.dashMaxLayers;
-            const gap = 12, r = 4.2;
-            const startX = cx - (total - 1) * gap / 2;
-            for (let i = 0; i < total; i++) {
-                const x = startX + i * gap;
-                ctx.beginPath(); ctx.arc(x, cy, r, 0, Math.PI * 2);
-                ctx.fillStyle = (i < layers) ? color : 'rgba(255,255,255,0.16)';
-                ctx.fill();
-                ctx.lineWidth = 1; ctx.strokeStyle = 'rgba(0,0,0,0.5)'; ctx.stroke();
-                if (i === layers && layers < total) {
+            const r = Math.max(10, radius || 24);
+            const lw = Math.max(2.2, r * 0.18);
+            // 底环 (空槽)
+            ctx.beginPath(); ctx.arc(cx, cy, r, 0, Math.PI * 2);
+            ctx.strokeStyle = 'rgba(255,255,255,0.13)'; ctx.lineWidth = lw; ctx.stroke();
+            // 有几层就套几个同心环 (从外到内)
+            const step = Math.max(3.4, lw + 2.2);
+            for (let i = 0; i < layers; i++) {
+                const rr = r - i * step;
+                if (rr < lw) break;
+                ctx.beginPath(); ctx.arc(cx, cy, rr, 0, Math.PI * 2);
+                ctx.strokeStyle = color; ctx.lineWidth = Math.max(1.5, lw * 0.82); ctx.lineCap = 'round'; ctx.stroke();
+            }
+            // 充能进度: 外圈一段弧
+            if (layers < total) {
+                const _pr = Math.max(0, Math.min(1, chargeRatio || 0));
+                if (_pr > 0.001) {
                     ctx.beginPath();
-                    ctx.arc(x, cy, r + 2.3, -Math.PI / 2, -Math.PI / 2 + Math.PI * 2 * Math.max(0, Math.min(1, chargeRatio || 0)));
-                    ctx.strokeStyle = color; ctx.lineWidth = 1.6; ctx.lineCap = 'round'; ctx.stroke();
+                    ctx.arc(cx, cy, r + lw * 0.95, -Math.PI / 2, -Math.PI / 2 + Math.PI * 2 * _pr);
+                    ctx.strokeStyle = color; ctx.lineWidth = Math.max(1.4, lw * 0.62); ctx.lineCap = 'round'; ctx.stroke();
                 }
             }
+            // 中央层数数字
+            ctx.fillStyle = '#fff';
+            ctx.font = 'bold ' + Math.max(10, Math.round(r * 0.58)) + 'px Arial';
+            ctx.textAlign = 'center';
+            ctx.textBaseline = 'middle';
+            ctx.fillText(String(layers), cx, cy + 0.5);
+            ctx.textBaseline = 'alphabetic';
         }
 
         // ===== 俯视狙击: 右键蓄力直线射击 (参考几何决斗) =====
@@ -16836,10 +16853,17 @@ body.low-perf #menu::before { filter: none; opacity: .18; }
             const _ringR = _touchUi ? 22 : 34;
             tdDrawEnergyRing(ringLX, ringY, tdEnergy(player), tdEnergyMaxOf(player), '#55efc4', _ringR);
             tdDrawEnergyRing(ringRX, ringY, tdEnergy(ai), tdEnergyMaxOf(ai), '#ffb86b', _ringR);
-            // 位移层数: 能量环旁边一排 3 格 (满层实心, 充能中用进度环) 
-            const _pipY = ringY - _ringR - (_touchUi ? 11 : 15);
-            tdDrawDashPips(ringLX, _pipY, tdDashLayersOf(player), tdDashChargeRatio(player), '#55efc4');
-            tdDrawDashPips(ringRX, _pipY, tdDashLayersOf(ai), tdDashChargeRatio(ai), '#ffb86b');
+            // 位移充能: 与能量环同风格的圆环, 放在能量环旁边; 有几层就套几个同心环, 中间显示层数
+            const _dashR = _touchUi ? 15 : 25;
+            const _dashGap = _ringR + _dashR + (_touchUi ? 8 : 22);
+            if (_touchUi) {
+                // 触屏: 左下 / 右下角被摇杆与位移键占用, 位移环放在能量环正上方, 不压按键
+                tdDrawDashRing(ringLX, ringY - _ringR - _dashR - 6, tdDashLayersOf(player), tdDashChargeRatio(player), '#55efc4', _dashR);
+                tdDrawDashRing(ringRX, ringY - _ringR - _dashR - 6, tdDashLayersOf(ai), tdDashChargeRatio(ai), '#ffb86b', _dashR);
+            } else {
+                tdDrawDashRing(ringLX + _dashGap, ringY, tdDashLayersOf(player), tdDashChargeRatio(player), '#55efc4', _dashR);
+                tdDrawDashRing(ringRX - _dashGap, ringY, tdDashLayersOf(ai), tdDashChargeRatio(ai), '#ffb86b', _dashR);
+            }
             if (!_touchUi) {
                 ctx.textAlign = 'center';
                 ctx.font = '11px Arial';
