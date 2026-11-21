@@ -6491,7 +6491,9 @@ body.low-perf #menu::before { filter: none; opacity: .18; }
             _freePickSel.forEach(function (id) { selCount[id] = (selCount[id] || 0) + 1; });
             const _scrollTop = grid.scrollTop;
             // 至臻一星仅俯视可用: 横版 / 横版训练场的自选界面不展示一星卡
-            const _allowEpic1 = (gameState === 'topdown' || gameState === 'tdtraining');
+            // 失败赏赐弹出时 gameState 已是 gameover, 必须用 _lastGameMode 兜底, 否则一星卡会消失
+            const _allowEpic1 = (gameState === 'topdown' || gameState === 'tdtraining' ||
+                (typeof window !== 'undefined' && (window._lastGameMode === 'topdown' || window._lastGameMode === 'tdtraining')));
             grid.innerHTML = CARDS.filter(function (c) { return _allowEpic1 || c.rarity !== 'epic1'; }).map(function (c) {
                 const ri = DRAFT_RARITY_INFO[c.rarity] || DRAFT_RARITY_INFO.purple;
                 const _n = selCount[c.id] || 0;
@@ -14259,7 +14261,8 @@ body.low-perf #menu::before { filter: none; opacity: .18; }
                     '俯视人物显示层级调整：人物本体、头顶血条与护盾条、命数、能量环、位移充能环、状态图标等所有角色周围的显示，改为双方本体都画完后再统一绘制，始终处于最上层；激光蓄力射线等世界特效移到人物下层，不再遮挡人物与血条',
                     '盛大开场改为可叠加：每张卡提供 1 层「每回合首次普攻 +150%」，触发一次消耗一层、用掉一个是一个，层数用完为止（旧存档的多张叠加会自动换算成对应层数）；该效果只由物理普攻触发，特效伤害、法术伤害、反伤都不会消耗或触发它',
                     '霰弹枪 / 高射速命中优化：玩家受击的震屏、闪屏、受击音效、血条脉冲与界面刷新改为 70ms 节流（同一帧多发弹丸只刷新一次界面）；AI 受击的击退火花 70ms 内只生成一次；特效伤害飘字同样接入高频合并。伤害数值与命中判定完全不变',
-                    'AI 获得卡牌的过场动画改为一次性同时展示：本次抽到的全部卡牌同屏出现（数量多时自动缩放排列，标题显示「AI 一次性获得 N 张卡牌」），不再一张一张依次播放，等待时间大幅缩短'
+                    'AI 获得卡牌的过场动画改为一次性同时展示：本次抽到的全部卡牌同屏出现（数量多时自动缩放排列，标题显示「AI 一次性获得 N 张卡牌」），不再一张一张依次播放，等待时间大幅缩短',
+                    '修复失败赏赐（剧情自选）有时候不显示至臻一星卡的问题：赏赐弹出时游戏已处于失败状态，现改为同时参考最近一次游戏模式判断，俯视的失败赏赐与里程碑自选都会完整显示全部 7 张至臻一星卡，横版仍不显示'
                 ]
             },
             {
