@@ -14204,7 +14204,8 @@ body.low-perf #menu::before { filter: none; opacity: .18; }
                     '新增自动帧率保护：实时监测平均帧时间，低于约 14fps 时自动降载（伤害飘字改为 8 次/秒即合并、飘字最多 4 条、粒子减少、关闭拖尾与光晕、场上子弹限流到 60%、AI 思考间隔放宽），恢复到 28fps 持续 2 秒后自动还原，尽量保证任何时刻不低于 10fps',
                     '自选卡牌确认包含全部至臻一星卡：俯视的里程碑自选 / 失败赏赐自选卡池已包含 7 张至臻一星卡（含「久久久！」），带彩色星星标识，可直接选择',
                     '俯视敌我子弹配色区分：玩家子弹保持枪械本色并加青白色描边，AI 子弹色相向红色偏移并加红色描边；弹幕中一眼分清敌我，同时仍能通过基色辨别是哪把枪的子弹',
-                    '位移充能显示改为与能量环同风格的圆环：有几层充能就套几层同心圆环，中央显示当前层数，紧挨在能量环旁边（手机端放在能量环上方避免压住摇杆 / 位移键）；层数未满时外圈显示下一层的充能进度'
+                    '位移充能显示改为与能量环同风格的圆环：有几层充能就套几层同心圆环，中央显示当前层数，紧挨在能量环旁边（手机端放在能量环上方避免压住摇杆 / 位移键）；层数未满时外圈显示下一层的充能进度',
+                    '俯视人物显示层级调整：人物本体、头顶血条与护盾条、命数、能量环、位移充能环、状态图标等所有角色周围的显示，改为双方本体都画完后再统一绘制，始终处于最上层；激光蓄力射线等世界特效移到人物下层，不再遮挡人物与血条'
                 ]
             },
             {
@@ -16228,17 +16229,6 @@ body.low-perf #menu::before { filter: none; opacity: .18; }
         function tdDrawEntity(ent, color, now) {
             const aim = ent._tdAim || 0;
             const r = ent._tdRadius || TD.radius;
-            // 能量占比圈: 紧贴角色外圈
-            {
-                const _emax = Math.max(1, tdEnergyMaxOf(ent));
-                const _er = Math.max(0, Math.min(1, tdEnergy(ent) / _emax));
-                ctx.strokeStyle = 'rgba(255,255,255,0.16)';
-                ctx.lineWidth = 6;
-                ctx.beginPath(); ctx.arc(ent.x, ent.y, r + 5, 0, Math.PI * 2); ctx.stroke();
-                ctx.strokeStyle = ent.isAI ? '#ffb86b' : '#55efc4';
-                ctx.lineWidth = 6;
-                ctx.beginPath(); ctx.arc(ent.x, ent.y, r + 5, -Math.PI / 2, -Math.PI / 2 + Math.PI * 2 * _er); ctx.stroke();
-            }
             // 无敌状态: 身体散发金光
             if (_isInvincibleVisual(ent, now)) {
                 try { drawInvincibleGlow(ctx, ent.x, ent.y, r + 4, now); } catch (e) { }
@@ -16249,14 +16239,6 @@ body.low-perf #menu::before { filter: none; opacity: .18; }
                 ctx.strokeStyle = 'rgba(255,140,60,0.55)';
                 ctx.lineWidth = 2;
                 ctx.beginPath(); ctx.arc(ent.x, ent.y, 90, 0, Math.PI * 2); ctx.fill(); ctx.stroke();
-            }
-            // 连杀数字 (与横版 drawPlayerComboNumber 对齐)
-            if (ent.comboStacks > 0) {
-                ctx.textAlign = 'center';
-                ctx.font = 'bold 14px Arial';
-                ctx.fillStyle = '#ffd700';
-                ctx.fillText('x' + ent.comboStacks, ent.x, ent.y - r - 44);
-                ctx.textAlign = 'left';
             }
             if (now < (ent._tdDashUntil || 0)) {
                 ctx.globalAlpha = 0.45;
@@ -16300,6 +16282,71 @@ body.low-perf #menu::before { filter: none; opacity: .18; }
                 ctx.beginPath();
                 ctx.arc(ent.x, ent.y, sw.reach, sw.angle - sw.half, sw.angle + sw.half);
                 ctx.stroke();
+            }
+            // === 黑色多边形斩击 (扫过的环形扇区, 4 边形) ===
+            if (ent._tdSlash && now < ent._tdSlash.until) {
+                const sl = ent._tdSlash;
+                const p = Math.max(0, Math.min(1, (now - sl.start) / (sl.until - sl.start)));
+                const startA = sl.angle - sl.half * sl.dir;
+                const curA = startA + sl.half * 2 * p * sl.dir;
+                // 只保留刃口后方一段拖尾, 形成移动的弧形黑刃 (不是整块扇形)
+                const tailA = curA - sl.dir * sl.half * 0.62;
+                ctx.save();
+                ctx.globalAlpha = Math.max(0, 1 - p * 0.9);
+                ctx.beginPath();
+                ctx.arc(ent.x, ent.y, sl.reach, tailA, curA, sl.dir < 0);
+                ctx.arc(ent.x, ent.y, sl.reach * 0.80, curA, tailA, sl.dir > 0);
+                ctx.closePath();
+                ctx.fillStyle = 'rgba(0,0,0,0.95)';
+                ctx.fill();
+                ctx.strokeStyle = 'rgba(255,255,255,0.65)';
+                ctx.lineWidth = 1.5;
+                ctx.stroke();
+                // 刃口高光 (细弧线)
+                ctx.globalAlpha = Math.max(0, 1 - p);
+                ctx.beginPath();
+                ctx.arc(ent.x, ent.y, sl.reach * 0.92, curA - sl.dir * sl.half * 0.28, curA, sl.dir < 0);
+                ctx.strokeStyle = 'rgba(230,230,255,0.9)';
+                ctx.lineWidth = 2.5;
+                ctx.stroke();
+                // 末端尖锋
+                ctx.globalAlpha = Math.max(0, (1 - p) * 0.8);
+                ctx.beginPath();
+                ctx.moveTo(ent.x + Math.cos(curA) * sl.reach * 1.02, ent.y + Math.sin(curA) * sl.reach * 1.02);
+                ctx.lineTo(ent.x + Math.cos(curA - sl.dir * 0.10) * sl.reach * 0.72, ent.y + Math.sin(curA - sl.dir * 0.10) * sl.reach * 0.72);
+                ctx.lineTo(ent.x + Math.cos(curA + sl.dir * 0.10) * sl.reach * 0.72, ent.y + Math.sin(curA + sl.dir * 0.10) * sl.reach * 0.72);
+                ctx.closePath();
+                ctx.fillStyle = 'rgba(0,0,0,0.95)';
+                ctx.fill();
+                ctx.restore();
+            }
+            ctx.textAlign = 'left';
+            ctx.textBaseline = 'alphabetic';
+        }
+
+        // 角色周围的所有显示 (能量环 / 连杀 / 头顶血条护盾 / 命数 / 刀蓄力 / 状态图标)
+        // 在双方本体都画完后统一绘制, 保证始终在最上层, 不会被另一个角色或世界特效遮挡
+        function tdDrawEntityHeadUI(ent, now) {
+            if (!ent) return;
+            const r = ent._tdRadius || TD.radius;
+            // 能量占比圈: 紧贴角色外圈
+            {
+                const _emax = Math.max(1, tdEnergyMaxOf(ent));
+                const _er = Math.max(0, Math.min(1, tdEnergy(ent) / _emax));
+                ctx.strokeStyle = 'rgba(255,255,255,0.16)';
+                ctx.lineWidth = 6;
+                ctx.beginPath(); ctx.arc(ent.x, ent.y, r + 5, 0, Math.PI * 2); ctx.stroke();
+                ctx.strokeStyle = ent.isAI ? '#ffb86b' : '#55efc4';
+                ctx.lineWidth = 6;
+                ctx.beginPath(); ctx.arc(ent.x, ent.y, r + 5, -Math.PI / 2, -Math.PI / 2 + Math.PI * 2 * _er); ctx.stroke();
+            }
+            // 连杀数字 (与横版 drawPlayerComboNumber 对齐)
+            if (ent.comboStacks > 0) {
+                ctx.textAlign = 'center';
+                ctx.font = 'bold 14px Arial';
+                ctx.fillStyle = '#ffd700';
+                ctx.fillText('x' + ent.comboStacks, ent.x, ent.y - r - 44);
+                ctx.textAlign = 'left';
             }
             // === 头顶状态 (照抄横版: 血条 / 护盾条 / 数值 / 刀蓄力) ===
             // === 头顶 UI (完全照抄横版 drawHeadUI / drawShieldHeadUI) ===
@@ -16371,43 +16418,6 @@ body.low-perf #menu::before { filter: none; opacity: .18; }
                     ctx.fillStyle = '#ffffff';
                     ctx.fillText('⚡旋风斩', ent.x, cy - 3);
                 }
-            }
-            // === 黑色多边形斩击 (扫过的环形扇区, 4 边形) ===
-            if (ent._tdSlash && now < ent._tdSlash.until) {
-                const sl = ent._tdSlash;
-                const p = Math.max(0, Math.min(1, (now - sl.start) / (sl.until - sl.start)));
-                const startA = sl.angle - sl.half * sl.dir;
-                const curA = startA + sl.half * 2 * p * sl.dir;
-                // 只保留刃口后方一段拖尾, 形成移动的弧形黑刃 (不是整块扇形)
-                const tailA = curA - sl.dir * sl.half * 0.62;
-                ctx.save();
-                ctx.globalAlpha = Math.max(0, 1 - p * 0.9);
-                ctx.beginPath();
-                ctx.arc(ent.x, ent.y, sl.reach, tailA, curA, sl.dir < 0);
-                ctx.arc(ent.x, ent.y, sl.reach * 0.80, curA, tailA, sl.dir > 0);
-                ctx.closePath();
-                ctx.fillStyle = 'rgba(0,0,0,0.95)';
-                ctx.fill();
-                ctx.strokeStyle = 'rgba(255,255,255,0.65)';
-                ctx.lineWidth = 1.5;
-                ctx.stroke();
-                // 刃口高光 (细弧线)
-                ctx.globalAlpha = Math.max(0, 1 - p);
-                ctx.beginPath();
-                ctx.arc(ent.x, ent.y, sl.reach * 0.92, curA - sl.dir * sl.half * 0.28, curA, sl.dir < 0);
-                ctx.strokeStyle = 'rgba(230,230,255,0.9)';
-                ctx.lineWidth = 2.5;
-                ctx.stroke();
-                // 末端尖锋
-                ctx.globalAlpha = Math.max(0, (1 - p) * 0.8);
-                ctx.beginPath();
-                ctx.moveTo(ent.x + Math.cos(curA) * sl.reach * 1.02, ent.y + Math.sin(curA) * sl.reach * 1.02);
-                ctx.lineTo(ent.x + Math.cos(curA - sl.dir * 0.10) * sl.reach * 0.72, ent.y + Math.sin(curA - sl.dir * 0.10) * sl.reach * 0.72);
-                ctx.lineTo(ent.x + Math.cos(curA + sl.dir * 0.10) * sl.reach * 0.72, ent.y + Math.sin(curA + sl.dir * 0.10) * sl.reach * 0.72);
-                ctx.closePath();
-                ctx.fillStyle = 'rgba(0,0,0,0.95)';
-                ctx.fill();
-                ctx.restore();
             }
             // === 状态图标 (眩晕 💫 / 灼烧 🔥 / 减速 / 禁位移 / 冰冻 ...) ===
             const _fxList = (ent.activeEffects || []).filter(function (e) { return e && (e.endTime || 0) > Date.now(); }).slice(0, 5);
@@ -16814,9 +16824,13 @@ body.low-perf #menu::before { filter: none; opacity: .18; }
                     }
                 }
             });
+            // 激光蓄力射线等世界特效画在角色之前, 不遮挡人物与头顶显示
+            try { tdDrawSniperFx(now); } catch (e) { }
             if (player && player.health > 0) tdDrawEntity(player, '#4f8eff', now);
             if (ai && ai.health > 0) tdDrawEntity(ai, '#ff6b6b', now);
-            try { tdDrawSniperFx(now); } catch (e) { }
+            // 双方本体画完后统一绘制人物周围显示 (能量环 / 血条 / 护盾 / 状态等), 始终在最上层
+            if (player && player.health > 0) tdDrawEntityHeadUI(player, now);
+            if (ai && ai.health > 0) tdDrawEntityHeadUI(ai, now);
             ctx.restore();
             // 训练场: AI 头顶总伤害 / 秒伤面板 (与横版同源, 屏幕空间绘制)
             if (gameState === 'tdtraining' && ai && ai.health > 0) {
