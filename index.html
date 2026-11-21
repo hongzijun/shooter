@@ -5260,7 +5260,7 @@ body.low-perf #menu::before { filter: none; opacity: .18; }
                     lowHpLifesteal: 0, lowHpAtkSpeed: 0, lowHpDef: 0,
                     dmgRedHighHp: 0, dmgRedHighHpThresh: 0.6,
                     cdrPlus: 0, debuffExt: 0, buffExt: 0,
-                    firstHitDmg: 0, every8sDmg: 0, rollMin: 1, rollMax: 1,
+                    firstHitDmg: 0, firstHitCharges: 0, firstHitUsedThisBattle: false, every8sDmg: 0, rollMin: 1, rollMax: 1,
                     thorns: 0, thornsDefPct: 0, thornMaxHpPct: 0,
                     critShieldPct: 0, critHealPct: 0, critHealChance: 0,
                     extraMagicPctOfAtk: 0, nthHitEvery: 0, nthHitMagicPct: 0.30,
@@ -5279,13 +5279,20 @@ body.low-perf #menu::before { filter: none; opacity: .18; }
                     skillHeal: 0, skillHealPct: 0, skillNextAtkPct: 0, skillSpeedBoost: 0,
                     doubleChase: 0, box: 0, overclock: 0, airbag: 0, resoncutter: 0, turbine: 0, iceLoss: 0,
                     // 运行时
-                    hits: 0, firstHitDone: false,
+                    hits: 0,
                     lastHurtAt: 0, lastHeal5: 0, lastHeal8: 0, lastShield8: 0, lastShield10: 0,
                     lastImmune9: 0, lastPanic: 0, lastHurtShield: 0, lastSurge: 0,
                     lastIceLoss: 0, iceLossAcc: 0, lastEvery8: 0, legendKills: 0,
                     inst: {}   // 多张同类卡实例: { cardId: [{ lastAt, ready, used, armedUntil, close, acc }] }
                 };
             }
+            // 旧存档迁移: 旧版盛大开场把多张合成为 firstHitDmg 总量 (每张 1.5) 且只触发一次;
+            // 现改为每张一层, 每回合首次普攻消耗一层
+            if (p.fx.firstHitCharges == null) {
+                p.fx.firstHitCharges = (p.fx.firstHitDmg > 0) ? Math.max(1, Math.round(p.fx.firstHitDmg / 1.5)) : 0;
+                if (p.fx.firstHitDmg > 0) p.fx.firstHitDmg = 1.5;
+            }
+            if (p.fx.firstHitUsedThisBattle == null) p.fx.firstHitUsedThisBattle = !!p.fx.firstHitDone;
             return p.fx;
         }
 
@@ -5419,7 +5426,7 @@ body.low-perf #menu::before { filter: none; opacity: .18; }
         }
 
         // 出伤系数 (攻击者视角): 条件增伤 / 首击 / 浮动 / 攻防差
-        function fxDamageMult(att, tgt) {
+        function fxDamageMult(att, tgt, basicAtk) {
             if (!att || !att.fx) return 1;
             const fx = att.fx;
             let m = 1 + (fx.dmgPct || 0);
@@ -5433,7 +5440,7 @@ body.low-perf #menu::before { filter: none; opacity: .18; }
             if (fx.crusher > 0 && tgt && att.maxHealth > tgt.maxHealth) {
                 m += 0.30 * (fx.crusher || 1) * Math.min(1, (att.maxHealth - tgt.maxHealth) / 900);
             }
-            if (fx.firstHitDmg > 0 && !fx.firstHitDone) m += fx.firstHitDmg;
+            if (basicAtk !== false && fx.firstHitDmg > 0 && (fx.firstHitCharges || 0) > 0 && !fx.firstHitUsedThisBattle) m += fx.firstHitDmg;
             if (fx.surge > 0) { const _sg = fx.surge || 1; m += ((fx.surgeStacks || 0) * 0.01 + ((fx.surgeStacks || 0) >= 6 ? 0.10 : 0)) * _sg; }
             if (fx.every8sDmg > 0) {
                 const _now8 = Date.now();
@@ -5477,12 +5484,16 @@ body.low-perf #menu::before { filter: none; opacity: .18; }
         }
 
         // 命中钩子: 暴击护盾/回血、攻击附魔、每N次命中、灼烧、吸血转盾、反弹
-        function fxOnHit(att, tgt, dmg, isCrit) {
+        function fxOnHit(att, tgt, dmg, isCrit, basicAtk) {
             if (!att || !tgt) return;
             const fx = att.fx;
             const now = Date.now();
             if (fx) {
-                fx.firstHitDone = true;
+                // 盛大开场: 只有普通物理攻击的首次命中消耗一层; 特效伤害 / 法术伤害 / 反伤都不触发
+                if (basicAtk !== false && fx.firstHitDmg > 0 && (fx.firstHitCharges || 0) > 0 && !fx.firstHitUsedThisBattle) {
+                    fx.firstHitCharges = Math.max(0, (fx.firstHitCharges || 0) - 1);
+                    fx.firstHitUsedThisBattle = true;
+                }
                 // 暴击护盾 / 暴击回血
                 if (isCrit) {
                     if (fx.critShieldPct > 0) fxShield(att, dmg * fx.critShieldPct, cardIconOf(att, ['fx_critbarrier_e', 'fx_critbarrier_p']));
@@ -5909,7 +5920,7 @@ body.low-perf #menu::before { filter: none; opacity: .18; }
             if (!p) return;
             const fx = ensureFx(p);
             const now = Date.now();
-            fx.firstHitDone = false;
+            fx.firstHitUsedThisBattle = false;   // 层数保留: 每回合首次普攻消耗一层, 用完为止
             fx.lastEvery8 = 0;
             // 仔仔熊 / 备用能源: 占用期由实例 until 控制 (效果结束即可再触发), 不再按回合重置
             fx.energyUsed = false;
@@ -6007,7 +6018,7 @@ body.low-perf #menu::before { filter: none; opacity: .18; }
             { id: 'fx_skillheal_e', name: '生机勃勃', icon: '🌱', type: 'effect', rarity: 'epic', desc: '使用技能时回复30(+3.5%最大生命)点生命',
               apply(p) { const f = ensureFx(p); f.skillHeal += 30; f.skillHealPct += 0.035; } },
             { id: 'fx_opening_e', name: '盛大开场', icon: '🎬', type: 'effect', rarity: 'epic', desc: '每次战斗第一次伤害提高150%',
-              apply(p) { ensureFx(p).firstHitDmg += 1.50; } },
+              apply(p) { var _f = ensureFx(p); _f.firstHitCharges = (_f.firstHitCharges || 0) + 1; _f.firstHitDmg = 1.50; } },
             { id: 'fx_adapt_e', name: '适应力', icon: '🧬', type: 'effect', rarity: 'epic', desc: '受伤后+5物法防（6秒，叠10层）',
               apply(p) { const f = ensureFx(p); f.adaptDef = (f.adaptDef || 0) + 1; } },
             { id: 'fx_desperate_e', name: '殊死一搏', icon: '💀', type: 'effect', rarity: 'epic', desc: '生命越低伤害越高，<10%时最高+100%',
@@ -9371,8 +9382,11 @@ body.low-perf #menu::before { filter: none; opacity: .18; }
                     if (effInfo.reduce > 0) actualDamage = Math.round(actualDamage * (1 - effInfo.reduce));
                 }
 
+                // 普攻口径: 子弹命中 / 近战物理; 特效伤害(isFxPass)、法术伤害、反伤、环境伤害都不算
+                // 只认物理伤害 (子弹或近战); 法术/真伤/特效/反伤/环境伤害都不算普攻
+                const _basicAtk = (dtype === 'phys') && !isFxPass && !isReflect;
                 // === 效果卡: 攻击者条件增伤 (落井下石/挑战者/殊死一搏/神经刀/盛大开场/一击脱离/碾压/狩猎) ===
-                if (attacker && attacker.fx && !isFxPass) actualDamage = Math.round(actualDamage * fxDamageMult(attacker, this));
+                if (attacker && attacker.fx && !isFxPass) actualDamage = Math.round(actualDamage * fxDamageMult(attacker, this, _basicAtk));
                 // === 效果卡: 受击者条件减伤 (崭新护甲/蛋生保险) ===
                 if (this.fx) actualDamage = Math.round(actualDamage * fxDamageTaken(this));
                 // === 效果卡: 增幅力场披风 —— 8米(240px)内敌人受到的伤害 +15% ===
@@ -9450,7 +9464,7 @@ body.low-perf #menu::before { filter: none; opacity: .18; }
                 // 命中量口径统一: 血扣量 + 护盾吸收量
                 // 护盾把伤害全部挡掉时 actualDamage=0, 若拿它当命中量, 吸血转化护盾/暴击护盾等会变成 0 —— 有盾/无盾不一致
                 const hitTotal = actualDamage + shieldAbsorbed;
-                if (!isFxPass && attacker && attacker.fx) fxOnHit(attacker, this, hitTotal, isCrit);
+                if (!isFxPass && attacker && attacker.fx) fxOnHit(attacker, this, hitTotal, isCrit, _basicAtk);
                 // === 效果卡/装备: 反弹 (反弹/反弹马甲/崎岖外壳) ===
                 // 防套娃: 本次伤害本身是反弹伤害 (isReflect) 时不再触发二次反弹 —— 双方都有反弹只弹 1 次
                 if (!isReflect && this.fx && attacker && attacker !== this && attacker.health > 0) {
@@ -9469,7 +9483,7 @@ body.low-perf #menu::before { filter: none; opacity: .18; }
                     // 触发口径: 只认普攻 (子弹命中 / 近战物理), 特效伤害(isFxPass)、灼烧等魔法伤害、环境/持续伤害一律不触发
                     // 频率: 同一次开火的多颗弹丸(霰弹枪)共用 volleyId, 只反弹一次; 每次近战挥击也只反弹一次
                     if (this.fx.thornsDefPct > 0) {
-                        const _basicAtk = isBulletHit || ((damageType === 'phys' || damageType == null) && !isFxPass);
+                        // 复用上面的普攻口径 (已排除特效 / 法术 / 反伤)
                         const _volley = (isBulletHit && srcBullet) ? (srcBullet.volleyId || 0) : 0;
                         const _dup = _volley > 0 && this._shellVolley === _volley && this._shellVolleyOwner === attacker;
                         if (_basicAtk && !_dup) {
@@ -10664,7 +10678,7 @@ body.low-perf #menu::before { filter: none; opacity: .18; }
                     out.push({ type: 'cd', key: 'stunlock', name: '眩晕枷锁', iconId: 'stunlock', emoji: '💫', remain: _slRemain, total: _slTotal, badge: ent.equip.stunlock, badgeMax: 5 });
                 }
                 // 被动已就绪 (不读秒)
-                if (fx.firstHitDmg > 0) out.push({ type: 'ready', key: 'opening', name: '盛大开场', iconId: 'fx_opening_e', ready: !fx.firstHitDone });
+                if (fx.firstHitDmg > 0) out.push({ type: 'ready', key: 'opening', name: '盛大开场', iconId: 'fx_opening_e', ready: (fx.firstHitCharges || 0) > 0 && !fx.firstHitUsedThisBattle });
                 if (fx.skillNextAtkPct > 0) out.push({ type: 'ready', key: 'kinetic', name: '动能铁臂', iconId: 'kineticarm', ready: (ent._skillNextAtk || 0) > 0 });
                 if (fx.box > 0) {
                     const _boxArr = fxInst(ent, 'fx_box_p', fx.box);
@@ -14205,7 +14219,8 @@ body.low-perf #menu::before { filter: none; opacity: .18; }
                     '自选卡牌确认包含全部至臻一星卡：俯视的里程碑自选 / 失败赏赐自选卡池已包含 7 张至臻一星卡（含「久久久！」），带彩色星星标识，可直接选择',
                     '俯视敌我子弹配色区分：玩家子弹保持枪械本色并加青白色描边，AI 子弹色相向红色偏移并加红色描边；弹幕中一眼分清敌我，同时仍能通过基色辨别是哪把枪的子弹',
                     '位移充能显示改为与能量环同风格的圆环：有几层充能就套几层同心圆环，中央显示当前层数，紧挨在能量环旁边（手机端放在能量环上方避免压住摇杆 / 位移键）；层数未满时外圈显示下一层的充能进度',
-                    '俯视人物显示层级调整：人物本体、头顶血条与护盾条、命数、能量环、位移充能环、状态图标等所有角色周围的显示，改为双方本体都画完后再统一绘制，始终处于最上层；激光蓄力射线等世界特效移到人物下层，不再遮挡人物与血条'
+                    '俯视人物显示层级调整：人物本体、头顶血条与护盾条、命数、能量环、位移充能环、状态图标等所有角色周围的显示，改为双方本体都画完后再统一绘制，始终处于最上层；激光蓄力射线等世界特效移到人物下层，不再遮挡人物与血条',
+                    '盛大开场改为可叠加：每张卡提供 1 层「每回合首次普攻 +150%」，触发一次消耗一层、用掉一个是一个，层数用完为止（旧存档的多张叠加会自动换算成对应层数）；该效果只由物理普攻触发，特效伤害、法术伤害、反伤都不会消耗或触发它'
                 ]
             },
             {
