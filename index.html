@@ -12262,7 +12262,9 @@ body.low-perf #menu::before { filter: none; opacity: .18; }
                     pierceLeft: Math.floor((parent.pierceLeft || 0) * pow),
                     splitChance: Math.min(0.8, Math.floor((parent.splitChance || 0) * 100 * pow) / 100),
                     splitCount: Math.floor((parent.splitCount || 0) * pow),
-                    splitPower: 0
+                    splitPower: 0,
+                    // 分裂子子弹生成在命中点 (敌人体内): 必须先完全离开身体, 再静置 0.05 秒才能命中
+                    _hitLock: true, _lockInside: true, _lockClearAt: 0
                 };
                 child._powerT = _bulletPowerT(child);
                 _tdSplitQueue.push(child);   // 先入队, 由 updateBullets 末尾统一并入
@@ -12340,6 +12342,32 @@ body.low-perf #menu::before { filter: none; opacity: .18; }
                 if (b.x < -65 || b.x > _bw + 65 || b.y < -65 || b.y > _bh + 65 || b.life <= 0) return false;
 
                 const targets = gameState === 'pvp' ? [playerA, playerB] : [player, ai];
+                // === 分裂 / 穿透子弹: 命中后必须先完全离开敌人身体, 再静置 0.05 秒才能再次造成伤害 ===
+                // 防止子弹还在敌人体内 / 刚分裂出来时就立刻重复命中
+                if (b._hitLock) {
+                    const _nowMs = Date.now();
+                    const _trOf = function (t) {
+                        return (gameState === 'topdown' || gameState === 'tdtraining') ? (t._tdRadius || 22) : ((t.width || 60) / 2);
+                    };
+                    let _inside = false;
+                    for (let ti = 0; ti < targets.length; ti++) {
+                        const t = targets[ti];
+                        if (!t || t.health <= 0 || t === b.owner) continue;
+                        if (Math.hypot(b.x - t.x, b.y - t.y) < _trOf(t) + (b.size || 6)) { _inside = true; break; }
+                    }
+                    // 已完全离开身体并静置满 0.05 秒 -> 解锁 (即使本帧又飞回身体, 也算满足要求)
+                    if (!b._lockInside && b._lockClearAt && (_nowMs - b._lockClearAt) >= 50) {
+                        b._hitLock = false;
+                    } else if (_inside) {
+                        b._lockInside = true;
+                        b._lockClearAt = 0;
+                    } else if (b._lockInside) {
+                        b._lockInside = false;
+                        b._lockClearAt = _nowMs;
+                    } else if (!b._lockClearAt) {
+                        b._lockClearAt = _nowMs;
+                    }
+                }
                 targets.forEach(t => {
                     if (!t || t.health <= 0 || t === b.owner) return;
                     const hitDist = Math.sqrt((b.x - t.x) ** 2 + (b.y - t.y) ** 2);
@@ -12347,6 +12375,7 @@ body.low-perf #menu::before { filter: none; opacity: .18; }
                     if (hitDist < _tRadius + b.size) {
                         // 弹射子弹卡: 弹射后的短免疫期内不参与命中判定
                         if (b.ricochetCooldown > 0) return;
+                        if (b._hitLock) return;   // 分裂 / 穿透子弹尚未离开敌人身体或未满 0.05 秒
                         // === Task 3-4: 更新命中统计 ===
                         if (b.owner && b.owner._bulletStats) {
                             b.owner._bulletStats.shotsHit++;
@@ -12494,6 +12523,8 @@ body.low-perf #menu::before { filter: none; opacity: .18; }
                             if ((b.pierceLeft || 0) > 0) {
                                 b.pierceLeft -= 1;
                                 b.ricochetCooldown = 3;   // 3帧命中免疫, 防止同帧反复结算
+                                // 穿透后必须离开当前敌人身体并静置 0.05 秒, 才能再次命中
+                                b._hitLock = true; b._lockInside = true; b._lockClearAt = 0;
                                 return;                    // 跳过 b.active = false, 子弹继续飞行 (可重复伤害同一敌人)
                             }
                         }
@@ -14056,6 +14087,13 @@ body.low-perf #menu::before { filter: none; opacity: .18; }
         // === 更新公告: 每次对话完成后在 UPDATE_LOG 顶部追加一条 (日期 + 分点内容) ===
         const UPDATE_LOG = [
             {
+                date: '2026-11-21',
+                items: [
+                    '修复分裂 / 穿透子弹在敌人身体内部就立刻重复命中：命中后必须先完全离开敌人身体，再静置 0.05 秒才能再次造成伤害；分裂出来的子弹同样要离开身体并满 0.05 秒后才能攻击，不会再出现「还没走出身体就打中」的情况',
+                    '俯视训练场统一为手动瞄准：即使设置里开启了自动瞄准，训练场也只用鼠标 / 手指方向瞄准，方便练枪'
+                ]
+            },
+            {
                 date: '2026-11-20',
                 items: [
                     '登录 / 注册彻底提速：登录校验不再下载整份云端存档（单次请求从几百 KB 降到几百字节），注册由 5 次串行请求压缩为 1 次，存档改为登录后在后台下载，点「登录」立即进入，不再长时间卡在「处理中」',
@@ -15487,7 +15525,8 @@ body.low-perf #menu::before { filter: none; opacity: .18; }
             // 瞄准:
             //  · 自动瞄准开启 → 智能锁定敌人 (按子弹速度预判提前量)
             //  · 自动瞄准关闭 (默认) → 手机端以「开火键中心 → 手指」为朝向; PC 仍跟随鼠标
-            const _aimOn = !!(window.pcAutoAimOn && window.pcAutoAimOn());
+            // 俯视训练场统一手动瞄准: 即使设置里开启自动瞄准也不锁敌
+            const _aimOn = (gameState !== 'tdtraining') && !!(window.pcAutoAimOn && window.pcAutoAimOn());
             if (_aimOn && ai && ai.health > 0 && !(TD.sniperAim && TD.sniperAim.active)) {
                 const _pw = player.weapon;
                 const _spd = ((_pw && _pw.speed) ? _pw.speed : 22) * (player.cardBulletSpeedMult || 1) * 0.8 * 0.7 * 60; // px/秒
