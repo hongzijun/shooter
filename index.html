@@ -4707,7 +4707,7 @@ body.low-perf #menu::before { filter: none; opacity: .18; }
         // === 至臻一星: 俯视子弹属性模型 (反弹 / 穿透 / 分裂 / 数量上限) ===
         // 仅俯视模式 (topdown / tdtraining) 的子弹读取本模型; 横版子弹不读
         function _bulletModsDefault() {
-            return { bounce: 0, pierce: 0, splitChance: 0, splitCount: 0, splitPower: 0, cap: 100 };
+            return { bounce: 0, pierce: 0, splitChance: 0, splitCount: 0, splitPower: 0, cap: 100, duration: 10 };
         }
         // 无则创建; 逐字段 Number 校验并夹取 (旧存档/异常路径兜底)
         function ensureBulletMods(ent) {
@@ -4732,6 +4732,7 @@ body.low-perf #menu::before { filter: none; opacity: .18; }
             m.splitChance = _num(m.splitChance, 0, 0, 0.8);
             m.splitPower = _num(m.splitPower, 0, 0, 5);
             m.cap = _int(m.cap, 100, 1, 500);
+            m.duration = _num(m.duration, 10, 1, 120);   // 子弹持续时间(秒): 默认 10, 上限 120
             return m;
         }
 
@@ -4991,6 +4992,11 @@ body.low-perf #menu::before { filter: none; opacity: .18; }
                 id: 'bullet_split_pow', name: '继继继！', icon: '🧬', type: 'effect', rarity: 'epic1',
                 desc: '俯视：分裂出的子弹继承当前属性的比例 +10%',
                 apply(p) { ensureBulletMods(p).splitPower += 0.10; }
+            },
+            {
+                id: 'bullet_duration', name: '久久久！', icon: '⏱️', type: 'effect', rarity: 'epic1',
+                desc: '俯视：你的子弹持续时间 +3 秒（从出生开始计时，超时消失）',
+                apply(p) { ensureBulletMods(p); p.bulletMods.duration = Math.min(120, p.bulletMods.duration + 3); }
             },
             {
                 id: 'bullet_cap', name: '加加加！', icon: '📦', type: 'effect', rarity: 'epic1',
@@ -11176,15 +11182,16 @@ body.low-perf #menu::before { filter: none; opacity: .18; }
                     if (e.cardPerks.execute > 0) perkLines.push('处决 ×' + e.cardPerks.execute);
                     if (e.cardPerks.timeWarp > 0) perkLines.push('时间掌控 ×' + e.cardPerks.timeWarp);
                 }
-                // 至臻一星: 俯视子弹属性 (全为默认值时整段不显示, 横版玩家天然不显示)
+                // 至臻一星: 俯视子弹属性 (俯视模式下玩家与 AI 双方都完整显示 7 项)
                 const _bmPanel = ensureBulletMods(e);
-                if (_bmPanel.bounce || _bmPanel.pierce || _bmPanel.splitChance || _bmPanel.splitCount || _bmPanel.splitPower || _bmPanel.cap !== 100) {
+                if (gameState === 'topdown' || gameState === 'tdtraining') {
                     perkLines.push('子弹反弹 ×' + _bmPanel.bounce);
                     perkLines.push('子弹穿透 ×' + _bmPanel.pierce);
                     perkLines.push('分裂概率 ' + Math.round(_bmPanel.splitChance * 100) + '%');
                     perkLines.push('分裂数量 ×' + _bmPanel.splitCount);
                     perkLines.push('分裂能力 ' + Math.round(_bmPanel.splitPower * 100) + '%');
                     perkLines.push('子弹上限 ' + _bmPanel.cap);
+                    perkLines.push('子弹持续时间 ' + Math.round(_bmPanel.duration) + ' 秒');
                 }
 
                 // 装备卡加成 (equip 聚合)
@@ -12263,6 +12270,9 @@ body.low-perf #menu::before { filter: none; opacity: .18; }
                     splitChance: Math.min(0.8, Math.floor((parent.splitChance || 0) * 100 * pow) / 100),
                     splitCount: Math.floor((parent.splitCount || 0) * pow),
                     splitPower: 0,
+                    // 子子弹从分裂出生时重新计时, 持续时间沿用父弹配置
+                    durationMs: (typeof parent.durationMs === 'number' && parent.durationMs > 0) ? parent.durationMs : 10000,
+                    _bornAt: Date.now(),
                     // 分裂子子弹生成在命中点 (敌人体内): 必须先完全离开身体, 再静置 0.05 秒才能命中
                     _hitLock: true, _lockInside: true, _lockClearAt: 0
                 };
@@ -12339,7 +12349,15 @@ body.low-perf #menu::before { filter: none; opacity: .18; }
                 }
                 const _bw = (gameState === 'topdown') ? TD.W : CONFIG.MAP_WIDTH;
                 const _bh = (gameState === 'topdown') ? TD.H : CONFIG.MAP_HEIGHT;
-                if (b.x < -65 || b.x > _bw + 65 || b.y < -65 || b.y > _bh + 65 || b.life <= 0) return false;
+                if (b.x < -65 || b.x > _bw + 65 || b.y < -65 || b.y > _bh + 65) return false;
+                if (_isTdMap) {
+                    // 至臻一星: 俯视子弹按「子弹持续时间」计时消失 (从出生开始, 默认 10 秒)
+                    if (typeof b._bornAt !== 'number') b._bornAt = Date.now();
+                    const _durMs = (typeof b.durationMs === 'number' && b.durationMs > 0) ? b.durationMs : 10000;
+                    if (Date.now() - b._bornAt >= _durMs) return false;
+                } else if (b.life <= 0) {
+                    return false;
+                }
 
                 const targets = gameState === 'pvp' ? [playerA, playerB] : [player, ai];
                 // === 分裂 / 穿透子弹: 命中后必须先完全离开敌人身体, 再静置 0.05 秒才能再次造成伤害 ===
@@ -14090,7 +14108,10 @@ body.low-perf #menu::before { filter: none; opacity: .18; }
                 date: '2026-11-21',
                 items: [
                     '修复分裂 / 穿透子弹在敌人身体内部就立刻重复命中：命中后必须先完全离开敌人身体，再静置 0.05 秒才能再次造成伤害；分裂出来的子弹同样要离开身体并满 0.05 秒后才能攻击，不会再出现「还没走出身体就打中」的情况',
-                    '俯视训练场统一为手动瞄准：即使设置里开启了自动瞄准，训练场也只用鼠标 / 手指方向瞄准，方便练枪'
+                    '俯视训练场统一为手动瞄准：即使设置里开启了自动瞄准，训练场也只用鼠标 / 手指方向瞄准，方便练枪',
+                    '俯视子弹新增第 7 项属性「子弹持续时间」：从子弹出生开始计时，超过该时长自动消失，初始 10 秒、上限 120 秒；分裂出的子弹从分裂那一刻重新计时（横版子弹仍按原寿命，不受影响）',
+                    '新增至臻一星卡「久久久！」：你的子弹持续时间 +3 秒',
+                    '俯视属性面板现在对玩家与 AI 双方完整显示全部 7 项子弹属性：反弹次数、穿透次数、分裂概率、分裂数量、分裂能力、子弹上限、子弹持续时间'
                 ]
             },
             {
@@ -15238,7 +15259,9 @@ body.low-perf #menu::before { filter: none; opacity: .18; }
                     specialType: specialType,
                     // 至臻一星: 反弹 / 穿透 / 分裂属性快照
                     bounceLeft: _bm.bounce, pierceLeft: _bm.pierce,
-                    splitChance: _bm.splitChance, splitCount: _bm.splitCount, splitPower: _bm.splitPower
+                    splitChance: _bm.splitChance, splitCount: _bm.splitCount, splitPower: _bm.splitPower,
+                    // 至臻一星: 子弹持续时间 (从出生开始计时, 超时消失)
+                    durationMs: Math.max(1, Number(_bm.duration) || 10) * 1000, _bornAt: Date.now()
                 };
                 _nb._powerT = _bulletPowerT(_nb);   // 强度 0~1 (强度着色/发光用)
                 bullets.push(_nb);
