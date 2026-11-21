@@ -12340,7 +12340,7 @@ body.low-perf #menu::before { filter: none; opacity: .18; }
                     vx: Math.cos(ang) * spd, vy: Math.sin(ang) * spd,
                     damage: parent.damage, isCrit: parent.isCrit, finalDamage: parent.finalDamage,
                     owner: parent.owner, life: 120, size: Math.max(6, (parent.size || 12) * 0.85), active: true,
-                    color: parent.color, trailPositions: [],
+                    color: parent.color, rimColor: parent.rimColor, weaponKey: parent.weaponKey, trailPositions: [],
                     knockbackMult: (parent.knockbackMult || 1) * 0.6,
                     fxMult: parent.fxMult || 1, volleyId: parent.volleyId, td: true,
                     isLaser: false, specialType: parent.specialType,
@@ -12568,7 +12568,7 @@ body.low-perf #menu::before { filter: none; opacity: .18; }
                         const kbMult = b.knockbackMult || 1.0;
                         // 枪械击退整体减半: 原倍率 1.5 → 0.75 (各枪型 knockbackMultiplier 相对比例不变)
                         let knockPower = (4.5 + damageToApply * 0.008) * kbMult * 0.75;
-                        const isShotgun = b.color === '#ff6b35';
+                        const isShotgun = (b.weaponKey === 'shotgun') || (b.color === '#ff6b35');
                         let horizontalKbMult = 1.0;
                         let verticalKbMult = 1.0;
                         if (isShotgun) {
@@ -12682,6 +12682,14 @@ body.low-perf #menu::before { filter: none; opacity: .18; }
                 if (_powT >= 0.6) { ctx.shadowColor = _drawColor; ctx.shadowBlur = 34; }
                 ctx.fillStyle = _drawColor; ctx.beginPath(); ctx.arc(sx, sy, Math.max(1, b.size), 0, Math.PI * 2); ctx.fill();
                 ctx.shadowBlur = 0;
+                // 俯视阵营描边: 玩家青白 / AI 红 (不改变枪械基色)
+                if (_isTdDraw && b.rimColor && !perfLow()) {
+                    ctx.beginPath();
+                    ctx.arc(sx, sy, Math.max(2, b.size + 1.6), 0, Math.PI * 2);
+                    ctx.strokeStyle = b.rimColor;
+                    ctx.lineWidth = Math.max(1.4, b.size * 0.22);
+                    ctx.stroke();
+                }
                 ctx.fillStyle = '#fff'; ctx.beginPath(); ctx.arc(sx, sy, Math.max(1, b.size * 0.48), 0, Math.PI * 2); ctx.fill();
                 ctx.restore();
             });
@@ -14194,7 +14202,8 @@ body.low-perf #menu::before { filter: none; opacity: .18; }
                     '高频命中时伤害飘字延迟合并：同一目标 1 秒内被命中达到 30 次时，不再逐发弹出伤害数字，而是先累计、满 1 秒后只显示一次总伤害（暴击 ✦ / 护盾 🛡 标记保留），大幅减少大量子弹同时命中时的掉帧；命中频率较低时仍逐发显示',
                     '毒圈减疗一致性修复：减疗改为按「已缩圈次数 × 每波毒圈减疗」实时重建，缩圈、读档、重开新一波、次数被自动修正时都会同步，不再出现圈次数与减疗对不上的情况',
                     '新增自动帧率保护：实时监测平均帧时间，低于约 14fps 时自动降载（伤害飘字改为 8 次/秒即合并、飘字最多 4 条、粒子减少、关闭拖尾与光晕、场上子弹限流到 60%、AI 思考间隔放宽），恢复到 28fps 持续 2 秒后自动还原，尽量保证任何时刻不低于 10fps',
-                    '自选卡牌确认包含全部至臻一星卡：俯视的里程碑自选 / 失败赏赐自选卡池已包含 7 张至臻一星卡（含「久久久！」），带彩色星星标识，可直接选择'
+                    '自选卡牌确认包含全部至臻一星卡：俯视的里程碑自选 / 失败赏赐自选卡池已包含 7 张至臻一星卡（含「久久久！」），带彩色星星标识，可直接选择',
+                    '俯视敌我子弹配色区分：玩家子弹保持枪械本色并加青白色描边，AI 子弹色相向红色偏移并加红色描边；弹幕中一眼分清敌我，同时仍能通过基色辨别是哪把枪的子弹'
                 ]
             },
             {
@@ -15348,7 +15357,12 @@ body.low-perf #menu::before { filter: none; opacity: .18; }
                     vy: Math.sin(a) * (w.speed || 22) * _bulletSpeedMult,
                     damage: dmg, isCrit: _crit.isCrit, finalDamage: dmg,
                     owner: ent, life: 260, size: 12, active: true,   // 判定半径翻倍 (6 -> 12)
-                    color: w.color || '#ffd700', trailPositions: [],
+                    // 俯视: 玩家子弹保留枪械本色 (青白描边), AI 子弹色相向红色混合 (红描边)
+                    // 这样既能分清敌我, 又能从基色看出是哪把枪
+                    color: ent.isAI ? _mixColorHex(w.color || '#ffd700', '#ff4d4d', 0.55) : (w.color || '#ffd700'),
+                    rimColor: ent.isAI ? '#ff5b5b' : '#8fe9ff',
+                    weaponKey: tdWeaponKey(ent),
+                    trailPositions: [],
                     knockbackMult: w.knockbackMultiplier || 1,
                     fxMult: w.fxMult || 1, volleyId: volleyId, td: true,
                     isLaser: tdWeaponKey(ent) === 'laser',
