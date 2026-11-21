@@ -5480,7 +5480,8 @@ body.low-perf #menu::before { filter: none; opacity: .18; }
         function fxDamageFloat(tgt, res, iconId) {
             const d = (res && typeof res === 'object') ? ((res.dmg || 0) + (res.absorbed || 0)) : (res || 0);
             if (!tgt || !(d > 0)) return;
-            showFloatingNumber(tgt.x, tgt.y - 50, '-' + d, DMG_COLORS.fx, { iconId: iconId, prefix: (res && res.shield) ? '🛡' : '', type: 'fx' });
+            // 走统一伤害调度: 高频命中时并入总伤害, 低频保持绿色飘字并带来源图标
+            _showDamageOrBatch(tgt, d, DMG_COLORS.fx, { iconId: iconId, prefix: (res && res.shield) ? '🛡' : '', dmgKind: 'fx', type: 'fx' }, false);
         }
 
         // 命中钩子: 暴击护盾/回血、攻击附魔、每N次命中、灼烧、吸血转盾、反弹
@@ -9548,21 +9549,34 @@ body.low-perf #menu::before { filter: none; opacity: .18; }
                 }
 
                 // === 阶段1: 屏幕震动差异化 ===
+                // 霰弹枪 / 高射速武器会在同一帧多次命中: 震屏、闪屏、音效、血条脉冲与 updateUI (DOM 重建)
+                // 统一按 70ms 节流, 避免每颗弹丸都强制刷新一次界面造成卡顿 (伤害结算本身不受影响)
+                const _hurtNow = Date.now();
                 if (!this.isAI) {
-                    if (!isFxPass) { // Task 9: 特效通道不重复触发红闪/音效/震动
+                    if (!isFxPass && (!this._hurtFxAt || _hurtNow - this._hurtFxAt > 70)) { // Task 9: 特效通道不重复触发红闪/音效/震动
+                        this._hurtFxAt = _hurtNow;
                         if (!isCrit) triggerScreenShake(6, 12, 'rgba(255,50,50,0.25)');
                         showDamageFlash();
                         GameAudio.play('hurt');
                     }
                     // === 阶段4: 血条脉冲 (Task 16) ===
-                    const hpBar = document.getElementById('hpBar');
-                    if (hpBar) { hpBar.classList.remove('hp-pulse'); void hpBar.offsetWidth; hpBar.classList.add('hp-pulse'); }
-                    updateUI();
+                    if (!this._hurtUiAt || _hurtNow - this._hurtUiAt > 70) {
+                        this._hurtUiAt = _hurtNow;
+                        const hpBar = document.getElementById('hpBar');
+                        if (hpBar) { hpBar.classList.remove('hp-pulse'); void hpBar.offsetWidth; hpBar.classList.add('hp-pulse'); }
+                        updateUI();
+                    }
                 } else {
-                    Diag.log('AI', '💥 AI被命中！剩余生命：' + this.lives);
+                    if (!this._diagHitAt || _hurtNow - this._diagHitAt > 200) {
+                        this._diagHitAt = _hurtNow;
+                        Diag.log('AI', '💥 AI被命中！剩余生命：' + this.lives);
+                    }
 
                     // 增强震屏 (Task 9: 特效通道跳过, 避免双份震动)
-                    if (!isFxPass) triggerScreenShake(5, 10, 'rgba(79,142,255,0.22)');
+                    if (!isFxPass && (!this._hurtFxAt || _hurtNow - this._hurtFxAt > 70)) {
+                        this._hurtFxAt = _hurtNow;
+                        triggerScreenShake(5, 10, 'rgba(79,142,255,0.22)');
+                    }
 
                     // AI身体强烈白色闪烁 (Task 9: 特效通道跳过)
                     if (!isFxPass) {
@@ -9585,8 +9599,10 @@ body.low-perf #menu::before { filter: none; opacity: .18; }
                         this.vx = Math.max(-18, Math.min(18, this.vx));
                         this.vy = Math.max(-18, Math.min(18, this.vy));
 
-                        // 击退方向火花粒子
-                        for (let i = 0; i < 5; i++) {
+                        // 击退方向火花粒子 (同一目标 70ms 内只生成一次, 多发弹丸不叠加粒子)
+                        const _sparkN = (this._knockSparkAt && _hurtNow - this._knockSparkAt < 70) ? 0 : 5;
+                        this._knockSparkAt = _hurtNow;
+                        for (let i = 0; i < _sparkN; i++) {
                             if (particles.length >= 300) break;
                             const spread = (Math.random() - 0.5) * 0.8;
                             const speed = 3 + Math.random() * 4;
@@ -14220,7 +14236,8 @@ body.low-perf #menu::before { filter: none; opacity: .18; }
                     '俯视敌我子弹配色区分：玩家子弹保持枪械本色并加青白色描边，AI 子弹色相向红色偏移并加红色描边；弹幕中一眼分清敌我，同时仍能通过基色辨别是哪把枪的子弹',
                     '位移充能显示改为与能量环同风格的圆环：有几层充能就套几层同心圆环，中央显示当前层数，紧挨在能量环旁边（手机端放在能量环上方避免压住摇杆 / 位移键）；层数未满时外圈显示下一层的充能进度',
                     '俯视人物显示层级调整：人物本体、头顶血条与护盾条、命数、能量环、位移充能环、状态图标等所有角色周围的显示，改为双方本体都画完后再统一绘制，始终处于最上层；激光蓄力射线等世界特效移到人物下层，不再遮挡人物与血条',
-                    '盛大开场改为可叠加：每张卡提供 1 层「每回合首次普攻 +150%」，触发一次消耗一层、用掉一个是一个，层数用完为止（旧存档的多张叠加会自动换算成对应层数）；该效果只由物理普攻触发，特效伤害、法术伤害、反伤都不会消耗或触发它'
+                    '盛大开场改为可叠加：每张卡提供 1 层「每回合首次普攻 +150%」，触发一次消耗一层、用掉一个是一个，层数用完为止（旧存档的多张叠加会自动换算成对应层数）；该效果只由物理普攻触发，特效伤害、法术伤害、反伤都不会消耗或触发它',
+                    '霰弹枪 / 高射速命中优化：玩家受击的震屏、闪屏、受击音效、血条脉冲与界面刷新改为 70ms 节流（同一帧多发弹丸只刷新一次界面）；AI 受击的击退火花 70ms 内只生成一次；特效伤害飘字同样接入高频合并。伤害数值与命中判定完全不变'
                 ]
             },
             {
