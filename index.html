@@ -560,6 +560,12 @@
             pointer-events: auto; opacity: 1;
         }
         #aiEquipAward.hide { opacity: 0; transition: opacity 0.42s ease; }
+        /* 一次性展示: 本次抽到的全部卡牌同时排列 (数量多时由 JS 整体缩放) */
+        #aiEquipAward .aia-cards {
+            display: flex; flex-wrap: wrap; gap: 14px;
+            justify-content: center; align-items: flex-start;
+            transform-origin: center top;
+        }
         #aiEquipAward .aia-card {
             position: relative; width: 200px; height: 286px;
             background: linear-gradient(160deg, rgba(22, 22, 40, 0.97), rgba(10, 10, 22, 0.97));
@@ -2714,7 +2720,7 @@ body.low-perf #menu::before { filter: none; opacity: .18; }
 
             <!-- === AI 每回合装备获取动画 (抽卡结束后的过场, JS 控制显示/隐去) === -->
             <div id="aiEquipAward">
-                <div class="aia-card" id="aiEquipAwardCard"></div>
+                <div class="aia-cards" id="aiEquipAwardCards"></div>
                 <div class="aia-title" id="aiEquipAwardTitle"></div>
                 <div class="aia-sub">该装备已计入 AI 属性，按 Tab 可在属性面板查看</div>
             </div>
@@ -6125,35 +6131,55 @@ body.low-perf #menu::before { filter: none; opacity: .18; }
             return pool[Math.floor(Math.random() * pool.length)];
         }
 
-        // AI 装备获取过场: 卡牌弹入居中 → 显示「AI 已获取 XXX 装备」 → 淡出 → 恢复游戏
+        // AI 装备获取过场: 本次抽到的全部卡牌一次性同时展示 (不再一张一张播放)
         let _aiAwardTimer = null;
-        function showAIEquipAward(card, onDone) {
+        function showAIEquipAward(cards, onDone) {
+            const list = Array.isArray(cards) ? cards.filter(Boolean) : (cards ? [cards] : []);
             const overlay = document.getElementById('aiEquipAward');
-            const cardEl = document.getElementById('aiEquipAwardCard');
+            const wrap = document.getElementById('aiEquipAwardCards');
             const titleEl = document.getElementById('aiEquipAwardTitle');
-            if (!overlay || !cardEl || !titleEl || !card) {
+            if (!overlay || !wrap || !titleEl || !list.length) {
                 isAwardShowing = false;
                 if (onDone) onDone();
                 return;
             }
             isAwardShowing = true;
-            const ctName = card.type === 'equip' ? '装备卡' : '效果卡';
-            cardEl.innerHTML =
-                cardIconHTML(card) +
-                `<div class="draft-card-name">${card.name}</div>` +
-                `<div class="draft-card-rarity" style="color:${DRAFT_RARITY_INFO[card.rarity].color};">${ctName} · ${DRAFT_RARITY_INFO[card.rarity].name}</div>` +
-                `<div class="draft-card-desc">${card.desc}</div>`;
-            titleEl.textContent = `🤖 AI 已获取「${card.name}」${ctName}`;
+            wrap.innerHTML = '';
+            for (let i = 0; i < list.length; i++) {
+                const card = list[i];
+                const ctName = card.type === 'equip' ? '装备卡' : '效果卡';
+                const el = document.createElement('div');
+                el.className = 'aia-card';
+                el.innerHTML =
+                    cardIconHTML(card) +
+                    `<div class="draft-card-name">${card.name}</div>` +
+                    `<div class="draft-card-rarity" style="color:${DRAFT_RARITY_INFO[card.rarity].color};">${ctName} · ${DRAFT_RARITY_INFO[card.rarity].name}</div>` +
+                    `<div class="draft-card-desc">${card.desc}</div>`;
+                wrap.appendChild(el);   // 同一帧全部插入, 入场动画同时播放
+            }
+            // 卡牌较多时整体缩放到屏幕内 (单卡 200x286 + 14 间距)
+            const cnt = list.length;
+            const vw = window.innerWidth || 1280, vh = window.innerHeight || 800;
+            const cols = Math.max(1, Math.min(cnt, Math.floor((vw * 0.92) / 214) || 1));
+            const rows = Math.ceil(cnt / cols);
+            const sc = Math.min(1, (vw * 0.92) / (cols * 214), (vh * 0.60) / (rows * 300));
+            wrap.style.width = (cols * 214 - 14) + 'px';
+            wrap.style.height = (rows * 300 - 14) + 'px';
+            wrap.style.transform = 'scale(' + Math.max(0.3, sc).toFixed(3) + ')';
+            wrap.style.marginBottom = (-(rows * 300 - 14) * (1 - Math.max(0.3, sc))) + 'px';
+            titleEl.textContent = cnt === 1
+                ? `🤖 AI 已获取「${list[0].name}」${list[0].type === 'equip' ? '装备卡' : '效果卡'}`
+                : `🤖 AI 一次性获得 ${cnt} 张卡牌`;
             overlay.classList.remove('hide');
             overlay.style.display = 'flex';
-            // 重置入场动画 (重排后重新播放)
-            cardEl.style.animation = 'none';
-            void cardEl.offsetWidth;
-            cardEl.style.animation = '';
+            // 重置入场动画 (重排后重新播放, 所有卡牌同时)
+            wrap.style.animation = 'none';
+            void wrap.offsetWidth;
+            wrap.style.animation = '';
             titleEl.style.animation = 'none';
             void titleEl.offsetWidth;
             titleEl.style.animation = '';
-            const holdMs = 1900;
+            const holdMs = cnt === 1 ? 1900 : Math.min(3400, 1750 + cnt * 130);
             if (_aiAwardTimer) clearTimeout(_aiAwardTimer);
             _aiAwardTimer = setTimeout(() => {
                 overlay.classList.add('hide');
@@ -6202,13 +6228,8 @@ body.low-perf #menu::before { filter: none; opacity: .18; }
                 got.push(card);
             }
             updateUI();
-            // 显示与实际一致: 抽到几张就逐个显示「AI 已获取」
-            let _idx = 0;
-            const _nextAward = function () {
-                if (_idx >= got.length) return;
-                showAIEquipAward(got[_idx++], _nextAward);
-            };
-            if (got.length) _nextAward();
+            // 一次性展示本次抽到的全部卡牌 (不再逐张播放, 数量多时自动缩放排列)
+            if (got.length) showAIEquipAward(got, null);
             return got.length ? got[0] : null;
         }
 
@@ -14237,7 +14258,8 @@ body.low-perf #menu::before { filter: none; opacity: .18; }
                     '位移充能显示改为与能量环同风格的圆环：有几层充能就套几层同心圆环，中央显示当前层数，紧挨在能量环旁边（手机端放在能量环上方避免压住摇杆 / 位移键）；层数未满时外圈显示下一层的充能进度',
                     '俯视人物显示层级调整：人物本体、头顶血条与护盾条、命数、能量环、位移充能环、状态图标等所有角色周围的显示，改为双方本体都画完后再统一绘制，始终处于最上层；激光蓄力射线等世界特效移到人物下层，不再遮挡人物与血条',
                     '盛大开场改为可叠加：每张卡提供 1 层「每回合首次普攻 +150%」，触发一次消耗一层、用掉一个是一个，层数用完为止（旧存档的多张叠加会自动换算成对应层数）；该效果只由物理普攻触发，特效伤害、法术伤害、反伤都不会消耗或触发它',
-                    '霰弹枪 / 高射速命中优化：玩家受击的震屏、闪屏、受击音效、血条脉冲与界面刷新改为 70ms 节流（同一帧多发弹丸只刷新一次界面）；AI 受击的击退火花 70ms 内只生成一次；特效伤害飘字同样接入高频合并。伤害数值与命中判定完全不变'
+                    '霰弹枪 / 高射速命中优化：玩家受击的震屏、闪屏、受击音效、血条脉冲与界面刷新改为 70ms 节流（同一帧多发弹丸只刷新一次界面）；AI 受击的击退火花 70ms 内只生成一次；特效伤害飘字同样接入高频合并。伤害数值与命中判定完全不变',
+                    'AI 获得卡牌的过场动画改为一次性同时展示：本次抽到的全部卡牌同屏出现（数量多时自动缩放排列，标题显示「AI 一次性获得 N 张卡牌」），不再一张一张依次播放，等待时间大幅缩短'
                 ]
             },
             {
