@@ -552,6 +552,15 @@
             align-items: stretch;
         }
 
+        /* === 选卡倒计时 (普通选卡 / 里程碑自选 超时自动跳过) === */
+        #pickCountdown {
+            display: none; position: fixed; top: 14px; left: 50%; transform: translateX(-50%);
+            z-index: 10060; padding: 8px 18px; border-radius: 999px;
+            background: rgba(10, 12, 24, 0.88); border: 1px solid rgba(255, 209, 102, 0.65);
+            color: #ffd166; font-size: 15px; font-weight: 700; white-space: nowrap;
+            box-shadow: 0 0 18px rgba(255, 209, 102, 0.25); pointer-events: none;
+        }
+
         /* === AI 每回合装备获取动画 (抽卡结束后的过场) === */
         #aiEquipAward {
             display: none; position: fixed; inset: 0; z-index: 10020;
@@ -2693,6 +2702,9 @@ body.low-perf #menu::before { filter: none; opacity: .18; }
                 <h5>📋 击杀记录</h5>
                 <div id="killFeedList"></div>
             </div>
+
+            <!-- === 选卡倒计时: 普通选卡 / 里程碑自选 超过 20 秒自动跳过 === -->
+            <div id="pickCountdown"></div>
 
             <!-- === 波次选卡系统: 选卡界面覆盖层 (默认display:none, 显示时JS切为flex) === -->
             <div id="draftOverlay" style="display:none; position:fixed; inset:0; z-index:10000; background:rgba(0,0,0,0.75); align-items:center; justify-content:center; flex-direction:column; pointer-events:auto;">
@@ -6301,6 +6313,7 @@ body.low-perf #menu::before { filter: none; opacity: .18; }
             renderDraftCards();
             overlay.style.display = 'flex'; // 注意: 默认 display:none, 显示时切为 flex
             GameAudio.play('reload'); // 选卡提示音
+            startPickCountdown('draft');
         }
 
         // === 选卡交互: 点击卡牌或按 1/2/3 选中 → 空格或「确定」按钮确认 → 刷新最多10次 ===
@@ -6357,6 +6370,7 @@ body.low-perf #menu::before { filter: none; opacity: .18; }
 
         function confirmCard() {
             if (!isDrafting) return;
+            stopPickCountdown();
             if (draftSelectedIdx < 0) return; // 未选中: 忽略 (确定按钮本身已 disabled)
             const card = currentDraftPicks[draftSelectedIdx];
             if (!card) return;
@@ -6456,6 +6470,70 @@ body.low-perf #menu::before { filter: none; opacity: .18; }
             return { wave: cleared, count: count };
         }
 
+        // === 选卡倒计时: 普通选卡 / 里程碑自选 超过 20 秒自动跳过并继续游戏 ===
+        var PICK_TIMEOUT_MS = 20000;
+        var _pickTimer = null, _pickKind = null, _pickDeadline = 0;
+        function _pickCountdownEl() { return document.getElementById('pickCountdown'); }
+        function startPickCountdown(kind) {
+            _pickKind = kind;
+            // 选卡期间游戏时间被冻结 (Date.now / performance.now / 包装后的 setInterval 都会暂停),
+            // 因此这里必须用真实时钟 _tpRealNow 与原始定时器 _tpRawSetInterval
+            _pickDeadline = _tpRealNow() + PICK_TIMEOUT_MS;
+            var el = _pickCountdownEl();
+            if (el) { el.style.display = 'block'; el.textContent = '⏱ 剩余 ' + (PICK_TIMEOUT_MS / 1000) + ' 秒（超时自动跳过）'; }
+            if (_pickTimer) _tpRawClearInterval(_pickTimer);
+            _pickTimer = _tpRawSetInterval(function () {
+                // 界面已被外部关闭 (返回大厅 / 重开 / 换模式): 停止计时, 不残留
+                if (!isDrafting && !_freePickOpen) { stopPickCountdown(); return; }
+                var left = Math.max(0, _pickDeadline - _tpRealNow());
+                var el2 = _pickCountdownEl();
+                if (el2) el2.textContent = '⏱ 剩余 ' + Math.ceil(left / 1000) + ' 秒（超时自动跳过）';
+                if (left <= 0) {
+                    var k = _pickKind;
+                    stopPickCountdown();
+                    _pickHandleTimeout(k);
+                }
+            }, 200);
+        }
+        function stopPickCountdown() {
+            if (_pickTimer) { _tpRawClearInterval(_pickTimer); _pickTimer = null; }
+            _pickKind = null;
+            var el = _pickCountdownEl();
+            if (el) { el.style.display = 'none'; el.textContent = ''; }
+        }
+        function _pickHandleTimeout(kind) {
+            if (kind === 'draft') {
+                if (!isDrafting) return;
+                // 已选中某张: 超时视为确认该卡; 没选: 跳过本次选卡直接继续
+                if (draftSelectedIdx >= 0) { confirmCard(); return; }
+                finishDraftSkip();
+            } else if (kind === 'freepick') {
+                if (!_freePickOpen) return;
+                // 超时: 已选的照常应用, 不足数量不再强制补齐
+                confirmFreePick(true);
+            }
+        }
+        // 未选择任何卡时跳过选卡, 继续原有流程 (里程碑 / 重生 / PvP 流转)
+        function finishDraftSkip() {
+            if (!isDrafting) return;
+            if (gameState === 'pvp' && pvpPhase === 'draft') {
+                var side = pvpDraftSide;
+                isDrafting = false;
+                draftSelectedIdx = -1;
+                var ov0 = document.getElementById('draftOverlay');
+                if (ov0) ov0.style.display = 'none';
+                proceedAfterPvpDraft(side);
+                return;
+            }
+            isDrafting = false;
+            draftSelectedIdx = -1;
+            var overlay = document.getElementById('draftOverlay');
+            if (overlay) overlay.style.display = 'none';
+            var _fp = freePickMilestone();
+            if (_fp) { openFreePick(_fp.count, _fp.wave); return; }
+            completeDraftRespawn();
+        }
+
         var _freePickRetry = false;   // true = 本次自选来自「失败 6 次赏赐」
         function openFreePick(count, clearedWave, fromRetry) {
             const ov = document.getElementById('freePickOverlay');
@@ -6478,6 +6556,7 @@ body.low-perf #menu::before { filter: none; opacity: .18; }
             updateFreePickCount();
             ov.style.display = 'flex';
             GameAudio.play('reload');
+            startPickCountdown('freepick');
         }
 
         function renderFreePickGrid() {
@@ -6532,8 +6611,10 @@ body.low-perf #menu::before { filter: none; opacity: .18; }
             updateFreePickCount();
         }
 
-        function confirmFreePick() {
-            if (!_freePickOpen || _freePickSel.length !== _freePickNeed) return;
+        function confirmFreePick(force) {
+            if (!_freePickOpen) return;
+            if (!force && _freePickSel.length !== _freePickNeed) return;
+            stopPickCountdown();
             const picked = _freePickSel.slice();
             _freePickOpen = false;
             _freePickSel = [];
@@ -6594,6 +6675,7 @@ body.low-perf #menu::before { filter: none; opacity: .18; }
 
         // === 重置选卡状态 (新开局/进训练场/进PvP时调用) ===
         function resetDraftState() {
+            stopPickCountdown();
             isDrafting = false;
             draftCount = 0;
             _freePickWaveDone = -1;
@@ -14262,7 +14344,8 @@ body.low-perf #menu::before { filter: none; opacity: .18; }
                     '盛大开场改为可叠加：每张卡提供 1 层「每回合首次普攻 +150%」，触发一次消耗一层、用掉一个是一个，层数用完为止（旧存档的多张叠加会自动换算成对应层数）；该效果只由物理普攻触发，特效伤害、法术伤害、反伤都不会消耗或触发它',
                     '霰弹枪 / 高射速命中优化：玩家受击的震屏、闪屏、受击音效、血条脉冲与界面刷新改为 70ms 节流（同一帧多发弹丸只刷新一次界面）；AI 受击的击退火花 70ms 内只生成一次；特效伤害飘字同样接入高频合并。伤害数值与命中判定完全不变',
                     'AI 获得卡牌的过场动画改为一次性同时展示：本次抽到的全部卡牌同屏出现（数量多时自动缩放排列，标题显示「AI 一次性获得 N 张卡牌」），不再一张一张依次播放，等待时间大幅缩短',
-                    '修复失败赏赐（剧情自选）有时候不显示至臻一星卡的问题：赏赐弹出时游戏已处于失败状态，现改为同时参考最近一次游戏模式判断，俯视的失败赏赐与里程碑自选都会完整显示全部 7 张至臻一星卡，横版仍不显示'
+                    '修复失败赏赐（剧情自选）有时候不显示至臻一星卡的问题：赏赐弹出时游戏已处于失败状态，现改为同时参考最近一次游戏模式判断，俯视的失败赏赐与里程碑自选都会完整显示全部 7 张至臻一星卡，横版仍不显示',
+                    '普通选卡与里程碑自选新增 20 秒倒计时（界面顶部显示剩余秒数）：超时后已选中的卡会自动确认，未选则自动跳过并继续游戏；自选界面会应用已勾选的卡牌。倒计时使用真实时间，选卡暂停期间也照常计时'
                 ]
             },
             {
@@ -18259,6 +18342,7 @@ body.low-perf #menu::before { filter: none; opacity: .18; }
             renderDraftCards();
             overlay.style.display = 'flex';
             GameAudio.play('reload'); // 选卡提示音
+            startPickCountdown('draft');
         }
 
         // === PvP 抽卡确认后的流转: 红方(A)→蓝方(B)→下一回合 ===
