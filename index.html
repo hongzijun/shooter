@@ -14327,6 +14327,12 @@ body.low-perf #menu::before { filter: none; opacity: .18; }
         // === 更新公告: 每次对话完成后在 UPDATE_LOG 顶部追加一条 (日期 + 分点内容) ===
         const UPDATE_LOG = [
             {
+                date: '2026-11-27',
+                items: [
+                    '登录 / 注册与社区功能错误提示全面中文化：请求超时、断网、DNS / SSL 异常、连接被重置、网关错误、请求过于频繁、账号或密码错误、用户名被占用、服务器返回格式异常等英文提示全部转为中文；网络错误在抛出前就统一转换，并增加全局兜底，登录 / 注册界面出现任何漏网的异步错误也只显示中文；超时后登录按钮会自动恢复可点击'
+                ]
+            },
+            {
                 date: '2026-11-21',
                 items: [
                     '修复分裂 / 穿透子弹在敌人身体内部就立刻重复命中：命中后必须先完全离开敌人身体，再静置 0.05 秒才能再次造成伤害；分裂出来的子弹同样要离开身体并满 0.05 秒后才能攻击，不会再出现「还没走出身体就打中」的情况',
@@ -19187,20 +19193,33 @@ body.low-perf #menu::before { filter: none; opacity: .18; }
     }
     // 把网络层 / 服务端返回的英文错误统一转成中文, 避免玩家看到 Failed to fetch 之类提示
     function humanErr(e) {
-        var raw = e ? String(e.message || e || '') : '';
+        var raw = e ? String((e && e.rawMessage != null) ? e.rawMessage : (e.message || e || '')) : '';
         var s = raw.trim();
         var st = (e && e.httpStatus) ? Number(e.httpStatus) : 0;
+        if (e && e._timeout) return '网络超时，请稍后重试';   // 本地计时器主动超时
         if (st >= 500) return '服务器暂时不可用（HTTP ' + st + '），请稍后重试';
         if (!s) return '网络异常，请稍后重试';
         var low = s.toLowerCase();
-        if (low.indexOf('failed to fetch') >= 0 || low.indexOf('networkerror') >= 0 || low.indexOf('load failed') >= 0
-            || low.indexOf('network request failed') >= 0 || low.indexOf('fetch failed') >= 0
-            || low.indexOf('could not connect') >= 0 || low.indexOf('net::') >= 0 || low.indexOf('econnrefused') >= 0) {
-            return '网络连接失败，请检查网络后重试';
-        }
-        if (low.indexOf('abort') >= 0 || low.indexOf('timeout') >= 0 || low.indexOf('timed out') >= 0) {
+        // 超时优先判断: net::ERR_TIMED_OUT / connection timed out / TimeoutError / 请求被 abort
+        if (low.indexOf('abort') >= 0 || low.indexOf('timeout') >= 0 || low.indexOf('timed out') >= 0 || low.indexOf('timed_out') >= 0) {
             return '网络超时，请稍后重试';
         }
+        if (low.indexOf('failed to fetch') >= 0 || low.indexOf('networkerror') >= 0 || low.indexOf('load failed') >= 0
+            || low.indexOf('network request failed') >= 0 || low.indexOf('fetch failed') >= 0
+            || low.indexOf('could not connect') >= 0 || low.indexOf('net::') >= 0 || low.indexOf('econnrefused') >= 0
+            || low.indexOf('econnreset') >= 0 || low.indexOf('enotfound') >= 0 || low.indexOf('err_') >= 0
+            || low.indexOf('offline') >= 0 || low.indexOf('unreachable') >= 0 || low.indexOf('dns') >= 0
+            || low.indexOf('ssl') >= 0 || low.indexOf('certificate') >= 0) {
+            return '网络连接失败，请检查网络后重试';
+        }
+        if (low.indexOf('connection') >= 0 || low.indexOf('socket') >= 0 || low.indexOf('reset by peer') >= 0
+            || low.indexOf('bad gateway') >= 0 || low.indexOf('gateway') >= 0 || low.indexOf('service unavailable') >= 0) {
+            return '网络连接失败，请检查网络后重试';
+        }
+        if (low.indexOf('too many requests') >= 0 || low.indexOf('rate limit') >= 0) return '操作过于频繁，请稍后再试';
+        if (low.indexOf('invalid login') >= 0 || low.indexOf('invalid credentials') >= 0 || low.indexOf('invalid_grant') >= 0) return '账号或密码错误';
+        if (low.indexOf('already registered') >= 0 || low.indexOf('already exists') >= 0) return '用户名已被占用';
+        if (low.indexOf('json') >= 0 && low.indexOf('parse') >= 0) return '服务器返回异常，请稍后重试';
         if (low.indexOf('duplicate key') >= 0 || low.indexOf('unique constraint') >= 0) return '数据已存在，请勿重复提交';
         if (low.indexOf('row-level security') >= 0 || low.indexOf('permission denied') >= 0) return '没有权限执行该操作';
         if (low.indexOf('invalid api key') >= 0) return '服务配置异常，请联系管理员';
@@ -19226,7 +19245,7 @@ body.low-perf #menu::before { filter: none; opacity: .18; }
         var ctrl = (typeof AbortController !== 'undefined') ? new AbortController() : null;
         var _isRead = String((opt && opt.method) || 'GET').toUpperCase() === 'GET';
         var _timeout = (opt && Number(opt.timeout) > 0) ? Number(opt.timeout) : (_isRead ? 10000 : 15000);
-        var timer = ctrl ? setTimeout(function () { try { ctrl.abort(); } catch (e) { } }, _timeout) : null;
+        var timer = ctrl ? setTimeout(function () { try { ctrl._timedOut = true; ctrl.abort(); } catch (e) { } }, _timeout) : null;
         var init = { method: opt.method || 'GET', headers: headers, keepalive: !!opt.keepalive };
         if (opt.body !== undefined) init.body = opt.body;
         if (ctrl) init.signal = ctrl.signal;
@@ -19247,6 +19266,11 @@ body.low-perf #menu::before { filter: none; opacity: .18; }
             return v;
         }, function (e) {
             if (timer) clearTimeout(timer);
+            if (ctrl && ctrl._timedOut) {
+                var _te = new Error('请求超时');
+                _te._timeout = true;
+                throw _te;
+            }
             throw e;
         });
     }
@@ -19262,12 +19286,17 @@ body.low-perf #menu::before { filter: none; opacity: .18; }
             return _apiOnce(path, opt).catch(function (e) {
                 var low = String((e && e.message) || '').toLowerCase();
                 var st = (e && e.httpStatus) ? Number(e.httpStatus) : 0;
-                var netErr = low.indexOf('failed to fetch') >= 0 || low.indexOf('networkerror') >= 0
+                var netErr = (e && e._timeout) || low.indexOf('failed to fetch') >= 0 || low.indexOf('networkerror') >= 0
                     || low.indexOf('load failed') >= 0 || low.indexOf('abort') >= 0 || low.indexOf('timeout') >= 0;
                 var retriable = netErr || (isRead && st >= 500);
                 if (retriable && attempt < maxTry) {
                     var wait = 320 * attempt + Math.round(Math.random() * 200);
                     return new Promise(function (resolve) { setTimeout(resolve, wait); }).then(run);
+                }
+                // 统一转成中文: 任何后续直接展示 e.message 的地方都不会再出现英文原文
+                if (e && typeof e === 'object' && !e._humanized) {
+                    e._humanized = true;
+                    try { e.rawMessage = String(e.message || ''); e.message = humanErr(e); } catch (err) { }
                 }
                 throw e;
             });
@@ -19642,7 +19671,7 @@ body.low-perf #menu::before { filter: none; opacity: .18; }
     function doRegister(username, password) {
         // 直接创建: 用户名唯一由数据库约束保证, 省掉注册前的一次查询
         return createUser(username, password).catch(function (e) {
-            var low = String((e && e.message) || '').toLowerCase();
+            var low = String((e && (e.rawMessage != null ? e.rawMessage : e.message)) || '').toLowerCase();
             var dup = (e && e.httpStatus === 409) || low.indexOf('duplicate') >= 0 || low.indexOf('unique') >= 0;
             if (!dup) throw e;
             // 弱网下上次请求可能其实已写入成功: 用同样密码能查回就当作注册成功
@@ -19726,7 +19755,7 @@ body.low-perf #menu::before { filter: none; opacity: .18; }
             return true;
         }).catch(function (e) {
             // 网络不可用: 用本机记住的账号进入离线模式, 不让玩家卡在登录界面
-            var low = String((e && e.message) || '').toLowerCase();
+            var low = String((e && (e.rawMessage != null ? e.rawMessage : e.message)) || '').toLowerCase();
             var netErr = (typeof navigator !== 'undefined' && navigator.onLine === false)
                 || low.indexOf('failed to fetch') >= 0 || low.indexOf('network') >= 0
                 || low.indexOf('abort') >= 0 || low.indexOf('timeout') >= 0 || low.indexOf('load failed') >= 0;
@@ -19958,6 +19987,23 @@ body.low-perf #menu::before { filter: none; opacity: .18; }
         if (hint) hint.style.display = current ? 'none' : 'block';
     }
     function bodyEl() { return document.getElementById('cmBody'); }
+    // 兜底: 未捕获的 Promise 错误若发生在登录/注册界面, 统一转成中文提示 (防止弱网/浏览器差异漏出英文)
+    if (typeof window !== 'undefined' && window.addEventListener) {
+        window.addEventListener('unhandledrejection', function (ev) {
+            try {
+                var el = document.getElementById('cmAuthMsg');
+                if (!el || !el.offsetParent) return;   // 弹窗不可见时不处理
+                var reason = ev && ev.reason;
+                var txt = humanErr(reason);
+                if (!txt) return;
+                el.textContent = txt;
+                el.style.color = '#ff8a8a';
+                var btn = document.getElementById('cmAuthSubmit');
+                if (btn) btn.disabled = false;
+            } catch (e) { }
+        });
+    }
+
     function setMsg(id, text, ok) {
         var el = document.getElementById(id);
         if (!el) return;
