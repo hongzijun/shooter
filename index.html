@@ -14329,7 +14329,8 @@ body.low-perf #menu::before { filter: none; opacity: .18; }
             {
                 date: '2026-11-27',
                 items: [
-                    '登录 / 注册与社区功能错误提示全面中文化：请求超时、断网、DNS / SSL 异常、连接被重置、网关错误、请求过于频繁、账号或密码错误、用户名被占用、服务器返回格式异常等英文提示全部转为中文；网络错误在抛出前就统一转换，并增加全局兜底，登录 / 注册界面出现任何漏网的异步错误也只显示中文；超时后登录按钮会自动恢复可点击'
+                    '登录 / 注册与社区功能错误提示全面中文化：请求超时、断网、DNS / SSL 异常、连接被重置、网关错误、请求过于频繁、账号或密码错误、用户名被占用、服务器返回格式异常等英文提示全部转为中文；网络错误在抛出前就统一转换，并增加全局兜底，登录 / 注册界面出现任何漏网的异步错误也只显示中文；超时后登录按钮会自动恢复可点击',
+                    '登录 / 注册弱网与跨境网络优化：登录查询改为并发双路同时发送，哪一路先成功就用哪一路，单条连接卡死或丢包时不用再干等；查询超时由 10 秒缩短为 7 秒、自动重试增至 4 次并带递增退避；注册遇到网络抖动会自动确认账号是否其实已写入，未写入则自动继续重试（最多 3 次），不再一次失败就让人重新填表；登录 / 注册过程中会显示「网络较慢，正在自动重试（n/m）…」，并会提示当前正在处理；页面打开时自动预热与服务器的连接，弱网 / 异地设备首次登录更快'
                 ]
             },
             {
@@ -19244,7 +19245,7 @@ body.low-perf #menu::before { filter: none; opacity: .18; }
         if (opt.headers) { for (var k in opt.headers) { if (Object.prototype.hasOwnProperty.call(opt.headers, k)) headers[k] = opt.headers[k]; } }
         var ctrl = (typeof AbortController !== 'undefined') ? new AbortController() : null;
         var _isRead = String((opt && opt.method) || 'GET').toUpperCase() === 'GET';
-        var _timeout = (opt && Number(opt.timeout) > 0) ? Number(opt.timeout) : (_isRead ? 10000 : 15000);
+        var _timeout = (opt && Number(opt.timeout) > 0) ? Number(opt.timeout) : (_isRead ? 7000 : 10000);
         var timer = ctrl ? setTimeout(function () { try { ctrl._timedOut = true; ctrl.abort(); } catch (e) { } }, _timeout) : null;
         var init = { method: opt.method || 'GET', headers: headers, keepalive: !!opt.keepalive };
         if (opt.body !== undefined) init.body = opt.body;
@@ -19274,12 +19275,44 @@ body.low-perf #menu::before { filter: none; opacity: .18; }
             throw e;
         });
     }
-    // 查询类请求最多 3 次 (网络错误 / 5xx 都可重试), 写操作只发 1 次, 避免重复提交
+    // 并发双路查询: 同时发两条只读请求, 先成功者胜 (跨境网络单连接卡死/丢包时显著提高成功率)
+    function apiRace(path, opt) {
+        function round(attempt) {
+            return new Promise(function (resolve, reject) {
+                var done = false, failed = 0, lastErr = null, total = 2;
+                function one() {
+                    _apiOnce(path, opt).then(function (v) {
+                        if (done) return;
+                        done = true;
+                        resolve(v);
+                    }, function (e) {
+                        lastErr = e; failed++;
+                        if (failed >= total && !done) {
+                            done = true;
+                            if (attempt < 2) {
+                                if (typeof _netRetryHook === 'function') { try { _netRetryHook(attempt, 2); } catch (err) { } }
+                                resolve(round(attempt + 1));
+                                return;
+                            }
+                            if (lastErr && typeof lastErr === 'object' && !lastErr._humanized) {
+                                lastErr._humanized = true;
+                                try { lastErr.rawMessage = String(lastErr.message || ''); lastErr.message = humanErr(lastErr); } catch (err) { }
+                            }
+                            reject(lastErr);
+                        }
+                    });
+                }
+                one(); one();
+            });
+        }
+        return round(1);
+    }
+    // 查询类请求最多 4 次 (网络错误 / 5xx 都可重试), 写操作只发 1 次, 避免重复提交
     function api(path, opt) {
         opt = opt || {};
         var method = String(opt.method || 'GET').toUpperCase();
         var isRead = (method === 'GET');
-        var maxTry = isRead ? 3 : 1;
+        var maxTry = isRead ? 4 : 1;
         var attempt = 0;
         function run() {
             attempt++;
@@ -19290,7 +19323,8 @@ body.low-perf #menu::before { filter: none; opacity: .18; }
                     || low.indexOf('load failed') >= 0 || low.indexOf('abort') >= 0 || low.indexOf('timeout') >= 0;
                 var retriable = netErr || (isRead && st >= 500);
                 if (retriable && attempt < maxTry) {
-                    var wait = 320 * attempt + Math.round(Math.random() * 200);
+                    var wait = Math.min(1200, 260 * attempt) + Math.round(Math.random() * 180);
+                    if (typeof _netRetryHook === 'function') { try { _netRetryHook(attempt, maxTry); } catch (e) { } }
                     return new Promise(function (resolve) { setTimeout(resolve, wait); }).then(run);
                 }
                 // 统一转成中文: 任何后续直接展示 e.message 的地方都不会再出现英文原文
@@ -19330,11 +19364,31 @@ body.low-perf #menu::before { filter: none; opacity: .18; }
     // 登录校验只取必要列: 不再把整份存档(可能几百 KB)一起拉下来, 弱网下登录也不会超时
     function findAuth(username) {
         if (cloudOn()) {
-            return api('accounts?select=id,username,password,play_seconds&username=eq.' + encodeURIComponent(username) + '&limit=1')
+            return apiRace('accounts?select=id,username,password,play_seconds&username=eq.' + encodeURIComponent(username) + '&limit=1')
                 .then(function (r) { return (r && r[0]) || null; });
         }
         var a = localDb().accounts.filter(function (x) { return x.username === username; })[0] || null;
         return Promise.resolve(a);
+    }
+    // 弱网注册: 失败后先确认上次是否其实已写入, 未写入则自动重试 (最多 3 次), 避免一次网络抖动就注册失败
+    function createUserResilient(username, password, attempt) {
+        attempt = attempt || 0;
+        return createUser(username, password).catch(function (e) {
+            var low = String((e && (e.rawMessage != null ? e.rawMessage : e.message)) || '').toLowerCase();
+            var net = (e && e._timeout) || low.indexOf('failed to fetch') >= 0 || low.indexOf('network') >= 0
+                || low.indexOf('timeout') >= 0 || low.indexOf('abort') >= 0 || low.indexOf('load failed') >= 0
+                || low.indexOf('net::') >= 0 || low.indexOf('err_') >= 0 || low.indexOf('connection') >= 0;
+            if (!net || attempt >= 2) throw e;
+            return findAuth(username).then(function (u) {
+                if (u && u.password === password) return u;   // 上次其实已成功写入
+                if (u && u.password !== password) throw new Error('用户名已被占用');
+                return new Promise(function (r) { setTimeout(r, 500 * (attempt + 1)); })
+                    .then(function () { return createUserResilient(username, password, attempt + 1); });
+            }, function () {
+                return new Promise(function (r) { setTimeout(r, 500 * (attempt + 1)); })
+                    .then(function () { return createUserResilient(username, password, attempt + 1); });
+            });
+        });
     }
     function createUser(username, password) {
         var row = { username: username, password: password, created_at: nowISO(), last_login_at: nowISO(), play_seconds: 0, last_mode: '', extra: {} };
@@ -19670,7 +19724,7 @@ body.low-perf #menu::before { filter: none; opacity: .18; }
 
     function doRegister(username, password) {
         // 直接创建: 用户名唯一由数据库约束保证, 省掉注册前的一次查询
-        return createUser(username, password).catch(function (e) {
+        return createUserResilient(username, password).catch(function (e) {
             var low = String((e && (e.rawMessage != null ? e.rawMessage : e.message)) || '').toLowerCase();
             var dup = (e && e.httpStatus === 409) || low.indexOf('duplicate') >= 0 || low.indexOf('unique') >= 0;
             if (!dup) throw e;
@@ -20089,6 +20143,7 @@ body.low-perf #menu::before { filter: none; opacity: .18; }
         renderAuth('login');
     }
     var _authBusy = false;
+    var _netRetryHook = null;
     function renderAuth(tab, required) {
         var isLogin = (tab !== 'register');
         openModal(required ? '🔒 请先登录 / 注册' : '👤 登录 / 注册',
@@ -20118,13 +20173,18 @@ body.low-perf #menu::before { filter: none; opacity: .18; }
             }
             _authBusy = true;
             setMsg('cmAuthMsg', '处理中…（网络较慢时会自动重试）', true);
+            _netRetryHook = function (attempt, max) {
+                try { setMsg('cmAuthMsg', '网络较慢，正在自动重试（' + Math.min(attempt + 1, max) + '/' + max + '）…', true); } catch (e) { }
+            };
             var task = isLogin ? doLogin(u, p) : doRegister(u, p);
             task.then(function () {
                 _authBusy = false;
+                _netRetryHook = null;
                 try { GameAudio.play('pickup'); } catch (e) { }
                 forceCloseModal();
             }).catch(function (e) {
                 _authBusy = false;
+                _netRetryHook = null;
                 setMsg('cmAuthMsg', humanErr(e));
             });
         });
